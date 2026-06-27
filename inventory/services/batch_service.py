@@ -1,7 +1,10 @@
+# TODO: Sort out imports
+from datetime import timedelta
 from ..utils import batch_utils
-from ..models import ProductBatch, IngredientBatch
+from ..models import Product, Ingredient,ProductBatch, IngredientBatch
 from django.utils import timezone
 from decimal import Decimal
+from django.db.models import Sum # , Count, Avg, Max, Min
 
 # Product Batch
 
@@ -104,3 +107,67 @@ def deduct_ingredient_batch(ingredient, quantity):
     raise ValueError("Insufficient Ingredients.")
   
 # Low Stock Check (Products)
+def check_product_stock():
+  """
+  Check the stock levels of all products and return a list of products that are below their low stock threshold.
+  """
+  low_stock_prods = []
+  products = Product.objects.filter(is_active=True)
+
+  for product in products:
+    total_remaining = ProductBatch.objects.filter(product=product, status='available').aggregate(total=Sum('remaining_quantity'))['total'] or Decimal('0.00')
+    if total_remaining < product.low_stock_threshold:
+      low_stock_prods.append({
+        'product': product,
+        'remaining_quantity': total_remaining
+      })
+
+  return low_stock_prods
+
+# Low Stock Check (Ingredients)
+def check_ingredient_stock():
+  """
+  Check the stock levels of all ingredients and return a list of ingredients that are below their low stock threshold.
+  """
+  low_stock_ings = []
+  ingredients = Ingredient.objects.filter(is_active=True)
+
+  for ingredient in ingredients:
+    total_remaining = IngredientBatch.objects.filter(ingredient=ingredient, status='available').aggregate(total=Sum('remaining_quantity'))['total'] or Decimal('0.00')
+    if total_remaining < ingredient.low_stock_threshold:
+      low_stock_ings.append({
+        'ingredient': ingredient,
+        'remaining_quantity': total_remaining
+      })
+
+  return low_stock_ings
+
+# Expiration Check (Products)
+def check_product_expiration():
+  """
+  Check for product batches that are expired or nearing expiration and return a list of such batches.
+  """
+  now = timezone.now().date()
+  expiring_soon_threshold = now + timedelta(days=7)  # Define a threshold for "nearing expiration"
+  
+  expiring_batches = ProductBatch.objects.filter(
+    status='available',
+    expiration_date__lte=expiring_soon_threshold
+  ).order_by('expiration_date')
+
+  return expiring_batches
+
+# Expiration Check (Ingredients)
+def check_ingredient_expiration():
+  """
+  Check for ingredient batches that are expired or nearing expiration and return a list of such batches.
+  """
+  now = timezone.now().date()
+  expiring_soon_threshold = now + timedelta(days=7)  # Define a threshold for "nearing expiration"
+  
+  expiring_batches = IngredientBatch.objects.filter(
+    status='available',
+    expiration_date__lte=expiring_soon_threshold
+  ).order_by('expiration_date')
+
+  return expiring_batches

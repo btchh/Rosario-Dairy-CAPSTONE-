@@ -16,3 +16,13 @@ def register_user(username, password, email, role, first_name, last_name, phone_
 
 def get_user(user):
   return user
+
+def change_password(user, old_password,new_password):
+  if not user.check_password(old_password):
+    raise ValueError("Old Password is Incorrect")
+  user.set_password(new_password)
+  user.save()
+
+def forgot_password(user, new_password):
+  user.set_password(new_password)
+  user.save()

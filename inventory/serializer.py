@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from models import Product, ProductBatch, Ingredient, IngredientBatch
+from .models import Product, ProductBatch, Ingredient, IngredientBatch
 
 # TODO: Look up how to create a proper serializer
 # REMINDER: THIS IS TO BE USED IF REACT IS TO BE USED. OTHERWISE, **IGNORE THIS!**

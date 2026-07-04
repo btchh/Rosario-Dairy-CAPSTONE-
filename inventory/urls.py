@@ -4,10 +4,9 @@ from . import views
 
 router = DefaultRouter()
 router.register(r'products', views.ProductViewSet, basename='product')
-# TODO: Migrate VVV To their own .py files and register them here
-# router.register(r'ingredients', views.IngredientViewSet, basename='ingredient')
-# router.register(r'product-batches', views.ProductBatchViewSet, basename='productbatch')
-# router.register(r'ingredient-batches', views.IngredientBatchViewSet, basename='ingredientbatch')
+router.register(r'ingredients', views.IngredientViewSet, basename='ingredient')
+router.register(r'product-batches', views.ProductBatchViewSet, basename='productbatch')
+router.register(r'ingredient-batches', views.IngredientBatchViewSet, basename='ingredientbatch')
 
 urlpatterns = [
   path('', include(router.urls))

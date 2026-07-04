@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from rest_framework_simplejwt.tokens import RefreshToken
 User = get_user_model()
 
 def register_user(username, password, email, role, first_name, last_name, phone_number, address):
@@ -26,3 +27,7 @@ def change_password(user, old_password,new_password):
 def forgot_password(user, new_password):
   user.set_password(new_password)
   user.save()
+
+def logout(refresh_token):
+  token = RefreshToken(refresh_token)
+  token.blacklist()

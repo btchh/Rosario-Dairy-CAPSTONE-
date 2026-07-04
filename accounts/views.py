@@ -38,22 +38,23 @@ class RegisterView(APIView):
       return Response({'error': 'Username or email already exists'}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
       return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-# TODO: ADD TRY CATCH
 class GetUserView(APIView):
   permission_classes = [IsAdmin | IsStaff]
 
   def get(self, request):
-    user = user_service.get_user(request.user)
-    return Response({
-      'username': user.username,
-      'email': user.email,
-      'role': user.role,
-      'first_name': user.first_name,
-      'last_name': user.last_name,
-      'phone_number': user.phone_number,
-      'address': user.address
-    }, status=status.HTTP_200_OK)
+    try:
+      user = user_service.get_user(request.user)
+      return Response({
+        'username': user.username,
+        'email': user.email,
+        'role': user.role,
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+        'phone_number': user.phone_number,
+        'address': user.address
+      }, status=status.HTTP_200_OK)
+    except User.DoesNotExist:
+      return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
   
 class ChangePasswordView(APIView):
   permission_classes = [IsAdmin | IsStaff]
@@ -79,3 +80,14 @@ class ForgotPasswordView(APIView):
       return Response({'message': 'Password reset successfully'}, status=status.HTTP_200_OK)
     except User.DoesNotExist:
       return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+class LogoutView(APIView):
+  permission_classes = [IsAdmin | IsStaff]
+  
+  def post(self, request):
+    refresh_token = request.data.get('refresh_token')
+    try:
+      user_service.logout(refresh_token)
+      return Response({'message': 'Logged out successfully'}, status=status.HTTP_200_OK)
+    except Exception as e:
+      return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

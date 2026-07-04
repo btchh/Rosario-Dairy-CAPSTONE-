@@ -40,8 +40,9 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
+    'corsheaders',
     'inventory',
-    'frontpages',
     'accounts',
     
 ]
@@ -56,6 +57,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -144,3 +146,7 @@ SIMPLE_JWT = {
 }
 
 AUTH_USER_MODEL = 'accounts.Users'
+
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:5173',  # Vite's default port
+]

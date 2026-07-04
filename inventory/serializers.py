@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Product, ProductBatch, Ingredient, IngredientBatch
+from .models import Product, ProductBatch, Ingredient, IngredientBatch, Category, Supplier
 
 # TODO: Look up how to create a proper serializer
 # REMINDER: THIS IS TO BE USED IF REACT IS TO BE USED. OTHERWISE, **IGNORE THIS!**
@@ -26,4 +26,24 @@ class ProdBatchSerializer(serializers.ModelSerializer):
 class IngBatchSerializer(serializers.ModelSerializer):
   class Meta:
     model = IngredientBatch
+    fields = '__all__'
+
+# LowStockProds Serializer
+class LowStockProductSerializer(serializers.Serializer):
+  product = ProductSerializer()
+  remaining_quantity = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+#LowStockIngs Serializer
+class LowStockIngredientSerializer(serializers.Serializer):
+  ingredient = IngredientSerializer()
+  remaining_quantity = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+class CategorySerializer(serializers.Serializer):
+  class Meta:
+    model = Category
+    fields = '__all__'
+
+class SupplierSerializer(serializers.Serializer):
+  class Meta:
+    model = Supplier
     fields = '__all__'

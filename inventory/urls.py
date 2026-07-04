@@ -9,5 +9,9 @@ router.register(r'product-batches', views.ProductBatchViewSet, basename='product
 router.register(r'ingredient-batches', views.IngredientBatchViewSet, basename='ingredientbatch')
 
 urlpatterns = [
-  path('', include(router.urls))
+  path('', include(router.urls)),
+  path('low-stock/products/', views.LowStockProductView.as_view(), name='low-stock-products'),
+  path('low-stock/ingredients/', views.LowStockIngredientView.as_view(), name='low-stock-ingredients'),
+  path('expiring/products/', views.ExpiringProductView.as_view(), name='expiring-products'),
+  path('expiring/ingredients/', views.ExpiringIngredientView.as_view(), name='expiring-ingredients')
 ]

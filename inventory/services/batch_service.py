@@ -1,4 +1,5 @@
 # TODO: Sort out imports
+# TODO: Refactor each service into the corresponding type (e.g product / ingredient)
 from datetime import timedelta
 from ..utils import batch_utils
 from ..models import Product, Ingredient,ProductBatch, IngredientBatch
@@ -9,10 +10,6 @@ from django.db.models import Sum # , Count, Avg, Max, Min
 # Product Batch
 
 def create_product_batch(product, quantity, expiration_date, date_received=None, notes=""):
-  """
-  Create a new batch for a product with the given quantity, expiration date, and optional notes.
-  """
-
   now = timezone.now()
 
   sequence = ProductBatch.objects.filter(
@@ -37,10 +34,6 @@ def create_product_batch(product, quantity, expiration_date, date_received=None,
 # Ingredient
 
 def create_ingredient_batch(ingredient, quantity, expiration_date, date_received=None, notes=""):
-  """
-  Create a new batch for an ingredient with the given quantity, expiration date, and optional notes.
-  """
-
   now = timezone.now()
 
   sequence = IngredientBatch.objects.filter(
@@ -64,9 +57,6 @@ def create_ingredient_batch(ingredient, quantity, expiration_date, date_received
 
 # Product Deduction
 def deduct_product_batch(product, quantity):
-  """
-  Deduct a specified quantity from the available batches of a product, starting with the oldest batch.
-  """
   batches = ProductBatch.objects.filter(product=product,status='available').order_by('expiration_date')
 
   for batch in batches:
@@ -86,9 +76,6 @@ def deduct_product_batch(product, quantity):
   
 # Ingredient Deduction
 def deduct_ingredient_batch(ingredient, quantity):
-  """
-  Deduct a specified quantity from the available batches of an ingredient, starting with the oldest batch.
-  """
   batches = IngredientBatch.objects.filter(ingredient=ingredient,status='available').order_by('expiration_date')
 
   for batch in batches:
@@ -108,9 +95,6 @@ def deduct_ingredient_batch(ingredient, quantity):
   
 # Low Stock Check (Products)
 def check_product_stock():
-  """
-  Check the stock levels of all products and return a list of products that are below their low stock threshold.
-  """
   low_stock_prods = []
   products = Product.objects.filter(is_active=True)
 
@@ -126,9 +110,6 @@ def check_product_stock():
 
 # Low Stock Check (Ingredients)
 def check_ingredient_stock():
-  """
-  Check the stock levels of all ingredients and return a list of ingredients that are below their low stock threshold.
-  """
   low_stock_ings = []
   ingredients = Ingredient.objects.filter(is_active=True)
 
@@ -144,9 +125,6 @@ def check_ingredient_stock():
 
 # Expiration Check (Products)
 def check_product_expiration():
-  """
-  Check for product batches that are expired or nearing expiration and return a list of such batches.
-  """
   now = timezone.now().date()
   expiring_soon_threshold = now + timedelta(days=7)  # Define a threshold for "nearing expiration"
   
@@ -159,9 +137,6 @@ def check_product_expiration():
 
 # Expiration Check (Ingredients)
 def check_ingredient_expiration():
-  """
-  Check for ingredient batches that are expired or nearing expiration and return a list of such batches.
-  """
   now = timezone.now().date()
   expiring_soon_threshold = now + timedelta(days=7)  # Define a threshold for "nearing expiration"
   

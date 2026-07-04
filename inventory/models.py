@@ -2,11 +2,23 @@ from django.utils import timezone
 from django.db import models
 
 # PRODUCT AND INGREDIENT MODELS
+
+class Category(models.Model):
+  name = models.CharField(max_length=255)
+  description = models.TextField(blank=True, null=True)
+  is_active = models.BooleanField(default=True)
+  created_at = models.DateTimeField(auto_now_add=True)
+  updated_at = models.DateTimeField(auto_now=True)
+
+  def __str__(self):
+    return self.name
+
 class Product(models.Model):
+  category = models.ForeignKey('Category', on_delete=models.PROTECT, related_name='products')
   name = models.CharField(max_length=100)
-  category = models.CharField(max_length=100)
   unit = models.CharField(max_length=50)
   unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+  variant = models.CharField(max_length=100, blank=True,null=True)
   shelf_life = models.IntegerField()
   low_stock_threshold = models.IntegerField(default=10)
   is_active = models.BooleanField(default=True)
@@ -22,10 +34,23 @@ class Product(models.Model):
     ordering = ['name']
 
 class Ingredient(models.Model):
+  INGREDIENT_TYPES = [
+    ('raw_milk', 'Raw Milk'),
+    ('processing', 'Processing'),
+    ('packaging', 'Packaging')
+  ]
+
+  GRADE_CHOICES = [
+    ('A', 'Class A'),
+    ('B', 'Class B')  
+    ]
+
   name = models.CharField(max_length=100)
   unit = models.CharField(max_length=50)
   unit_price = models.DecimalField(max_digits=10, decimal_places=2)
   shelf_life = models.IntegerField()
+  ingredient_type = models.CharField(max_length=20, choices=INGREDIENT_TYPES, default='')
+  grade = models.CharField(max_length=20, choices=GRADE_CHOICES, blank=True, null=True)
   low_stock_threshold = models.IntegerField(default=10)
   is_active = models.BooleanField(default=True)
   created_at = models.DateTimeField(auto_now_add=True)
@@ -41,16 +66,36 @@ class Ingredient(models.Model):
 
 # PRODUCT AND INGREDIENT BATCH MODELS
 
+class Supplier(models.Model):
+  name = models.CharField(max_length=255)
+  contact_number = models.CharField(max_length=15, blank=True, null=True)
+  address = models.TextField(blank=True, null=True)
+  is_active = models.BooleanField(default=True)
+  created_at = models.DateTimeField(auto_now_add=True)
+  updated_at = models.DateTimeField(auto_now=True)
+
+  def __str__(self):
+    return self.name
+
+
 # TODO: Create a separate table for IngredientBatch and ProductBatch to track batches of ingredients and products, including their expiration dates and quantities.
 
 class IngredientBatch(models.Model):
+  STATUS_TYPES = [
+    ('available', 'Available'),
+    ('depleted', 'Depleted'), 
+    ('expired', 'Expired'),
+    ('disposed', 'Disposed')]
+
   ingredient = models.ForeignKey('Ingredient', on_delete=models.CASCADE, related_name='batches')
   batch_number = models.CharField(max_length=50)
+  supplier = models.ForeignKey('Supplier', on_delete=models.PROTECT, related_name='batches', blank=True, null=True)
+  unit_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
   initial_quantity = models.DecimalField(max_digits=10, decimal_places=2)
   remaining_quantity = models.DecimalField(max_digits=10, decimal_places=2)
   expiration_date = models.DateField()
   date_received = models.DateField(default=timezone.now)
-  status = models.CharField(max_length=20, choices=[('available', 'Available'), ('depleted', 'Depleted'), ('expired', 'Expired'), ('disposed', 'Disposed')], default='available')
+  status = models.CharField(max_length=20, choices=STATUS_TYPES, default='available')
   notes = models.TextField(blank=True, null=True)
   created_at = models.DateTimeField(auto_now_add=True)
   updated_at = models.DateTimeField(auto_now=True)
@@ -65,6 +110,7 @@ class IngredientBatch(models.Model):
 
 
 class ProductBatch(models.Model):
+  #TODO: Put the choices into an array
   product = models.ForeignKey('Product', on_delete=models.CASCADE, related_name='batches')
   batch_number = models.CharField(max_length=50)
   initial_quantity = models.DecimalField(max_digits=10, decimal_places=2)

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Product, ProductBatch, Ingredient, IngredientBatch, Category, Supplier
+from .models import Product, ProductBatch, Ingredient, IngredientBatch, Category, Supplier, StockAdjustment, FEFOConf
 
 # TODO: Look up how to create a proper serializer
 # REMINDER: THIS IS TO BE USED IF REACT IS TO BE USED. OTHERWISE, **IGNORE THIS!**
@@ -46,4 +46,14 @@ class CategorySerializer(serializers.Serializer):
 class SupplierSerializer(serializers.Serializer):
   class Meta:
     model = Supplier
+    fields = '__all__'
+
+class StockAdjustmentSerializer(serializers.ModelSerializer):
+  class Meta:
+    model = StockAdjustment
+    fields = '__all__'
+
+class FEFOConfSerializer(serializers.ModelSerializer):
+  class Meta:
+    model = FEFOConf
     fields = '__all__'

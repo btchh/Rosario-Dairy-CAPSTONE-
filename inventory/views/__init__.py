@@ -6,6 +6,8 @@ from .ingredientbatch_views import IngredientBatchViewSet
 from .ingredientstock_views import LowStockIngredientView, ExpiringIngredientView
 from .category_views import CategoryViewSet
 from .supplier_view import SupplierViewSet
+from .fefoconf_views import FEFOConfViewSet
+from .stockadjustment_views import StockAdjustmentViewSet
 
 # Naming convention thingy so you won't get confused later
 # XXXXXViewSet = (viewset.ModelViewSet)

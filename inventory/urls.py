@@ -7,6 +7,8 @@ router.register(r'products', views.ProductViewSet, basename='product')
 router.register(r'ingredients', views.IngredientViewSet, basename='ingredient')
 router.register(r'product-batches', views.ProductBatchViewSet, basename='productbatch')
 router.register(r'ingredient-batches', views.IngredientBatchViewSet, basename='ingredientbatch')
+router.register(r'categories', views.CategoryViewSet)
+router.register(r'supliers', views.SupplierViewSet)
 
 urlpatterns = [
   path('', include(router.urls)),

@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import Product, ProductBatch, Ingredient, IngredientBatch, Category, Supplier, StockAdjustment, FEFOConf
+from accounts.serializers import UserSerializer
 from django.db.models import Sum
 
 # TODO: Refactor Serializers
@@ -7,7 +8,10 @@ from django.db.models import Sum
 class CategorySerializer(serializers.ModelSerializer):
   class Meta:
     model = Category
-    fields = '__all__'
+    fields = [
+      'id', 'name', 'description', 'is_active', 'created_at', 'updated_at'
+    ]
+    read_only_fields = ['id', 'created_at', 'updated_at']
 
 class ProductSerializer(serializers.ModelSerializer):
   category = CategorySerializer(read_only=True)
@@ -28,7 +32,7 @@ class ProductSerializer(serializers.ModelSerializer):
     fields = [
       'id', 'name', 'variant', 'unit', 'unit_price', 'shelf_life', 'low_stock_threshold', 'is_active', 'category', 'category_id', 'total_stock', 'created_at', 'updated_at'
     ]
-    read_only_fields = ['id', 'created_at', ' updated_at', 'total_stock']
+    read_only_fields = ['id', 'created_at', 'updated_at', 'total_stock']
 class IngredientSerializer(serializers.ModelSerializer):
   total_stock = serializers.SerializerMethodField()
 
@@ -44,25 +48,44 @@ class IngredientSerializer(serializers.ModelSerializer):
     ]
     read_only_fields = ['id', 'created_at', 'updated_at', 'total_stock']
 
-class ProductBatchSerializer(serializers.ModelSerializer):
+class ProdBatchSerializer(serializers.ModelSerializer):
   product = ProductSerializer(read_only=True)
   product_id = serializers.PrimaryKeyRelatedField(
     queryset=Product.objects.all(),
     source='product',
     write_only=True
   )
+  quantity = serializers.DecimalField(
+    max_digits = 10,
+    decimal_places = 2, 
+    write_only = True
+  )
   class Meta:
     model = ProductBatch
     fields = [
-      'id', 'product', 'batch_number', 'initial_quantity', 'remaining_quantity', 'expiration_date', 'date_received', 'status', 'notes', 'created_at', 'updated_at'
+      'id', 'product', 'product_id', 'batch_number', 'initial_quantity', 'remaining_quantity', 'quantity', 'expiration_date', 'date_received', 'status', 'notes', 'created_at', 'updated_at'
     ]
-    read_only_fields = ['id', 'batch_number', 'created_at', 'updated_at']
+    read_only_fields = ['id', 'batch_number', 'quantity', 'initial_quantity', 'remaining_quantity','created_at', 'updated_at']
 
-# Ingredient Serializer
 class IngBatchSerializer(serializers.ModelSerializer):
+  ingredient = IngredientSerializer(read_only=True)
+  ingredient_id = serializers.PrimaryKeyRelatedField(
+    queryset=Ingredient.objects.all(),
+    source='ingredient',
+    write_only=True
+  ) 
+  quantity = serializers.DecimalField(
+    max_digits = 10,
+    decimal_places = 2, 
+    write_only = True
+  )
+
   class Meta:
     model = IngredientBatch
-    fields = '__all__'
+    fields = [
+      'id', 'ingredient', 'ingredient_id','batch_number', 'supplier', 'unit_price', 'initial_quantity', 'remaining_quantity', 'quantity','expiration_date', 'date_received', 'status', 'notes', 'created_at', 'updated_at'
+    ]
+    read_only_fields = ['id', 'batch_number', 'quantity', 'initial_quantity', 'remaining_quantity','created_at', 'updated_at']
 
 # LowStockProds Serializer
 class LowStockProductSerializer(serializers.Serializer):
@@ -73,19 +96,45 @@ class LowStockProductSerializer(serializers.Serializer):
 class LowStockIngredientSerializer(serializers.Serializer):
   ingredient = IngredientSerializer()
   remaining_quantity = serializers.DecimalField(max_digits=10, decimal_places=2)
-
-
+  
 class SupplierSerializer(serializers.ModelSerializer):
   class Meta:
     model = Supplier
-    fields = '__all__'
+    fields = [
+      'id', 'name', 'contact_number', 'address', 'is_active', 'created_at','updated_at'
+    ]
+    read_only_fields = ['id', 'created_at', 'updated_at']
 
 class StockAdjustmentSerializer(serializers.ModelSerializer):
+  product_batch = ProdBatchSerializer(read_only=True)
+  product_batch_id = serializers.PrimaryKeyRelatedField(    
+    queryset=ProductBatch.objects.all(),
+    source='product_batch',
+    write_only = True,
+    required = False,
+    allow_null = True
+  )
+  ingredient_batch = IngBatchSerializer(read_only=True)
+  ingredient_batch_id = serializers.PrimaryKeyRelatedField(
+    queryset = IngredientBatch.objects.all(),
+    source = 'ingredient_batch',
+    write_only = True,
+    required = False,
+    allow_null = True
+  )
+
+  adjusted_by = UserSerializer(read_only=True)
+
   class Meta:
     model = StockAdjustment
-    fields = '__all__'
-
+    fields = [
+      'id', 'product_batch', 'product_batch_id','ingredient_batch', 'ingredient_batch_id','adjustment_type', 'quantity', 'unit_cost', 'reason', 'adjusted_by', 'created_at', 'updated_at'
+      ]
+    read_only_fields = ['id', 'adjusted_by', 'created_at', 'updated_at']
 class FEFOConfSerializer(serializers.ModelSerializer):
   class Meta:
     model = FEFOConf
-    fields = '__all__'
+    fields = [
+      'id', 'near_expiry_threshold', 'low_stock_threshold', 'updated_at'
+    ]
+    read_only_fields = ['id', 'updated_at']

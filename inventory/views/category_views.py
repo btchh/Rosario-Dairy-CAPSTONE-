@@ -6,4 +6,4 @@ from accounts.permissions import IsAdmin, IsStaff
 class CategoryViewSet(viewsets.ModelViewSet):
   queryset = Category.objects.filter(is_active=True)
   serializer_class = CategorySerializer
-  permission_classes = [IsAdmin, IsStaff]
+  permission_classes = [IsAdmin | IsStaff]

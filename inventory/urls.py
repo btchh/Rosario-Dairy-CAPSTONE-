@@ -8,7 +8,9 @@ router.register(r'ingredients', views.IngredientViewSet, basename='ingredient')
 router.register(r'product-batches', views.ProductBatchViewSet, basename='productbatch')
 router.register(r'ingredient-batches', views.IngredientBatchViewSet, basename='ingredientbatch')
 router.register(r'categories', views.CategoryViewSet)
-router.register(r'supliers', views.SupplierViewSet)
+router.register(r'suppliers', views.SupplierViewSet)
+router.register(r'stock-adjustments', views.StockAdjustmentViewSet, basename='stock-adjustment')
+router.register(r'fefo-config', views.FEFOConfViewSet, basename='fefo-config')
 
 urlpatterns = [
   path('', include(router.urls)),

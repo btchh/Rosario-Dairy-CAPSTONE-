@@ -149,4 +149,5 @@ AUTH_USER_MODEL = 'accounts.Users'
 
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',  # Vite's default port
+    'null', 
 ]

@@ -2,7 +2,7 @@
 # TODO: Refactor each service into the corresponding type (e.g product / ingredient)
 from datetime import timedelta
 from ..utils import batch_utils
-from ..models import Product, Ingredient,ProductBatch, IngredientBatch
+from ..models import Product, Ingredient,ProductBatch, IngredientBatch, FEFOConf,StockAdjustment
 from django.utils import timezone
 from decimal import Decimal
 from django.db.models import Sum # , Count, Avg, Max, Min
@@ -33,13 +33,12 @@ def create_product_batch(product, quantity, expiration_date, date_received=None,
 
 # Ingredient
 
-def create_ingredient_batch(ingredient, quantity, expiration_date, date_received=None, notes=""):
+def create_ingredient_batch(ingredient, quantity, expiration_date, supplier=None, unit_price=None, date_received=None, notes=""):
   now = timezone.now()
 
   sequence = IngredientBatch.objects.filter(
     created_at__month=now.month, created_at__year=now.year
   ).count()  # Count existing batches for the current month and year
-
   batch_number = batch_utils.generate_batch_number("ING", sequence + 1)  # Generate a new batch number
 
   ingredient_batches = IngredientBatch(
@@ -48,6 +47,8 @@ def create_ingredient_batch(ingredient, quantity, expiration_date, date_received
     remaining_quantity=quantity,
     batch_number=batch_number,
     expiration_date=expiration_date,
+    supplier=supplier,
+    unit_price=unit_price,
     date_received=date_received if date_received else now.date(),
     notes=notes
   )
@@ -97,10 +98,11 @@ def deduct_ingredient_batch(ingredient, quantity):
 def check_product_stock():
   low_stock_prods = []
   products = Product.objects.filter(is_active=True)
-
+  config = FEFOConf.get_config()
   for product in products:
+    low_stock_threshold = product.low_stock_threshold or config.low_stock_threshold
     total_remaining = ProductBatch.objects.filter(product=product, status='available').aggregate(total=Sum('remaining_quantity'))['total'] or Decimal('0.00')
-    if total_remaining < product.low_stock_threshold:
+    if total_remaining <= low_stock_threshold:
       low_stock_prods.append({
         'product': product,
         'remaining_quantity': total_remaining
@@ -112,10 +114,11 @@ def check_product_stock():
 def check_ingredient_stock():
   low_stock_ings = []
   ingredients = Ingredient.objects.filter(is_active=True)
-
+  config = FEFOConf.get_config()
   for ingredient in ingredients:
+    low_stock_threshold = ingredient.low_stock_threshold or config.low_stock_threshold
     total_remaining = IngredientBatch.objects.filter(ingredient=ingredient, status='available').aggregate(total=Sum('remaining_quantity'))['total'] or Decimal('0.00')
-    if total_remaining < ingredient.low_stock_threshold:
+    if total_remaining <= low_stock_threshold:
       low_stock_ings.append({
         'ingredient': ingredient,
         'remaining_quantity': total_remaining
@@ -126,11 +129,11 @@ def check_ingredient_stock():
 # Expiration Check (Products)
 def check_product_expiration():
   now = timezone.now().date()
-  expiring_soon_threshold = now + timedelta(days=7)  # Define a threshold for "nearing expiration"
-  
+  config = FEFOConf.get_config()
+  near_expiry_threshold = now + timedelta(days=config.near_expiry_threshold)
   expiring_batches = ProductBatch.objects.filter(
     status='available',
-    expiration_date__lte=expiring_soon_threshold
+    expiration_date__lte=near_expiry_threshold
   ).order_by('expiration_date')
 
   return expiring_batches
@@ -138,11 +141,34 @@ def check_product_expiration():
 # Expiration Check (Ingredients)
 def check_ingredient_expiration():
   now = timezone.now().date()
-  expiring_soon_threshold = now + timedelta(days=7)  # Define a threshold for "nearing expiration"
-  
+  config = FEFOConf.get_config()
+  near_expiry_threshold = now + timedelta(days=config.near_expiry_threshold)
   expiring_batches = IngredientBatch.objects.filter(
     status='available',
-    expiration_date__lte=expiring_soon_threshold
+    expiration_date__lte=near_expiry_threshold
   ).order_by('expiration_date')
 
   return expiring_batches
+
+# Stock adjustment
+def create_stock_adjustment(adjustment_type, quantity, unit_cost, adjusted_by, reason="", ingredient_batch=None, product_batch=None):
+  batch = product_batch or ingredient_batch
+  if not batch:
+    raise ValueError("A product batch or ingredient batch must be provided")
+  batch.remaining_quantity -= quantity
+  if batch.remaining_quantity  <= Decimal('0.00'):
+    batch.remaining_quantity = Decimal('0.00')
+    batch.status = 'disposed' if adjustment_type in ['spoilage', 'expired', 'disposed'] else 'depleted'
+  batch.save()
+
+  adjustment = StockAdjustment(
+    ingredient_batch = ingredient_batch,
+    product_batch = product_batch,
+    adjustment_type = adjustment_type,
+    quantity = quantity,
+    unit_cost = unit_cost,
+    adjusted_by = adjusted_by,
+    reason = reason
+  )
+  adjustment.save()
+  return adjustment

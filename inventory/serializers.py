@@ -38,12 +38,12 @@ class LowStockIngredientSerializer(serializers.Serializer):
   ingredient = IngredientSerializer()
   remaining_quantity = serializers.DecimalField(max_digits=10, decimal_places=2)
 
-class CategorySerializer(serializers.Serializer):
+class CategorySerializer(serializers.ModelSerializer):
   class Meta:
     model = Category
     fields = '__all__'
 
-class SupplierSerializer(serializers.Serializer):
+class SupplierSerializer(serializers.ModelSerializer):
   class Meta:
     model = Supplier
     fields = '__all__'

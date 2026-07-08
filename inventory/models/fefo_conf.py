@@ -2,7 +2,7 @@ from django.db import models
 
 class FEFOConf(models.Model):
   near_expiry_threshold = models.IntegerField(default=7)
-  global_low_stock_threshold = models.IntegerField(default=15)
+  low_stock_threshold = models.IntegerField(default=15)
   updated_at = models.DateTimeField(auto_now=True)
 
   def save(self, *args, **kwargs):

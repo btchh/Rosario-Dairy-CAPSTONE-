@@ -1,8 +1,6 @@
 from django.utils import timezone
 from django.db import models
 
-# INGREDIENT BATCH
-
 class IngredientBatch(models.Model):
   STATUS_TYPES = [
     ('available', 'Available'),
@@ -31,10 +29,8 @@ class IngredientBatch(models.Model):
     verbose_name_plural = "Ingredient Batches"
     ordering = ['expiration_date']
 
-# PRODUCT BATCH
-
 class ProductBatch(models.Model):
-  AVAILABILITY = [
+  STATUS_TYPES = [
     ('available', 'Available'), 
     ('depleted', 'Depleted'), 
     ('expired', 'Expired'), 
@@ -47,7 +43,7 @@ class ProductBatch(models.Model):
   remaining_quantity = models.DecimalField(max_digits=10, decimal_places=2)
   expiration_date = models.DateField()
   date_received = models.DateField(default=timezone.now)
-  status = models.CharField(max_length=20, choices=AVAILABILITY, default='available')
+  status = models.CharField(max_length=20, choices=STATUS_TYPES, default='available')
   notes = models.TextField(blank=True, null=True)
   created_at = models.DateTimeField(auto_now_add=True)
   updated_at = models.DateTimeField(auto_now=True)
@@ -59,3 +55,8 @@ class ProductBatch(models.Model):
     verbose_name = "Product Batch"
     verbose_name_plural = "Product Batches"
     ordering = ['expiration_date']
+
+# General Rule:
+# When logging a batch, staff must identify the item with the nearest expiration date
+# among all units in the delivery and use that date as the batch expiration_date.
+# This ensures the system alerts based on the most time-sensitive item in the batch.

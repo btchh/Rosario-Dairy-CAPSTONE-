@@ -65,7 +65,7 @@ class ProdBatchSerializer(serializers.ModelSerializer):
     fields = [
       'id', 'product', 'product_id', 'batch_number', 'initial_quantity', 'remaining_quantity', 'quantity', 'expiration_date', 'date_received', 'status', 'notes', 'created_at', 'updated_at'
     ]
-    read_only_fields = ['id', 'batch_number', 'quantity', 'initial_quantity', 'remaining_quantity','created_at', 'updated_at']
+    read_only_fields = ['id', 'batch_number', 'initial_quantity', 'remaining_quantity','created_at', 'updated_at']
 
 class IngBatchSerializer(serializers.ModelSerializer):
   ingredient = IngredientSerializer(read_only=True)
@@ -85,7 +85,7 @@ class IngBatchSerializer(serializers.ModelSerializer):
     fields = [
       'id', 'ingredient', 'ingredient_id','batch_number', 'supplier', 'unit_price', 'initial_quantity', 'remaining_quantity', 'quantity','expiration_date', 'date_received', 'status', 'notes', 'created_at', 'updated_at'
     ]
-    read_only_fields = ['id', 'batch_number', 'quantity', 'initial_quantity', 'remaining_quantity','created_at', 'updated_at']
+    read_only_fields = ['id', 'batch_number', 'initial_quantity', 'remaining_quantity','created_at', 'updated_at']
 
 # LowStockProds Serializer
 class LowStockProductSerializer(serializers.Serializer):

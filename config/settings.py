@@ -136,7 +136,8 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': [
-    'rest_framework.permissions.IsAuthenticated',
+    # 'rest_framework.permissions.IsAuthenticated',
+    'rest_framework.permissions.AllowAny',
     ],
 }
 
@@ -149,5 +150,5 @@ AUTH_USER_MODEL = 'accounts.Users'
 
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',  # Vite's default port
-    'null', 
+    # 'null',  for general stuff
 ]

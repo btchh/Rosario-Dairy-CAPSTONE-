@@ -4,7 +4,10 @@ from .models import Transaction, TransactionItem, Order
 from inventory.services.batch_service import deduct_product_batch
 from django.db import transaction as db_transaction
 from .models import Transaction
-
+from django.db.models import Sum
+from django.db.models.functions import TruncDate, TruncWeek, TruncMonth, TruncYear
+from .models import Transaction
+from django.db.models import Sum, F
 
 def checkout(cart_items, staff_user, payment_method='cash'):
     """
@@ -75,3 +78,46 @@ def void_fulfilled_order(order, admin_user):
         order.save()
 
     return txn
+
+
+PERIOD_TRUNC = {
+    'daily': TruncDate,
+    'weekly': TruncWeek,
+    'monthly': TruncMonth,
+    'yearly': TruncYear,
+}
+
+def get_revenue_report(period='monthly'):
+    trunc_fn = PERIOD_TRUNC.get(period)
+    if trunc_fn is None:
+        raise ValueError(f"Invalid period '{period}'. Must be one of {list(PERIOD_TRUNC)}.")
+
+    return (
+        Transaction.objects
+        .filter(is_voided=False)
+        .annotate(bucket=trunc_fn('created_at'))
+        .values('bucket')
+        .annotate(total=Sum('total_amount'))
+        .order_by('bucket')
+    )
+
+def get_best_sellers(limit=10):
+    return (
+        TransactionItem.objects
+        .filter(transaction__is_voided=False)
+        .values(
+            product_name=F('product_batch__product__name'),
+            product_variant=F('product_batch__product__variant')
+        )
+        .annotate(total_sold=Sum('quantity'))
+        .order_by('-total_sold')[:limit]
+    )
+
+def get_sales_by_category():
+    return (
+        TransactionItem.objects
+        .filter(transaction__is_voided=False)
+        .values(category_name=F('product_batch__product__category__name'))
+        .annotate(total_sold=Sum('quantity'))
+        .order_by('-total_sold')
+    )

@@ -17,5 +17,5 @@ urlpatterns = [
   path('low-stock/products/', views.LowStockProductView.as_view(), name='low-stock-products'),
   path('low-stock/ingredients/', views.LowStockIngredientView.as_view(), name='low-stock-ingredients'),
   path('expiring/products/', views.ExpiringProductView.as_view(), name='expiring-products'),
-  path('expiring/ingredients/', views.ExpiringIngredientView.as_view(), name='expiring-ingredients')
+  path('expiring/ingredients/', views.ExpiringIngredientView.as_view(), name='expiring-ingredients'),
 ]

@@ -10,6 +10,9 @@ from django.db.models import Sum # , Count, Avg, Max, Min
 # Product Batch
 
 def create_product_batch(product, quantity, expiration_date, date_received=None, notes=""):
+  if quantity <= Decimal('0.00'):
+    raise ValueError("Batch quantity must be greater than zero.")
+
   now = timezone.now()
 
   sequence = ProductBatch.objects.filter(
@@ -34,6 +37,9 @@ def create_product_batch(product, quantity, expiration_date, date_received=None,
 # Ingredient
 
 def create_ingredient_batch(ingredient, quantity, expiration_date, supplier=None, unit_price=None, date_received=None, notes=""):
+  if quantity <= Decimal('0.00'):
+    raise ValueError("Batch quantity must be greater than zero.")
+
   now = timezone.now()
 
   sequence = IngredientBatch.objects.filter(

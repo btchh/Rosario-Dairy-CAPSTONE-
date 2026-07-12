@@ -1,6 +1,11 @@
 from django.utils import timezone
 from django.db import models
 
+GRADE_CHOICES = [
+  ('A', 'Class A'),
+  ('B', 'Class B')
+]
+
 class IngredientBatch(models.Model):
   STATUS_TYPES = [
     ('available', 'Available'),
@@ -8,9 +13,10 @@ class IngredientBatch(models.Model):
     ('expired', 'Expired'),
     ('disposed', 'Disposed')]
 
-  ingredient = models.ForeignKey('Ingredient', on_delete=models.CASCADE, related_name='batches')
+  ingredient = models.ForeignKey('Ingredient', on_delete=models.PROTECT, related_name='batches')
   batch_number = models.CharField(max_length=50)
   supplier = models.ForeignKey('Supplier', on_delete=models.PROTECT, related_name='batches', blank=True, null=True)
+  grade = models.CharField(max_length=20,choices=GRADE_CHOICES, blank=True, null=True)
   unit_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
   initial_quantity = models.DecimalField(max_digits=10, decimal_places=2)
   remaining_quantity = models.DecimalField(max_digits=10, decimal_places=2)
@@ -37,8 +43,10 @@ class ProductBatch(models.Model):
     ('disposed', 'Disposed')
   ]
 
-  product = models.ForeignKey('Product', on_delete=models.CASCADE, related_name='batches')
+  product = models.ForeignKey('Product', on_delete=models.PROTECT, related_name='batches')
   batch_number = models.CharField(max_length=50)
+  grade = models.CharField(max_length=20,choices=GRADE_CHOICES, blank=True, null=True)
+  unit_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
   initial_quantity = models.DecimalField(max_digits=10, decimal_places=2)
   remaining_quantity = models.DecimalField(max_digits=10, decimal_places=2)
   expiration_date = models.DateField()

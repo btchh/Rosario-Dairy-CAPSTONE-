@@ -2,7 +2,7 @@
 # TODO: Refactor each service into the corresponding type (e.g product / ingredient)
 from datetime import timedelta
 from ..utils import batch_utils
-from ..models import Product, Ingredient,ProductBatch, IngredientBatch, FEFOConf,StockAdjustment
+from ..models import Product, Ingredient,ProductBatch, IngredientBatch, FEFOConf, StockAdjustment, StockCount
 from django.utils import timezone
 from decimal import Decimal
 from django.db.models import Sum # , Count, Avg, Max, Min
@@ -58,41 +58,55 @@ def create_ingredient_batch(ingredient, quantity, expiration_date, supplier=None
 
 # Product Deduction
 def deduct_product_batch(product, quantity):
-  batches = ProductBatch.objects.filter(product=product,status='available').order_by('expiration_date')
+  quantity = Decimal(str(quantity))
+  batches = list(ProductBatch.objects.filter(product=product,status='available').order_by('expiration_date'))
+  total_available = sum (b.remaining_quantity for b in batches)
+  if total_available < quantity:
+    raise ValueError("Insufficient Products.")
+  
+  consumed = []
 
   for batch in batches:
-    if batch.remaining_quantity < quantity:
-      quantity -= batch.remaining_quantity
-      batch.remaining_quantity = Decimal('0.00')
-      batch.status = 'depleted'
-      batch.save()
-    else:
-      batch.remaining_quantity -= quantity
-      if batch.remaining_quantity == Decimal('0.00'):
-        batch.status = 'depleted'
-      batch.save()
+    if quantity <= 0:
       break
-  if quantity > Decimal('0.00'):
-    raise ValueError("Insufficient Products.")
+
+    take = min(batch.remaining_quantity, quantity)
+    batch.remaining_quantity -= take
+    
+    if batch.remaining_quantity == Decimal('0.00'):
+      batch.status = 'depleted'
+    batch.save()
+
+    consumed.append((batch, take))
+    quantity -= take
+
+  return consumed
   
 # Ingredient Deduction
 def deduct_ingredient_batch(ingredient, quantity):
-  batches = IngredientBatch.objects.filter(ingredient=ingredient,status='available').order_by('expiration_date')
+  quantity = Decimal(str(quantity))
+  batches = list(IngredientBatch.objects.filter(ingredient=ingredient,status='available').order_by('expiration_date'))
+  total_avalable = sum(b.remaining_quantity for b in batches)
+  if total_avalable < quantity:
+    raise ValueError("Insufficient Ingredients")
+  
+  consumed = []
 
   for batch in batches:
-    if batch.remaining_quantity < quantity:
-      quantity -= batch.remaining_quantity
-      batch.remaining_quantity = Decimal('0.00')
-      batch.status = 'depleted'
-      batch.save()
-    else:
-      batch.remaining_quantity -= quantity
-      if batch.remaining_quantity == Decimal('0.00'):
-        batch.status = 'depleted'
-      batch.save()
+    if quantity <= 0:
       break
-  if quantity > Decimal('0.00'):
-    raise ValueError("Insufficient Ingredients.")
+
+    take = min(batch.remaining_quantity, quantity)
+    batch.remaining_quantity -= take
+
+    if batch.remaining_quantity == Decimal('0.00'):
+      batch.status = 'depleted'
+    batch.save()
+
+    consumed.append((batch, take))
+    quantity -= take
+  
+  return consumed
   
 # Low Stock Check (Products)
 def check_product_stock():
@@ -152,23 +166,61 @@ def check_ingredient_expiration():
 
 # Stock adjustment
 def create_stock_adjustment(adjustment_type, quantity, unit_cost, adjusted_by, reason="", ingredient_batch=None, product_batch=None):
+  if bool(product_batch) == bool(ingredient_batch):
+    raise ValueError("Exactly one of product_batch or ingredient_batch must be provided.")
+
   batch = product_batch or ingredient_batch
-  if not batch:
-    raise ValueError("A product batch or ingredient batch must be provided")
+  assert batch is not None
   batch.remaining_quantity -= quantity
-  if batch.remaining_quantity  <= Decimal('0.00'):
+  if batch.remaining_quantity <= Decimal('0.00'):
     batch.remaining_quantity = Decimal('0.00')
-    batch.status = 'disposed' if adjustment_type in ['spoilage', 'expired', 'disposed'] else 'depleted'
+    batch.status = 'disposed' if adjustment_type in ['spoilage', 'expired'] else 'depleted'
   batch.save()
 
   adjustment = StockAdjustment(
-    ingredient_batch = ingredient_batch,
-    product_batch = product_batch,
-    adjustment_type = adjustment_type,
-    quantity = quantity,
-    unit_cost = unit_cost,
-    adjusted_by = adjusted_by,
-    reason = reason
+    ingredient_batch=ingredient_batch,
+    product_batch=product_batch,
+    adjustment_type=adjustment_type,
+    quantity=quantity,
+    unit_cost=unit_cost,
+    adjusted_by=adjusted_by,
+    reason=reason
   )
   adjustment.save()
   return adjustment
+
+def reconcile(counted_quantity, counted_by, notes="", ingredient_batch=None, product_batch=None):
+  if bool(product_batch) == bool(ingredient_batch):
+    raise ValueError("Exactly one of product_batch or ingredient_batch must be provided.")
+
+  batch = product_batch or ingredient_batch
+  assert batch is not None
+
+  expected = batch.remaining_quantity
+  variance = counted_quantity - expected
+
+  count = StockCount(
+    ingredient_batch=ingredient_batch,
+    product_batch=product_batch,
+    expected_quantity=expected,
+    counted_quantity=counted_quantity,
+    variance=variance,
+    counted_by=counted_by,
+    notes=notes
+  )
+  count.save()
+
+  if variance != Decimal('0.00'):
+    adjustment = create_stock_adjustment(
+      adjustment_type='correction',
+      quantity=-variance,
+      unit_cost=batch.unit_price or Decimal('0.00'),
+      adjusted_by=counted_by,
+      reason=notes or 'Daily stock count variance',
+      ingredient_batch=ingredient_batch,
+      product_batch=product_batch
+    )
+    count.resulting_adjustment = adjustment #type: ignore
+    count.save()
+
+  return count

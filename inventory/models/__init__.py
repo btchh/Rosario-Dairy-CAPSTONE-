@@ -5,3 +5,4 @@ from .ingredient import Ingredient
 from .products import Product
 from .stockadjustment import StockAdjustment
 from .supplier import Supplier
+from .stockcount import StockCount

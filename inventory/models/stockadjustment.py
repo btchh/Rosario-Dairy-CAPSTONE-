@@ -7,6 +7,7 @@ class StockAdjustment(models.Model):
     ('spoilage', 'Spoilage'),
     ('spillage', 'Spillage'),
     ('taste_test', 'Taste Test Rejection'),
+    ('processing_use', 'Used for Processing'), 
     ('correction', 'Correction'),
   ]
 

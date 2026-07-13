@@ -4,9 +4,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from ..models import Order
 from ..serializers import OrderSerializer
-from ..services import fulfill_order
+from ..services import SalesService
 from ..permissions import IsAdminOrReadOnlyCancel
-from ..services import checkout, fulfill_order, void_fulfilled_order
 
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.select_related('customer', 'handled_by').prefetch_related('items').all()
@@ -31,7 +30,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         order = self.get_object()
         payment_method = request.data.get('payment_method', 'cash')
         try:
-            fulfill_order(order, request.user, payment_method)
+            SalesService.fulfill_order(order, request.user, payment_method)
         except ValueError as e:
             return Response({'error': str(e)}, status=400)
         order.refresh_from_db()
@@ -47,7 +46,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         if order.status == 'fulfilled':
             try:
-                void_fulfilled_order(order, request.user)
+                SalesService.void_fulfilled_order(order, request.user)
             except ValueError as e:
                 return Response({'error': str(e)}, status=400)
             order.refresh_from_db()

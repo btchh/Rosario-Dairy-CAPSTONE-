@@ -28,7 +28,7 @@ class StockAdjustmentViewSet(viewsets.ModelViewSet):
     ingredient_batch = IngredientBatch.objects.get(id=ingredient_batch_id) if ingredient_batch_id else None
 
     try:
-        adjustment = batch_service.create_stock_adjustment(
+        adjustment = batch_service.BatchService.create_stock_adjustment(
             adjustment_type=adjustment_type,
             quantity=quantity,
             unit_cost=unit_cost,

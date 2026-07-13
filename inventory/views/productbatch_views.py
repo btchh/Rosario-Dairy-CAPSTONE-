@@ -15,7 +15,7 @@ class ProductBatchViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        product_batch = batch_service.create_product_batch(
+        product_batch = batch_service.BatchService.create_product_batch(
             product=data['product'],
             quantity=data['quantity'],
             expiration_date=data['expiration_date'],

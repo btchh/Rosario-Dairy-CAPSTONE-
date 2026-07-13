@@ -15,7 +15,7 @@ class IngredientBatchViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        ingredient_batch = batch_service.create_ingredient_batch(
+        ingredient_batch = batch_service.BatchService.create_ingredient_batch(
             ingredient=data['ingredient'],
             supplier=data['supplier'],
             unit_price=data['unit_price'],

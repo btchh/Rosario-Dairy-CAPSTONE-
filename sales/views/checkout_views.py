@@ -2,7 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from ..serializers import TransactionSerializer
-from ..services import checkout
+from ..services import SalesService
 from inventory.models import Product
 from decimal import Decimal
 
@@ -30,7 +30,7 @@ class CheckoutView(viewsets.ViewSet):
             cart_items.append((product, entry['quantity']))
 
         try:
-            txn = checkout(cart_items, request.user, payment_method,
+            txn = SalesService.checkout(cart_items, request.user, payment_method,
                             discount_type, discount_value, amount_tendered)
         except ValueError as e:
             return Response({'error': str(e)}, status=400)

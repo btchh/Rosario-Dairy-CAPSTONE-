@@ -2,9 +2,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from accounts.permissions import IsAdmin
-from ..services import get_revenue_report
-from ..services import get_best_sellers
-from ..services import get_sales_by_category
+from ..services import SalesService
 
 class RevenueReportView(APIView):
     permission_classes = [IsAuthenticated, IsAdmin]
@@ -12,7 +10,7 @@ class RevenueReportView(APIView):
     def get(self, request):
         period = request.query_params.get('period', 'monthly')
         try:
-            data = get_revenue_report(period)
+            data = SalesService.get_revenue_report(period)
         except ValueError as e:
             return Response({'error': str(e)}, status=400)
 
@@ -26,7 +24,7 @@ class BestSellersReportView(APIView):
 
     def get(self, request):
         limit = int(request.query_params.get('limit', 10))
-        data = get_best_sellers(limit)
+        data = SalesService.get_best_sellers(limit)
         return Response([
             {'product': f"{row['product_name']} {row['product_variant'] or ''}".strip(),
              'sales': float(row['total_sold'])}
@@ -37,7 +35,7 @@ class SalesByCategoryReportView(APIView):
     permission_classes = [IsAuthenticated, IsAdmin]
 
     def get(self, request):
-        data = get_sales_by_category()
+        data = SalesService.get_sales_by_category()
         total = sum(float(row['total_sold']) for row in data)
         return Response([
             {'name': row['category_name'],

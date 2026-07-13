@@ -9,7 +9,7 @@ class LowStockIngredientView (APIView):
   permission_classes = [IsAdmin | IsStaff]
 
   def get(self, request):
-    low_stock = batch_service.check_ingredient_stock()
+    low_stock = batch_service.BatchService.check_ingredient_stock()
     serializer = LowStockIngredientSerializer(low_stock, many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
   
@@ -17,6 +17,6 @@ class ExpiringIngredientView (APIView):
   permission_classes = [IsAdmin | IsStaff]
 
   def get(self, request):
-    expiring = batch_service.check_ingredient_expiration()
+    expiring = batch_service.BatchService.check_ingredient_expiration()
     serializer = IngBatchSerializer(expiring, many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)

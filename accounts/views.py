@@ -5,7 +5,11 @@ from accounts.permissions import IsAdmin, IsStaff
 from django.contrib.auth import get_user_model
 from accounts.services import user_service
 from django.db import IntegrityError
+from typing import TYPE_CHECKING, cast
+from django.contrib.auth import get_user_model
 
+if TYPE_CHECKING:
+    from accounts.models import Users
 
 User = get_user_model()
 
@@ -92,3 +96,37 @@ class LogoutView(APIView):
       return Response({'message': 'Logged out successfully'}, status=status.HTTP_200_OK)
     except Exception as e:
       return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+class UserListView(APIView):
+  permission_classes = [IsAdmin]
+
+  def get(self, request):
+    users = User.objects.all().values('id', 'username', 'email', 'role', 'is_active', 'first_name', 'last_name')
+    return Response(list(users), status=status.HTTP_200_OK)
+
+class UserDetailView(APIView):
+  permission_classes = [IsAdmin]
+
+  def get(self, request, pk):
+    try:
+        user = cast("Users", User.objects.get(pk=pk))
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+    return Response({
+        'id': user.pk, 'username': user.username, 'email': user.email,
+        'role': user.role, 'is_active': user.is_active,
+        'first_name': user.first_name, 'last_name': user.last_name,
+        'phone_number': user.phone_number, 'address': user.address
+    })
+
+def patch(self, request, pk):
+    try:
+        user = cast("Users", User.objects.get(pk=pk))
+    except User.DoesNotExist:
+        return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    for field in ['role', 'is_active', 'email', 'first_name', 'last_name', 'phone_number', 'address']:
+        if field in request.data:
+            setattr(user, field, request.data[field])
+    user.save()
+    return Response({'message': 'User updated successfully.'})

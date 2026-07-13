@@ -69,15 +69,16 @@ class ChangePasswordView(APIView):
     except ValueError as e:
       return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-class ForgotPasswordView(APIView):
+class AdminResetPasswordView(APIView):
+  permission_classes = [IsAdmin]
+
   def post(self, request):
     username = request.data.get('username')
     new_password = request.data.get('new_password')
-
     try:
       user = User.objects.get(username=username)
       user_service.forgot_password(user, new_password)
-      return Response({'message': 'Password reset successfully'}, status=status.HTTP_200_OK)
+      return Response({'message': f"Password reset for {username}."}, status=status.HTTP_200_OK)
     except User.DoesNotExist:
       return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 

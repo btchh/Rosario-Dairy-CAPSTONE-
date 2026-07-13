@@ -9,19 +9,18 @@ from django.db.models.functions import TruncDate, TruncWeek, TruncMonth, TruncYe
 from .models import Transaction
 from django.db.models import Sum, F
 
-def checkout(cart_items, staff_user, payment_method='cash'):
-    """
-    cart_items: list of (product, quantity) tuples
-    Returns the created Transaction.
-    """
+def checkout(cart_items, staff_user, payment_method='cash',
+            discount_type='none', discount_value=Decimal('0.00'),
+            amount_tendered=None):
     with db_transaction.atomic():
         txn = Transaction.objects.create(
             handled_by=staff_user,
             payment_method=payment_method,
+            subtotal=Decimal('0.00'),
             total_amount=Decimal('0.00')
         )
 
-        total = Decimal('0.00')
+        subtotal = Decimal('0.00')
         for product, quantity in cart_items:
             consumed = deduct_product_batch(product, quantity)
             for batch, qty_taken in consumed:
@@ -32,10 +31,40 @@ def checkout(cart_items, staff_user, payment_method='cash'):
                     quantity=qty_taken,
                     unit_price=price
                 )
-                total += Decimal(str(qty_taken)) * price
+                subtotal += Decimal(str(qty_taken)) * price
 
+        # --- discount ---
+        if discount_type == 'percent':
+            if not (0 <= discount_value <= 100):
+                raise ValueError("Percentage discount must be between 0 and 100.")
+            discount_amount = subtotal * (discount_value / Decimal('100'))
+        elif discount_type == 'fixed':
+            if discount_value > subtotal:
+                raise ValueError("Fixed discount cannot exceed the subtotal.")
+            discount_amount = discount_value
+        else:
+            discount_amount = Decimal('0.00')
+
+        total = subtotal - discount_amount
+
+        # --- cash tendered / change ---
+        change_due = None
+        if payment_method == 'cash':
+            if amount_tendered is None:
+                raise ValueError("Amount tendered is required for cash payments.")
+            if amount_tendered < total:
+                raise ValueError(f"Amount tendered ({amount_tendered}) is less than the total due ({total}).")
+            change_due = amount_tendered - total
+
+        txn.subtotal = subtotal
+        txn.discount_type = discount_type
+        txn.discount_value = discount_value
+        txn.discount_amount = discount_amount
         txn.total_amount = total
+        txn.amount_tendered = amount_tendered
+        txn.change_due = change_due
         txn.save()
+
         return txn
 
 

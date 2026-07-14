@@ -119,7 +119,7 @@ class BatchService:
     products = Product.objects.filter(is_active=True)
     config = FEFOConf.get_config()
     for product in products:
-      low_stock_threshold = product.low_stock_threshold or config.low_stock_threshold
+      low_stock_threshold = product.low_stock_threshold if product.low_stock_threshold is not None else config.low_stock_threshold
       total_remaining = ProductBatch.objects.filter(product=product, status='available').aggregate(total=Sum('remaining_quantity'))['total'] or Decimal('0.00')
       if total_remaining <= low_stock_threshold:
         low_stock_prods.append({
@@ -128,14 +128,14 @@ class BatchService:
         })
 
     return low_stock_prods
-
+  
   @staticmethod
   def check_ingredient_stock():
     low_stock_ings = []
     ingredients = Ingredient.objects.filter(is_active=True)
     config = FEFOConf.get_config()
     for ingredient in ingredients:
-      low_stock_threshold = ingredient.low_stock_threshold or config.low_stock_threshold
+      low_stock_threshold = ingredient.low_stock_threshold if ingredient.low_stock_threshold is not None else config.low_stock_threshold
       total_remaining = IngredientBatch.objects.filter(ingredient=ingredient, status='available').aggregate(total=Sum('remaining_quantity'))['total'] or Decimal('0.00')
       if total_remaining <= low_stock_threshold:
         low_stock_ings.append({

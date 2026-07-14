@@ -23,11 +23,16 @@ class CheckoutView(viewsets.ViewSet):
 
         cart_items = []
         for entry in raw_items:
+            product_id = entry.get('product_id')
+            quantity = entry.get('quantity')
+            if product_id is None or quantity is None:
+                return Response({'error': "Each item requires 'product_id' and 'quantity'."}, status=400)
+
             try:
-                product = Product.objects.get(pk=entry['product_id'])
+                product = Product.objects.get(pk=product_id, is_active=True)
             except Product.DoesNotExist:
-                return Response({'error': f"Product {entry.get('product_id')} not found."}, status=400)
-            cart_items.append((product, entry['quantity']))
+                return Response({'error': f"Product {product_id} not found or is inactive."}, status=400)
+            cart_items.append((product, quantity))
 
         try:
             txn = SalesService.checkout(cart_items, request.user, payment_method,

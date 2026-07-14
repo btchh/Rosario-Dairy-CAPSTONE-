@@ -46,11 +46,14 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         if order.status == 'fulfilled':
             try:
-                SalesService.void_fulfilled_order(order, request.user)
+                txn, skipped_batches = SalesService.void_fulfilled_order(order, request.user)
             except ValueError as e:
                 return Response({'error': str(e)}, status=400)
             order.refresh_from_db()
-            return Response(OrderSerializer(order).data)
+            response_data = OrderSerializer(order).data
+            if skipped_batches:
+                response_data['warning'] = f"Stock could not be restored for the following expired/disposed batches: {', '.join(skipped_batches)}"
+            return Response(response_data)
 
         order.status = 'cancelled'
         order.save()

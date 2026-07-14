@@ -119,7 +119,7 @@ class IngBatchSerializer(serializers.ModelSerializer):
     
     now = timezone.now()
     seq = IngredientBatch.objects.filter(
-      create_at__year=now.year,
+      created_at__year=now.year,
       created_at__month=now.month
     ).count() +1
     validated_data['batch_number'] =  generate_batch_number('ING', seq)

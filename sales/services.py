@@ -93,8 +93,12 @@ class SalesService:
             raise ValueError("This transaction has already been voided.")
 
         with db_transaction.atomic():
+            skipped_batches = []
             for item in txn.items.all():
                 batch = item.product_batch
+                if batch.status in ('expired', 'disposed'):
+                    skipped_batches.append(batch.batch_number)
+                    continue
                 batch.remaining_quantity += item.quantity
                 if batch.status == 'depleted':
                     batch.status = 'available'
@@ -106,8 +110,7 @@ class SalesService:
             order.status = 'cancelled'
             order.save()
 
-        return txn
-
+        return txn, skipped_batches
 
     PERIOD_TRUNC = {
         'daily': TruncDate,

@@ -2,7 +2,7 @@ from django.db import transaction as db_transaction
 from decimal import Decimal
 from django.db.models import Sum, F
 from django.db.models.functions import TruncDate, TruncWeek, TruncMonth, TruncYear
-from .models import Transaction, TransactionItem
+from .models import Transaction, TransactionItem, Order
 from inventory.services.batch_service import BatchService
 
 class SalesService:
@@ -11,6 +11,13 @@ class SalesService:
     def checkout(cart_items, staff_user, payment_method='cash',
                 discount_type='none', discount_value=Decimal('0.00'),
                 amount_tendered=None):
+        """
+        cart_items: list of (product, quantity) OR (product, quantity, locked_price)
+        tuples. When locked_price is supplied (e.g. an Order's snapshotted
+        OrderItem.unit_price), it overrides the batch/product's live price, so
+        a customer is charged what they were quoted at order time rather than
+        whatever the price has drifted to by fulfillment.
+        """
         with db_transaction.atomic():
             txn = Transaction.objects.create(
                 handled_by=staff_user,
@@ -18,12 +25,20 @@ class SalesService:
                 subtotal=Decimal('0.00'),
                 total_amount=Decimal('0.00')
             )
-
             subtotal = Decimal('0.00')
-            for product, quantity in cart_items:
+            for entry in cart_items:
+                if len(entry) == 3:
+                    product, quantity, locked_price = entry
+                else:
+                    product, quantity = entry
+                    locked_price = None
+
                 consumed = BatchService.deduct_product_batch(product, quantity)
                 for batch, qty_taken in consumed:
-                    price = batch.unit_price if batch.unit_price is not None else batch.product.unit_price
+                    if locked_price is not None:
+                        price = locked_price
+                    else:
+                        price = batch.unit_price if batch.unit_price is not None else batch.product.unit_price
                     TransactionItem.objects.create(
                         transaction=txn,
                         product_batch=batch,
@@ -31,7 +46,6 @@ class SalesService:
                         unit_price=price
                     )
                     subtotal += Decimal(str(qty_taken)) * price
-
             # --- discount ---
             if discount_type == 'percent':
                 if not (0 <= discount_value <= 100):
@@ -43,9 +57,7 @@ class SalesService:
                 discount_amount = discount_value
             else:
                 discount_amount = Decimal('0.00')
-
             total = subtotal - discount_amount
-
             # --- cash tendered / change ---
             change_due = None
             if payment_method == 'cash':
@@ -54,7 +66,6 @@ class SalesService:
                 if amount_tendered < total:
                     raise ValueError(f"Amount tendered ({amount_tendered}) is less than the total due ({total}).")
                 change_due = amount_tendered - total
-
             txn.subtotal = subtotal
             txn.discount_type = discount_type
             txn.discount_value = discount_value
@@ -63,7 +74,6 @@ class SalesService:
             txn.amount_tendered = amount_tendered
             txn.change_due = change_due
             txn.save()
-
             return txn
 
     @staticmethod
@@ -72,17 +82,28 @@ class SalesService:
         Routes a confirmed Order through the same checkout logic,
         then links the resulting Transaction back to the Order.
         """
-        if order.status != 'confirmed':
-            raise ValueError(f"Order must be 'confirmed' to fulfill, currently '{order.status}'.")
+        with db_transaction.atomic():
+            # Lock the order row for the duration of this transaction so a
+            # second concurrent fulfill()/confirm()/cancel() call has to wait
+            # for this one to finish, then sees the updated status.
+            locked_order = Order.objects.select_for_update().get(pk=order.pk)
 
-        cart_items = [(item.product, item.quantity) for item in order.items.all()]
-        txn = SalesService.checkout(cart_items, staff_user, payment_method)
+            if locked_order.status != 'confirmed':
+                raise ValueError(f"Order must be 'confirmed' to fulfill, currently '{locked_order.status}'.")
 
-        order.transaction = txn
-        order.status = 'fulfilled'
-        order.save()
+            cart_items = [
+                (item.product, item.quantity, item.unit_price)
+                for item in locked_order.items.all()
+            ]
+            txn = SalesService.checkout(cart_items, staff_user, payment_method)
+
+            locked_order.transaction = txn
+            locked_order.status = 'fulfilled'
+            locked_order.save()
+
+        order.refresh_from_db()
         return txn
-
+    
     @staticmethod
     def void_fulfilled_order(order, admin_user):
         if order.transaction is None:

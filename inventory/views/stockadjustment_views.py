@@ -10,6 +10,7 @@ class StockAdjustmentViewSet(viewsets.ModelViewSet):
     queryset = StockAdjustment.objects.all()
     serializer_class = StockAdjustmentSerializer
     permission_classes = [IsAdmin | IsStaff]
+    http_method_names = ['get', 'post', 'head', 'options']
     
     def create(self, request, *args, **kwargs):
         product_batch_id = request.data.get('product_batch_id')
@@ -17,6 +18,13 @@ class StockAdjustmentViewSet(viewsets.ModelViewSet):
         adjustment_type = request.data.get('adjustment_type')
         unit_cost = request.data.get('unit_cost')
         reason = request.data.get('reason')
+
+        valid_adjustment_types = [choice[0] for choice in StockAdjustment.ADJUSTMENT_TYPES]
+        if adjustment_type not in valid_adjustment_types:
+            return Response(
+                {'error': f"Invalid adjustment_type. Must be one of {valid_adjustment_types}."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         try:
             quantity = Decimal(str(request.data.get('quantity')))

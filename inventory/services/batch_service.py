@@ -65,10 +65,8 @@ class BatchService:
   @staticmethod
   def deduct_product_batch(product, quantity):
     quantity = Decimal(str(quantity))
-    # select_for_update locks these rows for the life of the enclosing
-    # atomic() block (provided by SalesService.checkout), so a second
-    # concurrent deduction against the same product has to wait until
-    # this one commits, and will then see the already-updated quantities.
+    if quantity <= Decimal('0.00'):
+      raise ValueError("Quantity must be greater than zero.")
     batches = list(
       ProductBatch.objects.select_for_update()
       .filter(product=product, status='available')
@@ -99,6 +97,8 @@ class BatchService:
   @staticmethod
   def deduct_ingredient_batch(ingredient, quantity):
     quantity = Decimal(str(quantity))
+    if quantity <= Decimal('0.00'):
+      raise ValueError("Quantity must be greater than zero.")
     batches = list(
       IngredientBatch.objects.select_for_update()
       .filter(ingredient=ingredient, status='available')
@@ -184,28 +184,36 @@ class BatchService:
 
   @staticmethod
   def create_stock_adjustment(adjustment_type, quantity, unit_cost, adjusted_by, reason="", ingredient_batch=None, product_batch=None):
-    if bool(product_batch) == bool(ingredient_batch):
-      raise ValueError("Exactly one of product_batch or ingredient_batch must be provided.")
+      if bool(product_batch) == bool(ingredient_batch):
+          raise ValueError("Exactly one of product_batch or ingredient_batch must be provided.")
 
-    batch = product_batch or ingredient_batch
-    assert batch is not None
-    batch.remaining_quantity -= quantity
-    if batch.remaining_quantity <= Decimal('0.00'):
-      batch.remaining_quantity = Decimal('0.00')
-      batch.status = 'disposed' if adjustment_type in ['spoilage', 'expired'] else 'depleted'
-    batch.save()
+      batch = product_batch or ingredient_batch
+      assert batch is not None
 
-    adjustment = StockAdjustment(
-      ingredient_batch=ingredient_batch,
-      product_batch=product_batch,
-      adjustment_type=adjustment_type,
-      quantity=quantity,
-      unit_cost=unit_cost,
-      adjusted_by=adjusted_by,
-      reason=reason
-    )
-    adjustment.save()
-    return adjustment
+      if adjustment_type != 'correction' and quantity <= Decimal('0.00'):
+          raise ValueError("Adjustment quantity must be greater than zero.")
+      if quantity > Decimal('0.00') and quantity > batch.remaining_quantity:
+          raise ValueError(
+              f"Adjustment quantity ({quantity}) exceeds remaining stock ({batch.remaining_quantity}) for batch {batch.batch_number}."
+          )
+
+      batch.remaining_quantity -= quantity
+      if batch.remaining_quantity <= Decimal('0.00'):
+          batch.remaining_quantity = Decimal('0.00')
+          batch.status = 'disposed' if adjustment_type in ['spoilage', 'expired'] else 'depleted'
+      batch.save()
+
+      adjustment = StockAdjustment(
+        ingredient_batch=ingredient_batch,
+        product_batch=product_batch,
+        adjustment_type=adjustment_type,
+        quantity=quantity,
+        unit_cost=unit_cost,
+        adjusted_by=adjusted_by,
+        reason=reason
+      )
+      adjustment.save()
+      return adjustment
 
   @staticmethod
   def reconcile(counted_quantity, counted_by, notes="", ingredient_batch=None, product_batch=None):

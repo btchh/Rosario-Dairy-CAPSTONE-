@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import Product, ProductBatch, Ingredient, IngredientBatch, Category, Supplier, StockAdjustment, FEFOConf
 from accounts.serializers import UserSerializer
+from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 from .utils.batch_utils import generate_batch_number
@@ -76,21 +77,18 @@ class ProdBatchSerializer(serializers.ModelSerializer):
     read_only_fields = ['id', 'batch_number', 'initial_quantity', 'remaining_quantity','created_at', 'updated_at']
     
   def create(self, validated_data):
-    quantity = validated_data.pop('quantity')
-    validated_data['initial_quantity'] = quantity
-    validated_data['remaining_quantity'] = quantity
-
-    if validated_data.get('unit_price') is None:
-      validated_data['unit_price'] = validated_data['product'].unit_price
-
-    now = timezone.now()
-    seq = ProductBatch.objects.filter(
-      created_at__year=now.year,
-      created_at__month=now.month
-    ).count() +1
-    validated_data['batch_number'] = generate_batch_number('PRD', seq)
-
-    return super().create(validated_data)
+    with transaction.atomic():
+        quantity = validated_data.pop('quantity')
+        validated_data['initial_quantity'] = quantity
+        validated_data['remaining_quantity'] = quantity
+        if validated_data.get('unit_price') is None:
+            validated_data['unit_price'] = validated_data['product'].unit_price
+        now = timezone.now()
+        seq = ProductBatch.objects.select_for_update().filter(
+            created_at__year=now.year, created_at__month=now.month
+        ).count() + 1
+        validated_data['batch_number'] = generate_batch_number('PRD', seq)
+        return super().create(validated_data)
 
 class IngBatchSerializer(serializers.ModelSerializer):
   ingredient = IngredientSerializer(read_only=True)
@@ -113,18 +111,19 @@ class IngBatchSerializer(serializers.ModelSerializer):
     read_only_fields = ['id', 'batch_number', 'initial_quantity', 'remaining_quantity','created_at', 'updated_at']
 
   def create(self,validated_data):
-    quantity = validated_data.pop('quantity')
-    validated_data['initial_quantity'] = quantity
-    validated_data['remaining_quantity'] = quantity
-    
-    now = timezone.now()
-    seq = IngredientBatch.objects.filter(
-      created_at__year=now.year,
-      created_at__month=now.month
-    ).count() +1
-    validated_data['batch_number'] =  generate_batch_number('ING', seq)
+    with transaction.atomic():
+      quantity = validated_data.pop('quantity')
+      validated_data['initial_quantity'] = quantity
+      validated_data['remaining_quantity'] = quantity
 
-    return super().create(validated_data)
+      now = timezone.now()
+      seq = IngredientBatch.objects.select_for_update().filter(
+        created_at__year=now.year,
+        created_at__month=now.month
+      ).count() +1
+      validated_data['batch_number'] =  generate_batch_number('ING', seq)
+
+      return super().create(validated_data)
 
 # LowStockProds Serializer
 class LowStockProductSerializer(serializers.Serializer):

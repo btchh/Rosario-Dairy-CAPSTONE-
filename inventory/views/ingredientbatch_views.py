@@ -4,6 +4,7 @@ from rest_framework import status
 from ..models import IngredientBatch
 from ..serializers import IngBatchSerializer
 from accounts.permissions import IsAdmin, IsStaff
+from django.db.models import ProtectedError
 
 class IngredientBatchViewSet(viewsets.ModelViewSet):
     queryset = IngredientBatch.objects.all()
@@ -15,3 +16,13 @@ class IngredientBatchViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         ingredient_batch = serializer.save()
         return Response(self.get_serializer(ingredient_batch).data, status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, *args, **kwargs):
+        batch = self.get_object()
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError:
+            return Response(
+                {'error': 'This batch has linked transactions or adjustments and cannot be deleted. Adjust its status instead.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )

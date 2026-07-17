@@ -63,7 +63,8 @@ class GetUserView(APIView):
         'first_name': user.first_name,
         'last_name': user.last_name,
         'phone_number': user.phone_number,
-        'address': user.address
+        'address': user.address,
+        'last_login': user.last_login
       }, status=status.HTTP_200_OK)
     except User.DoesNotExist:
       return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
@@ -87,12 +88,18 @@ class AdminResetPasswordView(APIView):
   def post(self, request):
     username = request.data.get('username')
     new_password = request.data.get('new_password')
+
+    if not username or not new_password:
+      return Response({'error': "'username' and 'new_password' are required."}, status=status.HTTP_400_BAD_REQUEST)
+
     try:
       user = User.objects.get(username=username)
       user_service.forgot_password(user, new_password)
       return Response({'message': f"Password reset for {username}."}, status=status.HTTP_200_OK)
     except User.DoesNotExist:
       return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+    except ValueError as e:
+      return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 class LogoutView(APIView):
   permission_classes = [IsAdmin | IsStaff]
@@ -109,7 +116,10 @@ class UserListView(APIView):
   permission_classes = [IsAdmin]
 
   def get(self, request):
-    users = User.objects.all().values('id', 'username', 'email', 'role', 'is_active', 'deactivation_reason', 'first_name', 'last_name')
+    users = User.objects.all().values(
+      'id', 'username', 'email', 'role', 'is_active', 'deactivation_reason',
+      'first_name', 'last_name', 'last_login'
+    )
     return Response(list(users), status=status.HTTP_200_OK)
 
 class UserDetailView(APIView):
@@ -124,7 +134,8 @@ class UserDetailView(APIView):
         'id': user.pk, 'username': user.username, 'email': user.email,
         'role': user.role, 'is_active': user.is_active,
         'first_name': user.first_name, 'last_name': user.last_name,
-        'phone_number': user.phone_number, 'address': user.address
+        'phone_number': user.phone_number, 'address': user.address,
+        'last_login': user.last_login
     })
 
   def patch(self, request, pk):

@@ -1,10 +1,15 @@
 from rest_framework.routers import DefaultRouter, path
-from .views import CustomerViewSet, OrderViewSet, CheckoutView, RevenueReportView, BestSellersReportView, SalesByCategoryReportView
+from .views import (
+    CustomerViewSet, OrderViewSet, CheckoutView,
+    RevenueReportView, BestSellersReportView, SalesByCategoryReportView,
+    TransactionViewSet,
+)
 
 router = DefaultRouter()
 router.register('customers', CustomerViewSet)
 router.register('orders', OrderViewSet)
 router.register('checkout', CheckoutView, basename='checkout')
+router.register('transactions', TransactionViewSet, basename='transaction')
 
 urlpatterns = router.urls + [
   path('reports/revenue/', RevenueReportView.as_view(), name='revenue-report'),

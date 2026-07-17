@@ -92,7 +92,12 @@ class SalesService:
                 (item.product, item.quantity, item.unit_price)
                 for item in locked_order.items.all()
             ]
-            txn = SalesService.checkout(cart_items, staff_user, payment_method, amount_tendered=amount_tendered)
+            txn = SalesService.checkout(
+                cart_items, staff_user, payment_method,
+                discount_type=locked_order.discount_type,
+                discount_value=locked_order.discount_value,
+                amount_tendered=amount_tendered
+            )
             locked_order.transaction = txn
             locked_order.status = 'fulfilled'
             locked_order.save()

@@ -133,6 +133,7 @@ class UserDetailView(APIView):
     return Response({
         'id': user.pk, 'username': user.username, 'email': user.email,
         'role': user.role, 'is_active': user.is_active,
+        'deactivation_reason': user.deactivation_reason,
         'first_name': user.first_name, 'last_name': user.last_name,
         'phone_number': user.phone_number, 'address': user.address,
         'last_login': user.last_login

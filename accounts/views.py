@@ -7,11 +7,10 @@ from accounts.permissions import IsAdmin, IsStaff
 from django.contrib.auth import get_user_model
 from accounts.services import user_service
 from django.db import IntegrityError, transaction as db_transaction
-from typing import TYPE_CHECKING, cast
-from django.contrib.auth import get_user_model
-
-if TYPE_CHECKING:
-    from accounts.models import Users
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError
+from typing import cast
+from accounts.models import Users
 
 User = get_user_model()
 
@@ -141,6 +140,16 @@ class UserDetailView(APIView):
         if is_self and ('role' in data or 'is_active' in data):
             return Response({'error': "You cannot change your own role or active status."}, status=status.HTTP_400_BAD_REQUEST)
 
+        if 'role' in data and data['role'] not in [choice[0] for choice in Users.ROLE_CHOICES]:
+            valid_roles = [choice[0] for choice in Users.ROLE_CHOICES]
+            return Response({'error': f"Invalid role. Must be one of {valid_roles}."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if 'email' in data:
+            try:
+                validate_email(data['email'])
+            except ValidationError:
+                return Response({'error': 'Invalid email format.'}, status=status.HTTP_400_BAD_REQUEST)
+
         demoting = user.role == 'admin' and data.get('role', user.role) != 'admin'
         deactivating = user.role == 'admin' and user.is_active and data.get('is_active', True) is False
         if demoting or deactivating:
@@ -160,7 +169,12 @@ class UserDetailView(APIView):
         for field in ['role', 'is_active', 'email', 'first_name', 'last_name', 'phone_number', 'address']:
             if field in data:
                 setattr(user, field, data[field])
-        user.save()
+
+        try:
+            user.save()
+        except IntegrityError:
+            return Response({'error': 'Username or email already exists.'}, status=status.HTTP_400_BAD_REQUEST)
+
         return Response({'message': 'User updated successfully.'})
 
   def delete(self, request, pk):

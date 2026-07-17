@@ -23,7 +23,14 @@ class BestSellersReportView(APIView):
     permission_classes = [IsAuthenticated, IsAdmin]
 
     def get(self, request):
-        limit = int(request.query_params.get('limit', 10))
+        try:
+            limit = int(request.query_params.get('limit', 10))
+        except ValueError:
+            return Response({'error': 'limit must be an integer.'}, status=400)
+
+        if limit <= 0:
+            return Response({'error': 'limit must be greater than zero.'}, status=400)
+
         data = SalesService.get_best_sellers(limit)
         return Response([
             {'product': f"{row['product_name']} {row['product_variant'] or ''}".strip(),

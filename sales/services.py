@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.db.models import Sum, F
 from django.db.models.functions import TruncDate, TruncWeek, TruncMonth, TruncYear
 from .models import Transaction, TransactionItem, Order
+from inventory.models import ProductBatch
 from inventory.services.batch_service import BatchService
 
 class SalesService:
@@ -52,11 +53,15 @@ class SalesService:
                     raise ValueError("Percentage discount must be between 0 and 100.")
                 discount_amount = subtotal * (discount_value / Decimal('100'))
             elif discount_type == 'fixed':
+                if discount_value < 0:
+                    raise ValueError("Discount value cannot be negative.")
                 if discount_value > subtotal:
                     raise ValueError("Fixed discount cannot exceed the subtotal.")
                 discount_amount = discount_value
-            else:
+            elif discount_type == 'none':
                 discount_amount = Decimal('0.00')
+            else:
+                raise ValueError(f"Invalid discount_type '{discount_type}'. Must be one of 'none', 'percent', 'fixed'.")
             total = subtotal - discount_amount
             # --- cash tendered / change ---
             change_due = None
@@ -77,30 +82,19 @@ class SalesService:
             return txn
 
     @staticmethod
-    def fulfill_order(order, staff_user, payment_method='cash'):
-        """
-        Routes a confirmed Order through the same checkout logic,
-        then links the resulting Transaction back to the Order.
-        """
+    def fulfill_order(order, staff_user, payment_method='cash', amount_tendered=None):
         with db_transaction.atomic():
-            # Lock the order row for the duration of this transaction so a
-            # second concurrent fulfill()/confirm()/cancel() call has to wait
-            # for this one to finish, then sees the updated status.
             locked_order = Order.objects.select_for_update().get(pk=order.pk)
-
             if locked_order.status != 'confirmed':
                 raise ValueError(f"Order must be 'confirmed' to fulfill, currently '{locked_order.status}'.")
-
             cart_items = [
                 (item.product, item.quantity, item.unit_price)
                 for item in locked_order.items.all()
             ]
-            txn = SalesService.checkout(cart_items, staff_user, payment_method)
-
+            txn = SalesService.checkout(cart_items, staff_user, payment_method, amount_tendered=amount_tendered)
             locked_order.transaction = txn
             locked_order.status = 'fulfilled'
             locked_order.save()
-
         order.refresh_from_db()
         return txn
     
@@ -109,14 +103,14 @@ class SalesService:
         if order.transaction is None:
             raise ValueError("This order has no linked transaction to void.")
 
-        txn = order.transaction
-        if txn.is_voided:
-            raise ValueError("This transaction has already been voided.")
-
         with db_transaction.atomic():
+            txn = Transaction.objects.select_for_update().get(pk=order.transaction_id)
+            if txn.is_voided:
+                raise ValueError("This transaction has already been voided.")
+
             skipped_batches = []
-            for item in txn.items.all():
-                batch = item.product_batch
+            for item in txn.items.select_related('product_batch').all():
+                batch = ProductBatch.objects.select_for_update().get(pk=item.product_batch_id) # pyright: ignore[reportAttributeAccessIssue]
                 if batch.status in ('expired', 'disposed'):
                     skipped_batches.append(batch.batch_number)
                     continue

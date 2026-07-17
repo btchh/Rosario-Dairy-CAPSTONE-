@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Product, ProductBatch, Ingredient, IngredientBatch, Category, Supplier, StockAdjustment, FEFOConf
+from .models import Product, ProductBatch, Ingredient, IngredientBatch, Category, Supplier, StockAdjustment, StockCount, FEFOConf
 from accounts.serializers import UserSerializer
 from django.db import transaction
 from django.db.models import Sum
@@ -90,6 +90,10 @@ class ProdBatchSerializer(serializers.ModelSerializer):
         validated_data['batch_number'] = generate_batch_number('PRD', seq)
         return super().create(validated_data)
 
+  def update(self, instance, validated_data):
+    validated_data.pop('quantity', None)
+    return super().update(instance, validated_data)
+
 class IngBatchSerializer(serializers.ModelSerializer):
   ingredient = IngredientSerializer(read_only=True)
   ingredient_id = serializers.PrimaryKeyRelatedField(
@@ -110,20 +114,25 @@ class IngBatchSerializer(serializers.ModelSerializer):
     ]
     read_only_fields = ['id', 'batch_number', 'initial_quantity', 'remaining_quantity','created_at', 'updated_at']
 
-  def create(self,validated_data):
+  def create(self, validated_data):
     with transaction.atomic():
       quantity = validated_data.pop('quantity')
       validated_data['initial_quantity'] = quantity
       validated_data['remaining_quantity'] = quantity
+      if validated_data.get('unit_price') is None:
+          validated_data['unit_price'] = validated_data['ingredient'].unit_price
 
       now = timezone.now()
       seq = IngredientBatch.objects.select_for_update().filter(
         created_at__year=now.year,
         created_at__month=now.month
-      ).count() +1
-      validated_data['batch_number'] =  generate_batch_number('ING', seq)
-
+      ).count() + 1
+      validated_data['batch_number'] = generate_batch_number('ING', seq)
       return super().create(validated_data)
+
+  def update(self, instance, validated_data):
+    validated_data.pop('quantity', None)
+    return super().update(instance, validated_data)
 
 # LowStockProds Serializer
 class LowStockProductSerializer(serializers.Serializer):
@@ -176,3 +185,32 @@ class FEFOConfSerializer(serializers.ModelSerializer):
       'id', 'near_expiry_threshold', 'low_stock_threshold', 'updated_at'
     ]
     read_only_fields = ['id', 'updated_at']
+
+class StockCountSerializer(serializers.ModelSerializer):
+  product_batch = ProdBatchSerializer(read_only=True)
+  product_batch_id = serializers.PrimaryKeyRelatedField(
+    queryset=ProductBatch.objects.all(),
+    source='product_batch',
+    write_only=True,
+    required=False,
+    allow_null=True
+  )
+  ingredient_batch = IngBatchSerializer(read_only=True)
+  ingredient_batch_id = serializers.PrimaryKeyRelatedField(
+    queryset=IngredientBatch.objects.all(),
+    source='ingredient_batch',
+    write_only=True,
+    required=False,
+    allow_null=True
+  )
+  counted_by = UserSerializer(read_only=True)
+  resulting_adjustment = StockAdjustmentSerializer(read_only=True)
+
+  class Meta:
+    model = StockCount
+    fields = [
+      'id', 'product_batch', 'product_batch_id', 'ingredient_batch', 'ingredient_batch_id',
+      'expected_quantity', 'counted_quantity', 'variance', 'counted_by', 'count_date',
+      'notes', 'resulting_adjustment', 'created_at'
+    ]
+    read_only_fields = ['id', 'expected_quantity', 'variance', 'counted_by', 'resulting_adjustment', 'created_at']

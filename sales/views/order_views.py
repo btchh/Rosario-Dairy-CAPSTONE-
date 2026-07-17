@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction as db_transaction
 from ..models import Order
-from ..serializers import OrderSerializer
+from ..serializers import OrderSerializer, OrderItemSerializer
 from ..services import SalesService
 from ..permissions import IsAdminOrReadOnlyCancel
 
@@ -16,6 +16,23 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(handled_by=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def items(self, request, pk=None):
+        order = self.get_object()
+        with db_transaction.atomic():
+            locked_order = Order.objects.select_for_update().get(pk=order.pk)
+            if locked_order.status != 'placed':
+                return Response(
+                    {'error': f"Items can only be added while order status is 'placed', currently '{locked_order.status}'."},
+                    status=400
+                )
+            item_serializer = OrderItemSerializer(data=request.data)
+            item_serializer.is_valid(raise_exception=True)
+            item_serializer.save(order=locked_order)
+
+        order.refresh_from_db()
+        return Response(OrderSerializer(order).data, status=201)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminOrReadOnlyCancel])
     def confirm(self, request, pk=None):
@@ -34,8 +51,14 @@ class OrderViewSet(viewsets.ModelViewSet):
     def fulfill(self, request, pk=None):
         order = self.get_object()
         payment_method = request.data.get('payment_method', 'cash')
+        amount_tendered = request.data.get('amount_tendered')
+        if amount_tendered is not None:
+            try:
+                amount_tendered = Decimal(str(amount_tendered))
+            except InvalidOperation:
+                return Response({'error': 'amount_tendered must be a valid number.'}, status=400)
         try:
-            SalesService.fulfill_order(order, request.user, payment_method)
+            SalesService.fulfill_order(order, request.user, payment_method, amount_tendered)
         except ValueError as e:
             return Response({'error': str(e)}, status=400)
         order.refresh_from_db()

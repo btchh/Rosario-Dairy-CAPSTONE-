@@ -1,6 +1,11 @@
 from django.db import models
 from django.conf import settings
 from decimal import Decimal
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from django.db.models import Manager
+    from .transaction_item import TransactionItem
 
 class Transaction(models.Model):
   PAYMENT_CHOICES = [
@@ -25,6 +30,9 @@ class Transaction(models.Model):
   delivery_status = models.CharField(max_length=50, blank=True, null=True)
   is_voided = models.BooleanField(default=False)
   created_at = models.DateTimeField(auto_now_add=True)
+
+  if TYPE_CHECKING:
+    items: "Manager[TransactionItem]"
 
   def __str__(self):
     return f"Transaction #{self.pk} - {self.total_amount}"

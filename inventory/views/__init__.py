@@ -8,3 +8,4 @@ from .category_views import CategoryViewSet
 from .supplier_view import SupplierViewSet
 from .fefoconf_views import FEFOConfViewSet
 from .stockadjustment_views import StockAdjustmentViewSet
+from .stockcount_views import StockCountViewSet

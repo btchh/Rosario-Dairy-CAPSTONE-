@@ -11,6 +11,7 @@ router.register(r'categories', views.CategoryViewSet)
 router.register(r'suppliers', views.SupplierViewSet)
 router.register(r'stock-adjustments', views.StockAdjustmentViewSet, basename='stock-adjustment')
 router.register(r'fefo-config', views.FEFOConfViewSet, basename='fefo-config')
+router.register(r'stock-counts', views.StockCountViewSet, basename='stock-count')
 
 urlpatterns = [
   path('', include(router.urls)),

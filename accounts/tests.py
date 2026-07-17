@@ -1,5 +1,7 @@
 """
-Tests for accounts app — covers the bug fixes made in the Round 3 audit session.
+Tests for accounts app — covers the bug fixes made in the Round 3 audit session,
+plus the Round 4 fixes: AdminResetPasswordView 500->400, and last_login
+exposure/population.
 
 Run with: python manage.py test accounts
 """
@@ -209,3 +211,134 @@ class RegisterAndLoginTests(TestCase):
             'role': 'staff', 'first_name': 'New', 'last_name': 'User',
         }, format='json')
         self.assertEqual(response.status_code, 400)
+
+
+# ---------------------------------------------------------------------------
+# Round 4: AdminResetPasswordView fix (500 -> 400/404 on bad input)
+# ---------------------------------------------------------------------------
+
+class AdminResetPasswordViewTests(TestCase):
+    """
+    Covers the AdminResetPasswordView fix: previously, a weak/invalid new_password
+    raised an uncaught ValueError from forgot_password() -> 500, and a missing
+    new_password crashed inside Django's password validators (AttributeError on
+    None) -> 500. Both must now return clean 400s, and valid resets must still work.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = make_user('admin1', role='admin')
+        self.staff = make_user('staffer1', role='staff')
+        self.client.force_authenticate(user=self.admin)
+
+    def test_missing_username_returns_400_not_500(self):
+        response = self.client.post(
+            '/accounts/admin-reset-password/',
+            {'new_password': 'BrandNewPass123!'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_missing_new_password_returns_400_not_500(self):
+        """Previously: new_password=None reached validate_password() and crashed
+        with AttributeError inside NumericPasswordValidator, surfacing as a 500."""
+        response = self.client.post(
+            '/accounts/admin-reset-password/',
+            {'username': self.staff.username},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_weak_password_returns_400_not_500(self):
+        """Previously: forgot_password() raised ValueError on a validation failure,
+        which the view didn't catch -> unhandled 500."""
+        response = self.client.post(
+            '/accounts/admin-reset-password/',
+            {'username': self.staff.username, 'new_password': '123'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('error', response.data)
+
+    def test_nonexistent_username_returns_404(self):
+        response = self.client.post(
+            '/accounts/admin-reset-password/',
+            {'username': 'ghost_user', 'new_password': 'BrandNewPass123!'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_valid_reset_succeeds_and_password_actually_changes(self):
+        response = self.client.post(
+            '/accounts/admin-reset-password/',
+            {'username': self.staff.username, 'new_password': 'BrandNewPass123!'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.staff.refresh_from_db()
+        self.assertTrue(self.staff.check_password('BrandNewPass123!'))
+        self.assertFalse(self.staff.check_password('testpass123!'))  # old password no longer works
+
+    def test_non_admin_cannot_reset_passwords(self):
+        self.client.force_authenticate(user=self.staff) # pyright: ignore[reportAttributeAccessIssue]
+        response = self.client.post(
+            '/accounts/admin-reset-password/',
+            {'username': self.admin.username, 'new_password': 'BrandNewPass123!'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 403)
+
+
+# ---------------------------------------------------------------------------
+# Round 4: last_login population (UPDATE_LAST_LOGIN) + exposure in user views
+# ---------------------------------------------------------------------------
+
+class LastLoginTests(TestCase):
+    """
+    Covers the last_login fix: SIMPLE_JWT['UPDATE_LAST_LOGIN'] must be True so
+    TokenObtainPairView actually populates the field, and it must be surfaced
+    in GetUserView, UserListView, and UserDetailView.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = make_user('admin1', role='admin')
+        self.staff = make_user('staffer1', role='staff')
+
+    def test_login_populates_last_login(self):
+        self.assertIsNone(self.staff.last_login)
+        response = self.client.post('/accounts/login/', {
+            'username': self.staff.username, 'password': 'testpass123!',
+        }, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.staff.refresh_from_db()
+        self.assertIsNotNone(self.staff.last_login)
+
+    def test_get_user_view_includes_last_login_key(self):
+        self.client.force_authenticate(user=self.staff) # pyright: ignore[reportAttributeAccessIssue]
+        response = self.client.get('/accounts/user/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('last_login', response.data)
+
+    def test_user_list_view_includes_last_login_key(self):
+        self.client.force_authenticate(user=self.admin) # pyright: ignore[reportAttributeAccessIssue]
+        response = self.client.get('/accounts/users/')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(len(response.data) > 0)
+        for row in response.data:
+            self.assertIn('last_login', row)
+
+    def test_user_detail_view_includes_last_login_key(self):
+        self.client.force_authenticate(user=self.admin) # pyright: ignore[reportAttributeAccessIssue]
+        response = self.client.get(f'/accounts/users/{self.staff.pk}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('last_login', response.data)
+
+    def test_user_detail_reflects_populated_last_login_after_a_real_login(self):
+        self.client.post('/accounts/login/', {
+            'username': self.staff.username, 'password': 'testpass123!',
+        }, format='json')
+        self.client.force_authenticate(user=self.admin) # pyright: ignore[reportAttributeAccessIssue]
+        response = self.client.get(f'/accounts/users/{self.staff.pk}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNotNone(response.data['last_login'])

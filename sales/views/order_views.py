@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction as db_transaction
+from decimal import Decimal, InvalidOperation
 from ..models import Order
 from ..serializers import OrderSerializer, OrderItemSerializer
 from ..services import SalesService
@@ -12,7 +13,7 @@ class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.select_related('customer', 'handled_by').prefetch_related('items').all()
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
-    http_method_names = ['get', 'post', 'patch', 'head', 'options']
+    http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
 
     def perform_create(self, serializer):
         serializer.save(handled_by=self.request.user)
@@ -33,6 +34,32 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         order.refresh_from_db()
         return Response(OrderSerializer(order).data, status=201)
+    
+    @action(detail=True, methods=['patch', 'delete'], url_path='items/(?P<item_pk>[^/.]+)')
+    def item_detail(self, request, pk=None, item_pk=None):
+        order = self.get_object()
+
+        if request.method == 'PATCH':
+            quantity = request.data.get('quantity')
+            if quantity is None:
+                return Response({'error': "'quantity' is required."}, status=400)
+            try:
+                quantity = Decimal(str(quantity))
+            except InvalidOperation:
+                return Response({'error': 'quantity must be a valid number.'}, status=400)
+            try:
+                SalesService.update_order_item(order, item_pk, quantity)
+            except ValueError as e:
+                return Response({'error': str(e)}, status=400)
+
+        else:  # DELETE
+            try:
+                SalesService.remove_order_item(order, item_pk)
+            except ValueError as e:
+                return Response({'error': str(e)}, status=400)
+
+        order.refresh_from_db()
+        return Response(OrderSerializer(order).data)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminOrReadOnlyCancel])
     def confirm(self, request, pk=None):

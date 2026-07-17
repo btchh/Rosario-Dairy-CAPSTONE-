@@ -118,7 +118,7 @@ class UserListView(APIView):
   def get(self, request):
     users = User.objects.all().values(
       'id', 'username', 'email', 'role', 'is_active', 'deactivation_reason',
-      'first_name', 'last_name', 'last_login'
+      'first_name', 'last_name', 'last_login', 'phone_number', 'address'
     )
     return Response(list(users), status=status.HTTP_200_OK)
 

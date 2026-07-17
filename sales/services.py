@@ -2,9 +2,10 @@ from django.db import transaction as db_transaction
 from decimal import Decimal
 from django.db.models import Sum, F
 from django.db.models.functions import TruncDate, TruncWeek, TruncMonth, TruncYear
-from .models import Transaction, TransactionItem, Order
+from .models import Transaction, TransactionItem, Order, OrderItem
 from inventory.models import ProductBatch
 from inventory.services.batch_service import BatchService
+
 
 class SalesService:
 
@@ -99,6 +100,43 @@ class SalesService:
         return txn
     
     @staticmethod
+    def update_order_item(order, item_id, quantity):
+        with db_transaction.atomic():
+            locked_order = Order.objects.select_for_update().get(pk=order.pk)
+            if locked_order.status != 'placed':
+                raise ValueError(f"Items can only be edited while order status is 'placed', currently '{locked_order.status}'.")
+
+            if quantity <= Decimal('0.00'):
+                raise ValueError("Quantity must be greater than zero.")
+
+            try:
+                item = OrderItem.objects.select_for_update().get(pk=item_id, order=locked_order)
+            except (OrderItem.DoesNotExist, ValueError, TypeError):
+                raise ValueError("Order item not found on this order.")
+
+            item.quantity = quantity
+            item.subtotal = quantity * item.unit_price
+            item.save()
+            return item
+
+    @staticmethod
+    def remove_order_item(order, item_id):
+        with db_transaction.atomic():
+            locked_order = Order.objects.select_for_update().get(pk=order.pk)
+            if locked_order.status != 'placed':
+                raise ValueError(f"Items can only be removed while order status is 'placed', currently '{locked_order.status}'.")
+
+            try:
+                item = OrderItem.objects.select_for_update().get(pk=item_id, order=locked_order)
+            except (OrderItem.DoesNotExist, ValueError, TypeError):
+                raise ValueError("Order item not found on this order.")
+
+            if locked_order.items.count() <= 1:
+                raise ValueError("Cannot remove the last item on an order — cancel the order instead.")
+
+            item.delete()
+    
+    @staticmethod
     def void_fulfilled_order(order, admin_user):
         if order.transaction is None:
             raise ValueError("This order has no linked transaction to void.")
@@ -135,14 +173,23 @@ class SalesService:
     }
 
     @staticmethod
-    def get_revenue_report(period='monthly'):
+    def get_revenue_report(period='monthly', start_date=None, end_date=None):
+        """
+        start_date/end_date are `date` objects (or None) and are inclusive on
+        both ends, filtered against the transaction's created_at date.
+        """
         trunc_fn = SalesService.PERIOD_TRUNC.get(period)
         if trunc_fn is None:
             raise ValueError(f"Invalid period '{period}'. Must be one of {list(SalesService.PERIOD_TRUNC)}.")
 
+        qs = Transaction.objects.filter(is_voided=False)
+        if start_date is not None:
+            qs = qs.filter(created_at__date__gte=start_date)
+        if end_date is not None:
+            qs = qs.filter(created_at__date__lte=end_date)
+
         return (
-            Transaction.objects
-            .filter(is_voided=False)
+            qs
             .annotate(bucket=trunc_fn('created_at'))
             .values('bucket')
             .annotate(total=Sum('total_amount'))
@@ -150,10 +197,15 @@ class SalesService:
         )
 
     @staticmethod
-    def get_best_sellers(limit=10):
+    def get_best_sellers(limit=10, start_date=None, end_date=None):
+        qs = TransactionItem.objects.filter(transaction__is_voided=False)
+        if start_date is not None:
+            qs = qs.filter(transaction__created_at__date__gte=start_date)
+        if end_date is not None:
+            qs = qs.filter(transaction__created_at__date__lte=end_date)
+
         return (
-            TransactionItem.objects
-            .filter(transaction__is_voided=False)
+            qs
             .values(
                 product_name=F('product_batch__product__name'),
                 product_variant=F('product_batch__product__variant')
@@ -163,10 +215,15 @@ class SalesService:
         )
     
     @staticmethod
-    def get_sales_by_category():
+    def get_sales_by_category(start_date=None, end_date=None):
+        qs = TransactionItem.objects.filter(transaction__is_voided=False)
+        if start_date is not None:
+            qs = qs.filter(transaction__created_at__date__gte=start_date)
+        if end_date is not None:
+            qs = qs.filter(transaction__created_at__date__lte=end_date)
+
         return (
-            TransactionItem.objects
-            .filter(transaction__is_voided=False)
+            qs
             .values(category_name=F('product_batch__product__category__name'))
             .annotate(total_sold=Sum('quantity'))
             .order_by('-total_sold')

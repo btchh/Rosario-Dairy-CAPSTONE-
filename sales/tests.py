@@ -506,3 +506,61 @@ class OrderDiscountLockTests(TestCase):
         order.refresh_from_db()
         self.assertEqual(order.discount_type, 'percent')  # unchanged
         self.assertEqual(order.discount_value, Decimal('10.00'))  # unchanged
+
+class OrderDiscountLockTests(TestCase):
+    """Covers: discount lock after order creation — loud rejection (400), not silent no-op."""
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+        self.client = APIClient()
+        self.staff = make_user()
+        self.category = Category.objects.create(name='Dairy')
+        self.product = Product.objects.create(
+            category=self.category, name='Fresh Milk', unit='liter',
+            unit_price=Decimal('50.00'), shelf_life=7,
+        )
+        self.customer = Customer.objects.create(name='Walk-in', created_by=self.staff)
+        self.client.force_authenticate(user=self.staff)
+
+    def test_discount_set_at_creation_persists(self):
+        response = self.client.post('/sales/orders/', {
+            'customer_id': self.customer.pk,
+            'discount_type': 'percent',
+            'discount_value': '10.00',
+        }, format='json')
+        self.assertEqual(response.status_code, 201)
+        order = Order.objects.get(pk=response.data['id'])
+        self.assertEqual(order.discount_type, 'percent')
+        self.assertEqual(order.discount_value, Decimal('10.00'))
+
+    def test_invalid_percent_discount_rejected_at_creation(self):
+        response = self.client.post('/sales/orders/', {
+            'customer_id': self.customer.pk,
+            'discount_type': 'percent',
+            'discount_value': '150.00',
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_negative_fixed_discount_rejected_at_creation(self):
+        response = self.client.post('/sales/orders/', {
+            'customer_id': self.customer.pk,
+            'discount_type': 'fixed',
+            'discount_value': '-5.00',
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_patch_to_change_discount_after_creation_returns_400(self):
+        """Fixed this round: this used to return 200 and silently no-op.
+        It now returns a loud 400 so the client knows the write didn't happen."""
+        order = Order.objects.create(
+            customer=self.customer, handled_by=self.staff,
+            discount_type='percent', discount_value=Decimal('10.00'),
+        )
+        response = self.client.patch(f'/sales/orders/{order.pk}/', {
+            'discount_type': 'fixed',
+            'discount_value': '5.00',
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        order.refresh_from_db()
+        self.assertEqual(order.discount_type, 'percent')  # unchanged
+        self.assertEqual(order.discount_value, Decimal('10.00'))  # unchanged

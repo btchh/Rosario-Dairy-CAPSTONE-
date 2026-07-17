@@ -47,6 +47,11 @@ class OrderSerializer(serializers.ModelSerializer):
     read_only_fields = ['id', 'handled_by', 'status', 'transaction', 'created_at', 'updated_at']
 
   def validate(self, attrs):
+    if self.instance is not None and ('discount_type' in attrs or 'discount_value' in attrs):
+      raise serializers.ValidationError(
+        "Discount cannot be changed after the order has been created."
+      )
+
     discount_type = attrs.get('discount_type', 'none')
     discount_value = attrs.get('discount_value', Decimal('0.00'))
     if discount_type == 'percent' and not (0 <= discount_value <= 100):
@@ -54,7 +59,7 @@ class OrderSerializer(serializers.ModelSerializer):
     if discount_type == 'fixed' and discount_value < 0:
       raise serializers.ValidationError("Discount value cannot be negative.")
     return attrs
-
+  
   def update(self, instance, validated_data):
     # discount is a create-only decision, locked in at order placement — see
     # Round 7 handdown. Editing it later is intentionally blocked here, same

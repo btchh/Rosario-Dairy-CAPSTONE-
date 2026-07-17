@@ -335,3 +335,174 @@ class BestSellersReportTests(TestCase):
     def test_default_limit_used_when_absent(self):
         response = self.client.get('/sales/reports/best-sellers/')
         self.assertEqual(response.status_code, 200)
+
+class TransactionHistoryTests(TestCase):
+    """Covers: new GET /sales/transactions/ and /sales/transactions/<id>/ endpoints."""
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+        self.client = APIClient()
+        self.staff = make_user(username='staffuser')
+        self.other_staff = make_user(username='otherstaff')
+        self.category = Category.objects.create(name='Dairy')
+        self.product = Product.objects.create(
+            category=self.category, name='Fresh Milk', unit='liter',
+            unit_price=Decimal('50.00'), shelf_life=7,
+        )
+        self.batch = ProductBatch.objects.create(
+            product=self.product, batch_number='PRD-TEST-950',
+            unit_price=Decimal('50.00'),
+            initial_quantity=Decimal('1000.00'),
+            remaining_quantity=Decimal('1000.00'),
+            expiration_date='2026-12-31',
+        )
+        self.client.force_authenticate(user=self.staff)
+
+    def _make_txn(self, staff=None, qty=Decimal('2.00'), payment_method='cash', tendered=Decimal('100.00')):
+        staff = staff or self.staff
+        return SalesService.checkout(
+            [(self.product, qty)], staff, payment_method=payment_method,
+            amount_tendered=tendered if payment_method == 'cash' else None,
+        )
+
+    # --- basic list/retrieve ---
+
+    def test_list_returns_created_transactions(self):
+        self._make_txn()
+        self._make_txn()
+        response = self.client.get('/sales/transactions/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 2)
+
+    def test_retrieve_single_transaction(self):
+        txn = self._make_txn()
+        response = self.client.get(f'/sales/transactions/{txn.pk}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['id'], txn.pk)
+
+    def test_unauthenticated_request_rejected(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.get('/sales/transactions/')
+        self.assertIn(response.status_code, (401, 403))
+
+    # --- voided default-hidden behavior ---
+
+    def test_voided_transaction_hidden_by_default(self):
+        txn = self._make_txn()
+        txn.is_voided = True
+        txn.save()
+        response = self.client.get('/sales/transactions/')
+        self.assertEqual(len(response.data), 0)
+
+    def test_include_voided_true_shows_voided_transaction(self):
+        txn = self._make_txn()
+        txn.is_voided = True
+        txn.save()
+        response = self.client.get('/sales/transactions/?include_voided=true')
+        self.assertEqual(len(response.data), 1)
+
+    # --- payment_method filter ---
+
+    def test_payment_method_filter_valid(self):
+        self._make_txn(payment_method='cash', tendered=Decimal('100.00'))
+        self._make_txn(payment_method='online')
+        response = self.client.get('/sales/transactions/?payment_method=online')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['payment_method'], 'online')
+
+    def test_payment_method_filter_invalid_rejected(self):
+        self._make_txn()
+        response = self.client.get('/sales/transactions/?payment_method=bitcoin')
+        self.assertEqual(response.status_code, 400)
+
+    # --- handled_by filter ---
+
+    def test_handled_by_filter_valid(self):
+        self._make_txn(staff=self.staff)
+        self._make_txn(staff=self.other_staff)
+        response = self.client.get(f'/sales/transactions/?handled_by={self.other_staff.pk}')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+
+    def test_handled_by_filter_non_numeric_rejected(self):
+        self._make_txn()
+        response = self.client.get('/sales/transactions/?handled_by=notanumber')
+        self.assertEqual(response.status_code, 400)
+
+    # --- date range filter ---
+
+    def test_date_range_bad_format_rejected(self):
+        self._make_txn()
+        response = self.client.get('/sales/transactions/?start_date=07-17-2026')
+        self.assertEqual(response.status_code, 400)
+
+    def test_date_range_inverted_rejected(self):
+        self._make_txn()
+        response = self.client.get('/sales/transactions/?start_date=2026-12-31&end_date=2026-01-01')
+        self.assertEqual(response.status_code, 400)
+
+    def test_date_range_excludes_out_of_range_transactions(self):
+        self._make_txn()
+        response = self.client.get('/sales/transactions/?start_date=2020-01-01&end_date=2020-01-02')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 0)
+
+    def test_date_range_includes_today(self):
+        self._make_txn()
+        from django.utils import timezone
+        today = timezone.now().date().isoformat()
+        response = self.client.get(f'/sales/transactions/?start_date={today}&end_date={today}')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+
+class OrderDiscountLockTests(TestCase):
+    """Covers: discount_type/discount_value are create-only, immutable after order creation."""
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+        self.client = APIClient()
+        self.staff = make_user()
+        self.customer = Customer.objects.create(name='Walk-in', created_by=self.staff)
+        self.client.force_authenticate(user=self.staff)
+
+    def test_discount_set_at_creation_persists(self):
+        response = self.client.post('/sales/orders/', {
+            'customer_id': self.customer.pk,
+            'discount_type': 'percent',
+            'discount_value': '10.00',
+        }, format='json')
+        self.assertEqual(response.status_code, 201)
+        order = Order.objects.get(pk=response.data['id'])
+        self.assertEqual(order.discount_type, 'percent')
+        self.assertEqual(order.discount_value, Decimal('10.00'))
+
+    def test_invalid_percent_discount_rejected_at_creation(self):
+        response = self.client.post('/sales/orders/', {
+            'customer_id': self.customer.pk,
+            'discount_type': 'percent',
+            'discount_value': '150.00',
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_negative_fixed_discount_rejected_at_creation(self):
+        response = self.client.post('/sales/orders/', {
+            'customer_id': self.customer.pk,
+            'discount_type': 'fixed',
+            'discount_value': '-5.00',
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_patch_cannot_change_discount_after_creation(self):
+        order = Order.objects.create(
+            customer=self.customer, handled_by=self.staff,
+            discount_type='percent', discount_value=Decimal('10.00'),
+        )
+        response = self.client.patch(f'/sales/orders/{order.pk}/', {
+            'discount_type': 'fixed',
+            'discount_value': '999.00',
+        }, format='json')
+        self.assertEqual(response.status_code, 200)  # silently ignored, not rejected
+        order.refresh_from_db()
+        self.assertEqual(order.discount_type, 'percent')  # unchanged
+        self.assertEqual(order.discount_value, Decimal('10.00'))  # unchanged

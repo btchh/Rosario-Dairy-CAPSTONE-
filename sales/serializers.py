@@ -55,6 +55,14 @@ class OrderSerializer(serializers.ModelSerializer):
       raise serializers.ValidationError("Discount value cannot be negative.")
     return attrs
 
+  def update(self, instance, validated_data):
+    # discount is a create-only decision, locked in at order placement — see
+    # Round 7 handdown. Editing it later is intentionally blocked here, same
+    # pattern as ProdBatchSerializer/IngBatchSerializer popping 'quantity'.
+    validated_data.pop('discount_type', None)
+    validated_data.pop('discount_value', None)
+    return super().update(instance, validated_data)
+
 
 class TransactionItemSerializer(serializers.ModelSerializer):
   product_batch = ProdBatchSerializer(read_only=True)

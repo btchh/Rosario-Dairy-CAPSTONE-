@@ -78,36 +78,27 @@ class OrderViewSet(viewsets.ModelViewSet):
     def fulfill(self, request, pk=None):
         order = self.get_object()
         payment_method = request.data.get('payment_method', 'cash')
-        discount_type = request.data.get('discount_type', 'none')
         amount_tendered = request.data.get('amount_tendered')
-
-        try:
-            discount_value = Decimal(str(request.data.get('discount_value', '0')))
-        except InvalidOperation:
-            return Response({'error': 'discount_value must be a valid number.'}, status=400)
-
         if amount_tendered is not None:
             try:
                 amount_tendered = Decimal(str(amount_tendered))
             except InvalidOperation:
                 return Response({'error': 'amount_tendered must be a valid number.'}, status=400)
-
         try:
-            SalesService.fulfill_order(order, request.user, payment_method, amount_tendered,
-                                        discount_type, discount_value)
+            SalesService.fulfill_order(order, request.user, payment_method, amount_tendered)
         except ValueError as e:
             return Response({'error': str(e)}, status=400)
         order.refresh_from_db()
         return Response(OrderSerializer(order).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminOrReadOnlyCancel])
+    def cancel(self, request, pk=None):
         order = self.get_object()
         self.check_object_permissions(request, order)
-
         with db_transaction.atomic():
             locked_order = Order.objects.select_for_update().get(pk=order.pk)
-
             if locked_order.status == 'cancelled':
                 return Response({'error': "Order is already cancelled."}, status=400)
-
             if locked_order.status == 'fulfilled':
                 try:
                     txn, skipped_batches = SalesService.void_fulfilled_order(locked_order, request.user)
@@ -118,9 +109,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 if skipped_batches:
                     response_data['warning'] = f"Stock could not be restored for the following expired/disposed batches: {', '.join(skipped_batches)}"
                 return Response(response_data)
-
             locked_order.status = 'cancelled'
             locked_order.save()
-
         order.refresh_from_db()
         return Response(OrderSerializer(order).data)

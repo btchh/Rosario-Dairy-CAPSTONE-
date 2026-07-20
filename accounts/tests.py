@@ -342,3 +342,197 @@ class LastLoginTests(TestCase):
         response = self.client.get(f'/accounts/users/{self.staff.pk}/')
         self.assertEqual(response.status_code, 200)
         self.assertIsNotNone(response.data['last_login'])
+
+# ---------------------------------------------------------------------------
+# Round 5: login lockout + profile/password cooldowns
+# ---------------------------------------------------------------------------
+
+from datetime import timedelta
+from django.utils import timezone
+
+
+class LoginLockoutTests(TestCase):
+    """
+    Covers CooldownTokenObtainPairSerializer: 5 consecutive failed logins
+    locks the account for 15 minutes and returns 429 (not 401), successful
+    login resets the counter, and lockout is scoped per-account.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = make_user('lockoutuser')
+        self.other_user = make_user('otheruser')
+
+    def _bad_login(self, username='lockoutuser'):
+        return self.client.post('/accounts/login/', {
+            'username': username, 'password': 'wrongpassword',
+        }, format='json')
+
+    def test_failed_attempts_increment_but_stay_401_until_threshold(self):
+        for _ in range(4):
+            response = self._bad_login()
+            self.assertEqual(response.status_code, 401)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.failed_login_attempts, 4)
+        self.assertIsNone(self.user.locked_until)
+
+    def test_fifth_failed_attempt_locks_account_and_returns_429(self):
+        for _ in range(5):
+            response = self._bad_login()
+        self.assertEqual(response.status_code, 429)
+        self.assertIn('Retry-After', response.headers)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.failed_login_attempts, 5)
+        self.assertIsNotNone(self.user.locked_until)
+
+    def test_locked_account_rejects_even_correct_password(self):
+        for _ in range(5):
+            self._bad_login()
+        response = self.client.post('/accounts/login/', {
+            'username': 'lockoutuser', 'password': 'testpass123!',
+        }, format='json')
+        self.assertEqual(response.status_code, 429)
+
+    def test_successful_login_resets_failed_attempts(self):
+        self.user.failed_login_attempts = 3
+        self.user.save()
+        response = self.client.post('/accounts/login/', {
+            'username': 'lockoutuser', 'password': 'testpass123!',
+        }, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.failed_login_attempts, 0)
+        self.assertIsNone(self.user.locked_until)
+
+    def test_lockout_expires_after_window_passes(self):
+        """Simulates the 15-minute window having already elapsed."""
+        self.user.failed_login_attempts = 5
+        self.user.locked_until = timezone.now() - timedelta(minutes=1)
+        self.user.save()
+        response = self.client.post('/accounts/login/', {
+            'username': 'lockoutuser', 'password': 'testpass123!',
+        }, format='json')
+        self.assertEqual(response.status_code, 200)
+
+    def test_lockout_is_scoped_per_account_not_global(self):
+        """Locking one user out must not block a different user from logging in."""
+        for _ in range(5):
+            self._bad_login(username='lockoutuser')
+        self.user.refresh_from_db()
+        self.assertIsNotNone(self.user.locked_until)
+
+        response = self.client.post('/accounts/login/', {
+            'username': 'otheruser', 'password': 'testpass123!',
+        }, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.other_user.refresh_from_db()
+        self.assertIsNone(self.other_user.locked_until)
+
+    def test_nonexistent_username_does_not_error(self):
+        """No user row to lock, but must still return a clean 401, not 500."""
+        response = self._bad_login(username='ghost_user_xyz')
+        self.assertEqual(response.status_code, 401)
+
+
+class ProfileEditCooldownTests(TestCase):
+    """Covers update_own_profile()'s 5-minute cooldown."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = make_user('cooldownprofile')
+        self.client.force_authenticate(user=self.user)
+
+    def test_first_edit_succeeds(self):
+        response = self.client.patch('/accounts/user/', {'first_name': 'First'}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertIsNotNone(self.user.last_profile_update_at)
+
+    def test_second_edit_within_window_returns_400_with_cooldown_message(self):
+        self.client.patch('/accounts/user/', {'first_name': 'First'}, format='json')
+        response = self.client.patch('/accounts/user/', {'first_name': 'Second'}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('minute', response.data['error'].lower())
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, 'First')  # second edit rejected, not applied
+
+    def test_edit_after_window_elapses_succeeds(self):
+        self.user.last_profile_update_at = timezone.now() - timedelta(minutes=6)
+        self.user.save()
+        response = self.client.patch('/accounts/user/', {'first_name': 'Updated'}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, 'Updated')
+
+
+class PasswordChangeCooldownTests(TestCase):
+    """Covers change_password()'s 15-minute cooldown (self-service only)."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = make_user('cooldownpass')
+        self.client.force_authenticate(user=self.user)
+
+    def _change(self, old='testpass123!', new='NewComplexPass123!'):
+        return self.client.post('/accounts/change-password/', {
+            'old_password': old, 'new_password': new,
+        }, format='json')
+
+    def test_first_change_succeeds(self):
+        response = self._change()
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertIsNotNone(self.user.last_password_change_at)
+
+    def test_second_change_within_window_returns_400_with_cooldown_message(self):
+        self._change(new='NewComplexPass123!')
+        response = self._change(old='NewComplexPass123!', new='AnotherPass456!')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('minute', response.data['error'].lower())
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('NewComplexPass123!'))  # second change rejected
+
+    def test_change_after_window_elapses_succeeds(self):
+        self._change(new='NewComplexPass123!')
+        self.user.last_password_change_at = timezone.now() - timedelta(minutes=16)
+        self.user.save()
+        response = self._change(old='NewComplexPass123!', new='AnotherPass456!')
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('AnotherPass456!'))
+
+
+class AdminResetPasswordCooldownExemptionTests(TestCase):
+    """Covers: admin resetting someone else's password is NOT subject to any
+    cooldown — deliberately different from self-service change_password()."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = make_user('cooldownadmin', role='admin')
+        self.staff = make_user('cooldownstaff')
+        self.client.force_authenticate(user=self.admin)
+
+    def test_consecutive_admin_resets_both_succeed_with_no_cooldown(self):
+        response1 = self.client.post('/accounts/admin-reset-password/', {
+            'username': self.staff.username, 'new_password': 'FirstResetPass123!',
+        }, format='json')
+        self.assertEqual(response1.status_code, 200)
+
+        # immediately again, no delay — must NOT be blocked by any cooldown
+        response2 = self.client.post('/accounts/admin-reset-password/', {
+            'username': self.staff.username, 'new_password': 'SecondResetPass456!',
+        }, format='json')
+        self.assertEqual(response2.status_code, 200)
+
+        self.staff.refresh_from_db()
+        self.assertTrue(self.staff.check_password('SecondResetPass456!'))
+
+    def test_admin_reset_does_not_set_last_password_change_at(self):
+        """forgot_password() bypasses the self-service cooldown field entirely —
+        confirms the two code paths are genuinely independent, not just
+        coincidentally unblocked."""
+        self.client.post('/accounts/admin-reset-password/', {
+            'username': self.staff.username, 'new_password': 'ResetPass123!',
+        }, format='json')
+        self.staff.refresh_from_db()
+        self.assertIsNone(self.staff.last_password_change_at)

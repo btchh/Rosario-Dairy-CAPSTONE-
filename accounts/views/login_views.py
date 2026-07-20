@@ -43,9 +43,20 @@ class CooldownTokenObtainPairSerializer(TokenObtainPairSerializer):
         except Exception:
             if user is not None:
                 user.failed_login_attempts += 1
+                just_locked = False
                 if user.failed_login_attempts >= LOGIN_MAX_FAILED_ATTEMPTS:
                     user.locked_until = timezone.now() + timedelta(minutes=LOGIN_LOCKOUT_MINUTES)
+                    just_locked = True
                 user.save(update_fields=['failed_login_attempts', 'locked_until'])
+                if just_locked:
+                    remaining = int((user.locked_until - timezone.now()).total_seconds())
+                    raise Throttled(
+                        wait=remaining,
+                        detail=(
+                            "Account locked due to repeated failed login attempts. "
+                            f"Try again in {remaining // 60 + 1} minute(s)."
+                        ),
+                    )
             raise
 
         # Successful login — reset the counter. Use self.user (set by

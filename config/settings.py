@@ -154,5 +154,4 @@ AUTH_USER_MODEL = 'accounts.Users'
 CORS_ALLOWED_ORIGINS = [
     # 'null',  for general stuff
     'http://localhost:5173',
-    'https://h7mfh7sw-5173.asse.devtunnels.ms'
 ]

@@ -149,5 +149,8 @@ AUTH_USER_MODEL = 'accounts.Users'
 
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',
-    'https://2hv1czfn-5173.asse.devtunnels.ms'
+]
+
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r'^https://[a-z0-9]+-5173\.asse\.devtunnels\.ms$',
 ]

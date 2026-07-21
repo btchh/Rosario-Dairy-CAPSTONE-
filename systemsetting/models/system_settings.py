@@ -7,7 +7,6 @@ class SystemSettings(models.Model):
   date_format = models.CharField(max_length=20, default="MM/DD/YYYY")
   timezone = models.CharField(max_length=50, default="Asia/Manila")
   language = models.CharField(max_length=50, default="en-PH")
-  tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=12)
 
   # Business Info
   business_name = models.CharField(max_length=255, blank=True)

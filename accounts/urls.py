@@ -4,7 +4,6 @@ from accounts.views import ChangePasswordView, AdminResetPasswordView, GetUserVi
 from accounts.views import (
     ChangePasswordView, AdminResetPasswordView, GetUserView, LogoutView,
     RegisterView, UserListView, UserDetailView, CooldownTokenObtainPairView,
-    ProfilePhotoView,
 )
 
 urlpatterns = [
@@ -12,7 +11,6 @@ urlpatterns = [
     path('refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('register/', RegisterView.as_view(), name='register'),
     path('user/', GetUserView.as_view(), name='get_user'),
-    path('profile-photo/', ProfilePhotoView.as_view(), name='profile_photo'),
     path('change-password/', ChangePasswordView.as_view(), name='change_password'),
     path('admin-reset-password/', AdminResetPasswordView.as_view(), name='admin_reset_password'),
     path('logout/', LogoutView.as_view(), name='logout'),

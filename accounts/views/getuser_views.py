@@ -37,5 +37,4 @@ class GetUserView(APIView):
         'phone_number': user.phone_number,
         'address': user.address,
         'last_login': user.last_login,
-        'profile_photo': user.profile_photo.url if user.profile_photo else None,
       }

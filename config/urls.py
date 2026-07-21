@@ -26,6 +26,3 @@ urlpatterns = [
     path('sales/', include('sales.urls')),
     path('settings/', include('systemsetting.urls')),
 ]
-
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

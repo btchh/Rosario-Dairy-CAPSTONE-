@@ -19,7 +19,6 @@ class Users(AbstractUser):
     email = models.EmailField(unique=True)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
-    profile_photo = models.ImageField(upload_to='profile_photos/', blank=True, null=True)
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='staff')
     deactivation_reason = models.CharField(max_length=20, choices=DEACTIVATION_REASONS, default='none')
     failed_login_attempts = models.PositiveIntegerField(default=0)

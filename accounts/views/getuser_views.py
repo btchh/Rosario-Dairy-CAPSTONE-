@@ -25,16 +25,17 @@ class GetUserView(APIView):
       return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     return Response(self._serialize(user), status=status.HTTP_200_OK)
-
+  
   @staticmethod
   def _serialize(user):
-    return {
-      'username': user.username,
-      'email': user.email,
-      'role': user.role,
-      'first_name': user.first_name,
-      'last_name': user.last_name,
-      'phone_number': user.phone_number,
-      'address': user.address,
-      'last_login': user.last_login
-    }
+      return {
+        'username': user.username,
+        'email': user.email,
+        'role': user.role,
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+        'phone_number': user.phone_number,
+        'address': user.address,
+        'last_login': user.last_login,
+        'profile_photo': user.profile_photo.url if user.profile_photo else None,
+      }

@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'inventory',
     'accounts',
     'sales',
+    'systemsetting',
 ]
 
 
@@ -130,6 +131,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+MEDIA_URL = 'media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -149,6 +152,7 @@ SIMPLE_JWT = {
 AUTH_USER_MODEL = 'accounts.Users'
 
 CORS_ALLOWED_ORIGINS = [
-    'http://localhost:5173',  # Vite's default port
     # 'null',  for general stuff
+    'http://localhost:5173',
+    'https://h7mfh7sw-5173.asse.devtunnels.ms'
 ]

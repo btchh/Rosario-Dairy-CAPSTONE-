@@ -564,4 +564,3 @@ class OrderDiscountLockTests(TestCase):
         order.refresh_from_db()
         self.assertEqual(order.discount_type, 'percent')  # unchanged
         self.assertEqual(order.discount_value, Decimal('10.00'))  # unchanged
-

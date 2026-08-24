@@ -5,10 +5,8 @@ from . import report_service
 
 class SalesService:
     checkout = staticmethod(checkout_service.checkout)
-    fulfill_order = staticmethod(checkout_service.fulfill_order)
 
-    update_order_item = staticmethod(order_service.update_order_item)
-    remove_order_item = staticmethod(order_service.remove_order_item)
+    place_order = staticmethod(order_service.place_order)
     void_fulfilled_order = staticmethod(order_service.void_fulfilled_order)
 
     get_revenue_report = staticmethod(report_service.get_revenue_report)

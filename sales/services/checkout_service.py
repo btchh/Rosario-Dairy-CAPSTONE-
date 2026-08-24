@@ -1,6 +1,6 @@
 from django.db import transaction as db_transaction
 from decimal import Decimal
-from ..models import Transaction, TransactionItem, Order
+from ..models import Transaction, TransactionItem
 from inventory.services.batch_service import BatchService
 
 
@@ -75,25 +75,3 @@ def checkout(cart_items, staff_user, payment_method='cash',
         txn.change_due = change_due
         txn.save()
         return txn
-
-
-def fulfill_order(order, staff_user, payment_method='cash', amount_tendered=None):
-    with db_transaction.atomic():
-        locked_order = Order.objects.select_for_update().get(pk=order.pk)
-        if locked_order.status != 'confirmed':
-            raise ValueError(f"Order must be 'confirmed' to fulfill, currently '{locked_order.status}'.")
-        cart_items = [
-            (item.product, item.quantity, item.unit_price)
-            for item in locked_order.items.all()
-        ]
-        txn = checkout(
-            cart_items, staff_user, payment_method,
-            discount_type=locked_order.discount_type,
-            discount_value=locked_order.discount_value,
-            amount_tendered=amount_tendered
-        )
-        locked_order.transaction = txn
-        locked_order.status = 'fulfilled'
-        locked_order.save()
-    order.refresh_from_db()
-    return txn

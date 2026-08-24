@@ -137,7 +137,9 @@ class CheckoutDiscountTests(TestCase):
 
 
 class VoidFulfilledOrderTests(TestCase):
-    """Covers: fix #3 — void restoring stock via a locked, fresh re-fetch instead of a stale FK read."""
+    """Voiding a fulfilled order — restoring stock via a locked, fresh re-fetch
+    instead of a stale FK read. Every order is fulfilled the instant it's
+    created now, so this is just 'cancel an order', full stop."""
 
     def setUp(self):
         self.staff = make_user()
@@ -156,42 +158,25 @@ class VoidFulfilledOrderTests(TestCase):
         )
         self.customer = Customer.objects.create(name='Walk-in', created_by=self.staff)
 
-    def _place_confirm_fulfill(self, qty=Decimal('10.00')):
-        order = Order.objects.create(customer=self.customer, handled_by=self.staff)
-        OrderItem.objects.create(
-            order=order, product=self.product, quantity=qty,
-            unit_price=self.product.unit_price, subtotal=qty * self.product.unit_price,
+    def _place_order(self, qty=Decimal('10.00')):
+        return SalesService.place_order(
+            customer=self.customer, items=[(self.product, qty)], handled_by=self.staff,
+            amount_tendered=qty * self.product.unit_price,
         )
-        order.status = 'confirmed'
-        order.save()
-        SalesService.fulfill_order(
-            order, self.staff, payment_method='cash',
-            amount_tendered=qty * self.product.unit_price,  # exact amount, no change due
-        )
-        order.refresh_from_db()
-        return order
 
     def test_void_restores_stock_to_correct_batch(self):
-        order = self._place_confirm_fulfill(qty=Decimal('10.00'))
+        order = self._place_order(qty=Decimal('10.00'))
         self.batch.refresh_from_db()
-        self.assertEqual(self.batch.remaining_quantity, Decimal('90.00'))  # 100 - 10 sold
-
+        self.assertEqual(self.batch.remaining_quantity, Decimal('90.00'))
         SalesService.void_fulfilled_order(order, self.admin)
         self.batch.refresh_from_db()
-        self.assertEqual(self.batch.remaining_quantity, Decimal('100.00'))  # restored
+        self.assertEqual(self.batch.remaining_quantity, Decimal('100.00'))
 
     def test_void_uses_current_db_state_not_stale_batch_data(self):
-        """
-        Simulates the race scenario the fix addresses: after fulfillment, a
-        separate stock adjustment reduces the batch further before the void
-        is processed. The void must add its restored quantity on top of the
-        CURRENT db value, not clobber it with a stale read.
-        """
-        order = self._place_confirm_fulfill(qty=Decimal('10.00'))
+        order = self._place_order(qty=Decimal('10.00'))
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.remaining_quantity, Decimal('90.00'))
 
-        # Simulate a concurrent spoilage adjustment happening between fulfillment and void
         from inventory.services.batch_service import BatchService
         BatchService.create_stock_adjustment(
             adjustment_type='spoilage', quantity=Decimal('5.00'),
@@ -199,113 +184,33 @@ class VoidFulfilledOrderTests(TestCase):
             product_batch=self.batch,
         )
         self.batch.refresh_from_db()
-        self.assertEqual(self.batch.remaining_quantity, Decimal('85.00'))  # 90 - 5
+        self.assertEqual(self.batch.remaining_quantity, Decimal('85.00'))
 
         SalesService.void_fulfilled_order(order, self.admin)
         self.batch.refresh_from_db()
-        # Must be 85 + 10 = 95, NOT 90 + 10 = 100 (which would silently erase the spoilage)
         self.assertEqual(self.batch.remaining_quantity, Decimal('95.00'))
 
     def test_voiding_already_voided_transaction_rejected(self):
-        order = self._place_confirm_fulfill()
+        order = self._place_order()
         SalesService.void_fulfilled_order(order, self.admin)
         with self.assertRaises(ValueError):
             SalesService.void_fulfilled_order(order, self.admin)
 
     def test_void_marks_order_cancelled(self):
-        order = self._place_confirm_fulfill()
+        order = self._place_order()
         SalesService.void_fulfilled_order(order, self.admin)
         order.refresh_from_db()
         self.assertEqual(order.status, 'cancelled')
 
     def test_void_skips_expired_or_disposed_batches(self):
-        order = self._place_confirm_fulfill(qty=Decimal('10.00'))
+        order = self._place_order(qty=Decimal('10.00'))
         self.batch.refresh_from_db()
         self.batch.status = 'disposed'
         self.batch.save()
-
         txn, skipped = SalesService.void_fulfilled_order(order, self.admin)
         self.assertIn(self.batch.batch_number, skipped)
         self.batch.refresh_from_db()
-        self.assertEqual(self.batch.remaining_quantity, Decimal('90.00'))  # not restored
-
-
-class OrderItemsActionTests(TestCase):
-    """Covers: fix #9 — the new POST /sales/orders/<id>/items/ action."""
-
-    def setUp(self):
-        from rest_framework.test import APIClient
-        self.client = APIClient()
-        self.staff = make_user()
-        self.category = Category.objects.create(name='Dairy')
-        self.product = Product.objects.create(
-            category=self.category, name='Fresh Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
-        )
-        self.customer = Customer.objects.create(name='Walk-in', created_by=self.staff)
-        self.order = Order.objects.create(customer=self.customer, handled_by=self.staff)
-        self.client.force_authenticate(user=self.staff)
-
-    def test_add_item_to_placed_order_succeeds(self):
-        response = self.client.post(
-            f'/sales/orders/{self.order.pk}/items/',
-            {'product_id': self.product.pk, 'quantity': '3.00'},
-            format='json',
-        )
-        self.assertEqual(response.status_code, 201)
-        self.order.refresh_from_db()
-        self.assertEqual(self.order.items.count(), 1)
-        item = self.order.items.first()
-        self.assertEqual(item.unit_price, self.product.unit_price)  # snapshotted correctly
-        self.assertEqual(item.subtotal, Decimal('150.00'))
-
-    def test_add_item_to_confirmed_order_rejected(self):
-        self.order.status = 'confirmed'
-        self.order.save()
-        response = self.client.post(
-            f'/sales/orders/{self.order.pk}/items/',
-            {'product_id': self.product.pk, 'quantity': '3.00'},
-            format='json',
-        )
-        self.assertEqual(response.status_code, 400)
-        self.order.refresh_from_db()
-        self.assertEqual(self.order.items.count(), 0)
-
-    def test_add_item_to_cancelled_order_rejected(self):
-        self.order.status = 'cancelled'
-        self.order.save()
-        response = self.client.post(
-            f'/sales/orders/{self.order.pk}/items/',
-            {'product_id': self.product.pk, 'quantity': '3.00'},
-            format='json',
-        )
-        self.assertEqual(response.status_code, 400)
-
-    def test_fulfilling_order_with_added_items_deducts_correct_stock(self):
-        """End-to-end: item added via the new action actually gets consumed on fulfillment."""
-        batch = ProductBatch.objects.create(
-            product=self.product, batch_number='PRD-TEST-903',
-            unit_price=Decimal('50.00'),
-            initial_quantity=Decimal('50.00'), remaining_quantity=Decimal('50.00'),
-            expiration_date='2026-12-31',
-        )
-        self.client.post(
-            f'/sales/orders/{self.order.pk}/items/',
-            {'product_id': self.product.pk, 'quantity': '5.00'},
-            format='json',
-        )
-        self.order.status = 'confirmed'
-        self.order.save()
-        SalesService.fulfill_order(
-            self.order, self.staff, payment_method='cash',
-            amount_tendered=Decimal('250.00'),  # 5 units x 50.00
-        )
-
-        batch.refresh_from_db()
-        self.assertEqual(batch.remaining_quantity, Decimal('45.00'))
-        self.order.refresh_from_db()
-        self.assertEqual(self.order.status, 'fulfilled')
-
+        self.assertEqual(self.batch.remaining_quantity, Decimal('90.00'))
 
 class BestSellersReportTests(TestCase):
     """Covers: fix #8 — bad `limit` query param crashing the view."""
@@ -456,59 +361,9 @@ class TransactionHistoryTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 1)
 
-class OrderDiscountLockTests(TestCase):
-    """Covers: discount_type/discount_value are create-only, immutable after order creation."""
-
-    def setUp(self):
-        from rest_framework.test import APIClient
-        self.client = APIClient()
-        self.staff = make_user()
-        self.customer = Customer.objects.create(name='Walk-in', created_by=self.staff)
-        self.client.force_authenticate(user=self.staff)
-
-    def test_discount_set_at_creation_persists(self):
-        response = self.client.post('/sales/orders/', {
-            'customer_id': self.customer.pk,
-            'discount_type': 'percent',
-            'discount_value': '10.00',
-        }, format='json')
-        self.assertEqual(response.status_code, 201)
-        order = Order.objects.get(pk=response.data['id'])
-        self.assertEqual(order.discount_type, 'percent')
-        self.assertEqual(order.discount_value, Decimal('10.00'))
-
-    def test_invalid_percent_discount_rejected_at_creation(self):
-        response = self.client.post('/sales/orders/', {
-            'customer_id': self.customer.pk,
-            'discount_type': 'percent',
-            'discount_value': '150.00',
-        }, format='json')
-        self.assertEqual(response.status_code, 400)
-
-    def test_negative_fixed_discount_rejected_at_creation(self):
-        response = self.client.post('/sales/orders/', {
-            'customer_id': self.customer.pk,
-            'discount_type': 'fixed',
-            'discount_value': '-5.00',
-        }, format='json')
-        self.assertEqual(response.status_code, 400)
-
-    def test_patch_cannot_change_discount_after_creation(self):
-        order = Order.objects.create(
-            customer=self.customer, handled_by=self.staff,
-            discount_type='percent', discount_value=Decimal('10.00'),
-        )
-        response = self.client.patch(f'/sales/orders/{order.pk}/', {
-            'discount_type': 'fixed',
-            'discount_value': '999.00',
-        }, format='json')
-        self.assertEqual(response.status_code, 200)  # silently ignored, not rejected
-        order.refresh_from_db()
-        self.assertEqual(order.discount_type, 'percent')  # unchanged
-        self.assertEqual(order.discount_value, Decimal('10.00'))  # unchanged
-
-class OrderDiscountLockTests(TestCase):
-    """Covers: discount lock after order creation — loud rejection (400), not silent no-op."""
+class PlaceOrderTests(TestCase):
+    """Covers the rebuilt order flow: POST /sales/orders/ creates the Order,
+    its OrderItems, and fulfills it in one atomic call."""
 
     def setUp(self):
         from rest_framework.test import APIClient
@@ -519,48 +374,181 @@ class OrderDiscountLockTests(TestCase):
             category=self.category, name='Fresh Milk', unit='liter',
             unit_price=Decimal('50.00'), shelf_life=7,
         )
+        self.batch = ProductBatch.objects.create(
+            product=self.product, batch_number='PRD-TEST-960',
+            unit_price=Decimal('50.00'),
+            initial_quantity=Decimal('100.00'),
+            remaining_quantity=Decimal('100.00'),
+            expiration_date='2026-12-31',
+        )
         self.customer = Customer.objects.create(name='Walk-in', created_by=self.staff)
         self.client.force_authenticate(user=self.staff)
 
-    def test_discount_set_at_creation_persists(self):
+    def test_create_order_immediately_fulfills_and_deducts_stock(self):
         response = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
-            'discount_type': 'percent',
-            'discount_value': '10.00',
+            'items': [{'product_id': self.product.pk, 'quantity': '5.00'}],
+            'amount_tendered': '250.00',
         }, format='json')
         self.assertEqual(response.status_code, 201)
-        order = Order.objects.get(pk=response.data['id'])
-        self.assertEqual(order.discount_type, 'percent')
-        self.assertEqual(order.discount_value, Decimal('10.00'))
+        self.assertEqual(response.data['status'], 'fulfilled')
+        self.batch.refresh_from_db()
+        self.assertEqual(self.batch.remaining_quantity, Decimal('95.00'))
 
-    def test_invalid_percent_discount_rejected_at_creation(self):
+    def test_response_includes_nested_transaction_with_change_due(self):
         response = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
+            'items': [{'product_id': self.product.pk, 'quantity': '2.00'}],
+            'amount_tendered': '150.00',
+        }, format='json')
+        self.assertEqual(response.status_code, 201)
+        self.assertIsNotNone(response.data['transaction'])
+        self.assertEqual(response.data['transaction']['change_due'], '50.00')
+
+    def test_discount_applies_correctly_on_creation(self):
+        response = self.client.post('/sales/orders/', {
+            'customer_id': self.customer.pk,
+            'items': [{'product_id': self.product.pk, 'quantity': '2.00'}],
             'discount_type': 'percent',
-            'discount_value': '150.00',
+            'discount_value': '10',
+            'amount_tendered': '90.00',
         }, format='json')
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['transaction']['discount_amount'], '10.00')
+        self.assertEqual(response.data['transaction']['total_amount'], '90.00')
 
-    def test_negative_fixed_discount_rejected_at_creation(self):
+    def test_invalid_percent_discount_rejected(self):
         response = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
-            'discount_type': 'fixed',
-            'discount_value': '-5.00',
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'discount_type': 'percent',
+            'discount_value': '150',
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Order.objects.count(), 0)
+
+    def test_missing_items_rejected(self):
+        response = self.client.post('/sales/orders/', {'customer_id': self.customer.pk, 'items': []}, format='json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_missing_customer_id_rejected(self):
+        response = self.client.post('/sales/orders/', {
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
         }, format='json')
         self.assertEqual(response.status_code, 400)
 
-    def test_patch_to_change_discount_after_creation_returns_400(self):
-        """Fixed this round: this used to return 200 and silently no-op.
-        It now returns a loud 400 so the client knows the write didn't happen."""
-        order = Order.objects.create(
-            customer=self.customer, handled_by=self.staff,
-            discount_type='percent', discount_value=Decimal('10.00'),
-        )
-        response = self.client.patch(f'/sales/orders/{order.pk}/', {
-            'discount_type': 'fixed',
-            'discount_value': '5.00',
+    def test_bad_product_id_in_items_gives_specific_index_error(self):
+        response = self.client.post('/sales/orders/', {
+            'customer_id': self.customer.pk,
+            'items': [
+                {'product_id': self.product.pk, 'quantity': '1.00'},
+                {'product_id': 999999, 'quantity': '1.00'},
+            ],
+            'amount_tendered': '100.00',
         }, format='json')
         self.assertEqual(response.status_code, 400)
-        order.refresh_from_db()
-        self.assertEqual(order.discount_type, 'percent')  # unchanged
-        self.assertEqual(order.discount_value, Decimal('10.00'))  # unchanged
+        self.assertIn('index 1', response.data['error'])
+
+    def test_zero_quantity_item_rejected(self):
+        response = self.client.post('/sales/orders/', {
+            'customer_id': self.customer.pk,
+            'items': [{'product_id': self.product.pk, 'quantity': '0.00'}],
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_insufficient_stock_rolls_back_entire_order(self):
+        response = self.client.post('/sales/orders/', {
+            'customer_id': self.customer.pk,
+            'items': [{'product_id': self.product.pk, 'quantity': '9999.00'}],
+            'amount_tendered': '999999.00',
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Order.objects.count(), 0)
+        self.assertEqual(OrderItem.objects.count(), 0)
+
+    def test_insufficient_cash_tendered_rolls_back(self):
+        response = self.client.post('/sales/orders/', {
+            'customer_id': self.customer.pk,
+            'items': [{'product_id': self.product.pk, 'quantity': '5.00'}],
+            'amount_tendered': '10.00',
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Order.objects.count(), 0)
+        self.batch.refresh_from_db()
+        self.assertEqual(self.batch.remaining_quantity, Decimal('100.00'))
+
+
+class OrderMutationRemovedTests(TestCase):
+    """PATCH/PUT/DELETE are all gone — orders are immutable once created
+    ('cancel' is the only sanctioned way to end one)."""
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+        self.client = APIClient()
+        self.staff = make_user()
+        self.customer = Customer.objects.create(name='Walk-in', created_by=self.staff)
+        self.category = Category.objects.create(name='Dairy')
+        self.product = Product.objects.create(
+            category=self.category, name='Fresh Milk', unit='liter',
+            unit_price=Decimal('50.00'), shelf_life=7,
+        )
+        ProductBatch.objects.create(
+            product=self.product, batch_number='PRD-TEST-961',
+            unit_price=Decimal('50.00'),
+            initial_quantity=Decimal('10.00'), remaining_quantity=Decimal('10.00'),
+            expiration_date='2026-12-31',
+        )
+        self.client.force_authenticate(user=self.staff)
+        response = self.client.post('/sales/orders/', {
+            'customer_id': self.customer.pk,
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'amount_tendered': '50.00',
+        }, format='json')
+        self.order_id = response.data['id']
+
+    def test_patch_returns_405(self):
+        response = self.client.patch(f'/sales/orders/{self.order_id}/', {'discount_value': '5.00'}, format='json')
+        self.assertEqual(response.status_code, 405)
+
+    def test_delete_returns_405(self):
+        response = self.client.delete(f'/sales/orders/{self.order_id}/')
+        self.assertEqual(response.status_code, 405)
+
+
+class CancelOrderPermissionTests(TestCase):
+    """Cancelling voids a real completed sale — admin only. No staff exception,
+    since there's no more 'still just placed' state for staff to back out of."""
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+        self.client = APIClient()
+        self.staff = make_user()
+        self.admin = make_user(username='adminuser', role='admin')
+        self.customer = Customer.objects.create(name='Walk-in', created_by=self.staff)
+        self.category = Category.objects.create(name='Dairy')
+        self.product = Product.objects.create(
+            category=self.category, name='Fresh Milk', unit='liter',
+            unit_price=Decimal('50.00'), shelf_life=7,
+        )
+        ProductBatch.objects.create(
+            product=self.product, batch_number='PRD-TEST-962',
+            unit_price=Decimal('50.00'),
+            initial_quantity=Decimal('10.00'), remaining_quantity=Decimal('10.00'),
+            expiration_date='2026-12-31',
+        )
+        self.client.force_authenticate(user=self.staff)
+        response = self.client.post('/sales/orders/', {
+            'customer_id': self.customer.pk,
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'amount_tendered': '50.00',
+        }, format='json')
+        self.order_id = response.data['id']
+
+    def test_staff_cannot_cancel(self):
+        response = self.client.post(f'/sales/orders/{self.order_id}/cancel/')
+        self.assertEqual(response.status_code, 403)
+
+    def test_admin_can_cancel(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(f'/sales/orders/{self.order_id}/cancel/')
+        self.assertEqual(response.status_code, 200)

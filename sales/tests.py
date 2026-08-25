@@ -1,8 +1,6 @@
 """
 Tests for sales app — covers the bug fixes made in the Round 3 audit session.
-
 Run with: python manage.py test sales
-
 NOTE on concurrency: see the same caveat in inventory/tests.py — these tests
 verify the logic each fix depends on (correct validation, correct math,
 correct rejection of bad states, correct locking-adjacent behavior against a
@@ -12,6 +10,7 @@ need TransactionTestCase + threading + Postgres.
 from decimal import Decimal
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from rest_framework.test import APIClient
 from inventory.models import Category, Product, ProductBatch
 from sales.models import Customer, Order, OrderItem, Transaction, TransactionItem
 from sales.services import SalesService
@@ -20,7 +19,7 @@ User = get_user_model()
 
 
 def make_user(username='staffuser', role='staff'):
-    return User.objects.create_user(
+    return User.objects.create_user(  # pyright: ignore[reportAttributeAccessIssue]
         username=username,
         password='testpass123!',
         email=f'{username}@example.com',
@@ -212,12 +211,12 @@ class VoidFulfilledOrderTests(TestCase):
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.remaining_quantity, Decimal('90.00'))
 
+
 class BestSellersReportTests(TestCase):
     """Covers: fix #8 — bad `limit` query param crashing the view."""
 
     def setUp(self):
-        from rest_framework.test import APIClient
-        self.client = APIClient()
+        self.client: APIClient = APIClient()
         self.admin = make_user(username='adminuser', role='admin')
         self.client.force_authenticate(user=self.admin)
 
@@ -241,12 +240,12 @@ class BestSellersReportTests(TestCase):
         response = self.client.get('/sales/reports/best-sellers/')
         self.assertEqual(response.status_code, 200)
 
+
 class TransactionHistoryTests(TestCase):
     """Covers: new GET /sales/transactions/ and /sales/transactions/<id>/ endpoints."""
 
     def setUp(self):
-        from rest_framework.test import APIClient
-        self.client = APIClient()
+        self.client: APIClient = APIClient()
         self.staff = make_user(username='staffuser')
         self.other_staff = make_user(username='otherstaff')
         self.category = Category.objects.create(name='Dairy')
@@ -361,13 +360,13 @@ class TransactionHistoryTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data), 1)
 
+
 class PlaceOrderTests(TestCase):
     """Covers the rebuilt order flow: POST /sales/orders/ creates the Order,
     its OrderItems, and fulfills it in one atomic call."""
 
     def setUp(self):
-        from rest_framework.test import APIClient
-        self.client = APIClient()
+        self.client: APIClient = APIClient()
         self.staff = make_user()
         self.category = Category.objects.create(name='Dairy')
         self.product = Product.objects.create(
@@ -483,8 +482,7 @@ class OrderMutationRemovedTests(TestCase):
     ('cancel' is the only sanctioned way to end one)."""
 
     def setUp(self):
-        from rest_framework.test import APIClient
-        self.client = APIClient()
+        self.client: APIClient = APIClient()
         self.staff = make_user()
         self.customer = Customer.objects.create(name='Walk-in', created_by=self.staff)
         self.category = Category.objects.create(name='Dairy')
@@ -520,8 +518,7 @@ class CancelOrderPermissionTests(TestCase):
     since there's no more 'still just placed' state for staff to back out of."""
 
     def setUp(self):
-        from rest_framework.test import APIClient
-        self.client = APIClient()
+        self.client: APIClient = APIClient()
         self.staff = make_user()
         self.admin = make_user(username='adminuser', role='admin')
         self.customer = Customer.objects.create(name='Walk-in', created_by=self.staff)

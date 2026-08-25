@@ -236,7 +236,7 @@ class ReconcileTests(TestCase):
         })
         self.assertTrue(serializer.is_valid(), serializer.errors)
         batch = serializer.save()
-        self.assertEqual(batch.unit_price, Decimal('25.00'))
+        self.assertEqual(batch.unit_price, Decimal('25.00')) # type: ignore
 
 
 class BatchQuantityUpdateTests(TestCase):

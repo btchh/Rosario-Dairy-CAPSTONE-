@@ -23,4 +23,4 @@ class ProductSerializer(serializers.ModelSerializer):
     fields = [
       'id', 'name', 'variant', 'unit', 'unit_price', 'shelf_life', 'low_stock_threshold', 'is_active', 'category', 'category_id', 'total_stock', 'created_at', 'updated_at'
     ]
-    read_only_fields = ['id', 'created_at', 'updated_at', 'total_stock']
+    read_only_fields = ['id', 'is_active', 'created_at', 'updated_at', 'total_stock']

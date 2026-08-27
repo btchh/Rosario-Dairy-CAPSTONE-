@@ -6,8 +6,8 @@ from django.db.models import ProtectedError
 from accounts.permissions import IsAdmin
 
 if TYPE_CHECKING:
-    from rest_framework.generics import GenericAPIView
-    _Base = GenericAPIView
+    from rest_framework.viewsets import GenericViewSet
+    _Base = GenericViewSet
 else:
     _Base = object
 
@@ -18,8 +18,22 @@ class SoftDeleteMixin(_Base):
     has an `is_active` boolean field. Provides destroy() (soft delete) and a
     `reactivate` action. Set `model_label` on the ViewSet for the messages,
     e.g. model_label = "Product".
+
+    list() is active-only by default; pass ?include_inactive=true to see
+    everything (needed so the frontend can find and reactivate deactivated
+    rows). retrieve/update/reactivate always operate against the full table
+    so a deactivated object is still reachable by id.
     """
     model_label = "Item"
+
+    def get_queryset(self):
+        model = self.queryset.model  # type: ignore[attr-defined]
+        qs = model.objects.all()
+        if self.action == 'list':
+            include_inactive = self.request.query_params.get('include_inactive', 'false').lower() == 'true'
+            if not include_inactive:
+                qs = qs.filter(is_active=True)
+        return qs
 
     def destroy(self, request, *args, **kwargs):
         obj = self.get_object()

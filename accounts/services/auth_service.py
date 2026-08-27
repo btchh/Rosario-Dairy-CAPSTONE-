@@ -30,11 +30,21 @@ def change_password(user, old_password, new_password):
 
 
 def forgot_password(user, new_password):
+    """
+    Admin-initiated reset (AdminResetPasswordView). Deliberately bypasses the
+    self-service cooldown (doesn't touch last_password_change_at) — see
+    AdminResetPasswordCooldownExemptionTests. Also clears any active login
+    lockout: an admin resetting a locked-out user's password should let them
+    log back in immediately with the new password, not leave them 429'd
+    until the 15-minute lockout window expires on its own.
+    """
     try:
         validate_password(new_password, user)
     except ValidationError as e:
         raise ValueError(" ".join(str(m) for m in e.messages))
     user.set_password(new_password)
+    user.failed_login_attempts = 0
+    user.locked_until = None
     user.save()
 
 

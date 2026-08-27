@@ -1,4 +1,5 @@
 from .batch import ProductBatch, IngredientBatch
+from .batch_sequence import BatchSequence
 from .category import Category
 from .fefo_conf import FEFOConf
 from .ingredient import Ingredient

@@ -73,10 +73,19 @@ def void_fulfilled_order(order, admin_user):
             if batch.status in ('expired', 'disposed'):
                 skipped_batches.append(batch.batch_number)
                 continue
-            batch.remaining_quantity += item.quantity
-            if batch.status == 'depleted':
-                batch.status = 'available'
-            batch.save()
+
+            # Cap the restore at initial_quantity, mirroring the cap
+            # adjustment_service.create_stock_adjustment() enforces on
+            # corrections. Without this, a batch topped up via a
+            # correction/reconcile between the sale and the void could end
+            # up with remaining_quantity > initial_quantity.
+            restorable = batch.initial_quantity - batch.remaining_quantity
+            restore_amount = min(item.quantity, restorable) if restorable > Decimal('0.00') else Decimal('0.00')
+            if restore_amount > Decimal('0.00'):
+                batch.remaining_quantity += restore_amount
+                if batch.status == 'depleted':
+                    batch.status = 'available'
+                batch.save()
 
         txn.is_voided = True
         txn.save()

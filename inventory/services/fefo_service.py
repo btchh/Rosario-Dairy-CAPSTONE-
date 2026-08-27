@@ -1,4 +1,5 @@
 from decimal import Decimal
+from django.utils import timezone
 from ..models import ProductBatch, IngredientBatch
 
 
@@ -6,9 +7,10 @@ def deduct_product_batch(product, quantity):
   quantity = Decimal(str(quantity))
   if quantity <= Decimal('0.00'):
     raise ValueError("Quantity must be greater than zero.")
+  today = timezone.now().date()
   batches = list(
     ProductBatch.objects.select_for_update()
-    .filter(product=product, status='available')
+    .filter(product=product, status='available', expiration_date__gte=today)
     .order_by('expiration_date')
   )
   total_available = sum(b.remaining_quantity for b in batches)
@@ -33,9 +35,10 @@ def deduct_ingredient_batch(ingredient, quantity):
   quantity = Decimal(str(quantity))
   if quantity <= Decimal('0.00'):
     raise ValueError("Quantity must be greater than zero.")
+  today = timezone.now().date()
   batches = list(
     IngredientBatch.objects.select_for_update()
-    .filter(ingredient=ingredient, status='available')
+    .filter(ingredient=ingredient, status='available', expiration_date__gte=today)
     .order_by('expiration_date')
   )
   total_avalable = sum(b.remaining_quantity for b in batches)

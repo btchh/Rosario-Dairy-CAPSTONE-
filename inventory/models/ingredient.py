@@ -1,3 +1,5 @@
+from decimal import Decimal
+from django.core.validators import MinValueValidator
 from django.db import models
 
 class Ingredient(models.Model):
@@ -9,7 +11,7 @@ class Ingredient(models.Model):
 
   name = models.CharField(max_length=100)
   unit = models.CharField(max_length=50)
-  unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+  unit_price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal('0.00'))])
   shelf_life = models.IntegerField()
   ingredient_type = models.CharField(max_length=20, choices=INGREDIENT_TYPES, default='raw_milk')
   low_stock_threshold = models.IntegerField(default=10)

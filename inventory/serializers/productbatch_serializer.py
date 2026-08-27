@@ -1,7 +1,8 @@
+from decimal import Decimal
 from rest_framework import serializers
 from django.db import transaction
-from django.utils import timezone
 from ..models import Product, ProductBatch
+from ..services.batch_sequence_service import next_sequence
 from ..utils.batch_utils import generate_batch_number
 from .product_serializer import ProductSerializer
 
@@ -16,13 +17,15 @@ class ProdBatchSerializer(serializers.ModelSerializer):
   quantity = serializers.DecimalField(
     max_digits = 10,
     decimal_places = 2, 
-    write_only = True
+    write_only = True,
+    min_value = Decimal('0.01'),
   )
   unit_price = serializers.DecimalField(
     max_digits=10,
     decimal_places=2,
     required=False,
-    allow_null=True
+    allow_null=True,
+    min_value=Decimal('0.00'),
   )
   class Meta:
     model = ProductBatch
@@ -38,10 +41,7 @@ class ProdBatchSerializer(serializers.ModelSerializer):
         validated_data['remaining_quantity'] = quantity
         if validated_data.get('unit_price') is None:
             validated_data['unit_price'] = validated_data['product'].unit_price
-        now = timezone.now()
-        seq = ProductBatch.objects.select_for_update().filter(
-            created_at__year=now.year, created_at__month=now.month
-        ).count() + 1
+        seq = next_sequence('PRD')
         validated_data['batch_number'] = generate_batch_number('PRD', seq)
         return super().create(validated_data)
 

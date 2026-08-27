@@ -1,3 +1,5 @@
+from decimal import Decimal
+from django.core.validators import MinValueValidator
 from django.utils import timezone
 from django.db import models
 
@@ -14,10 +16,10 @@ class IngredientBatch(models.Model):
     ('disposed', 'Disposed')]
 
   ingredient = models.ForeignKey('Ingredient', on_delete=models.PROTECT, related_name='batches')
-  batch_number = models.CharField(max_length=50)
+  batch_number = models.CharField(max_length=50, unique=True)
   supplier = models.ForeignKey('Supplier', on_delete=models.PROTECT, related_name='batches', blank=True, null=True)
   grade = models.CharField(max_length=20,choices=GRADE_CHOICES, blank=True, null=True)
-  unit_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+  unit_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, validators=[MinValueValidator(Decimal('0.00'))])
   initial_quantity = models.DecimalField(max_digits=10, decimal_places=2)
   remaining_quantity = models.DecimalField(max_digits=10, decimal_places=2)
   expiration_date = models.DateField()
@@ -44,9 +46,9 @@ class ProductBatch(models.Model):
   ]
 
   product = models.ForeignKey('Product', on_delete=models.PROTECT, related_name='batches')
-  batch_number = models.CharField(max_length=50)
+  batch_number = models.CharField(max_length=50, unique=True)
   grade = models.CharField(max_length=20,choices=GRADE_CHOICES, blank=True, null=True)
-  unit_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+  unit_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, validators=[MinValueValidator(Decimal('0.00'))])
   initial_quantity = models.DecimalField(max_digits=10, decimal_places=2)
   remaining_quantity = models.DecimalField(max_digits=10, decimal_places=2)
   expiration_date = models.DateField()

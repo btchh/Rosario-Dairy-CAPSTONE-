@@ -1,7 +1,8 @@
+from decimal import Decimal
 from rest_framework import serializers
 from django.db import transaction
-from django.utils import timezone
 from ..models import Ingredient, IngredientBatch
+from ..services.batch_sequence_service import next_sequence
 from ..utils.batch_utils import generate_batch_number
 from .ingredient_serializer import IngredientSerializer
 
@@ -16,7 +17,8 @@ class IngBatchSerializer(serializers.ModelSerializer):
   quantity = serializers.DecimalField(
     max_digits = 10,
     decimal_places = 2, 
-    write_only = True
+    write_only = True,
+    min_value = Decimal('0.01'),
   )
 
   class Meta:
@@ -34,11 +36,7 @@ class IngBatchSerializer(serializers.ModelSerializer):
       if validated_data.get('unit_price') is None:
           validated_data['unit_price'] = validated_data['ingredient'].unit_price
 
-      now = timezone.now()
-      seq = IngredientBatch.objects.select_for_update().filter(
-        created_at__year=now.year,
-        created_at__month=now.month
-      ).count() + 1
+      seq = next_sequence('ING')
       validated_data['batch_number'] = generate_batch_number('ING', seq)
       return super().create(validated_data)
 

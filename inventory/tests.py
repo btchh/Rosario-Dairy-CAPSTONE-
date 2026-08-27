@@ -846,3 +846,214 @@ class ExpiredBatchExclusionTests(TestCase):
         )
         with self.assertRaises(ValueError):
             BatchService.deduct_ingredient_batch(self.ingredient, Decimal('10.00'))
+
+# ---------------------------------------------------------------------------
+# Round 8: status locked to audited transitions only, expiration_date must
+# not precede date_received
+# ---------------------------------------------------------------------------
+
+class BatchStatusReadOnlyTests(TestCase):
+    """
+    Covers: status was directly PATCHable on both batch serializers, bypassing
+    every audited transition. A valid choice like {"status": "available"}
+    could silently un-dispose a batch that was written off for spoilage,
+    re-entering it into the sellable FEFO pool with no adjustment record.
+    Same treatment as quantity from the prior round: read-only, only
+    mutable via create_stock_adjustment()/reconcile().
+    """
+
+    def setUp(self):
+        self.category = Category.objects.create(name='Dairy')
+        self.product = Product.objects.create(
+            category=self.category, name='Fresh Milk', unit='liter',
+            unit_price=Decimal('50.00'), shelf_life=7,
+        )
+        self.ingredient = Ingredient.objects.create(
+            name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
+            shelf_life=3, ingredient_type='raw_milk',
+        )
+        self.future_date = timezone.now().date() + timedelta(days=30)
+
+    def test_product_batch_status_ignored_on_patch(self):
+        from inventory.serializers import ProdBatchSerializer
+
+        batch = ProductBatch.objects.create(
+            product=self.product, batch_number='PRD-STATUS-001',
+            unit_price=Decimal('50.00'),
+            initial_quantity=Decimal('10.00'), remaining_quantity=Decimal('10.00'),
+            expiration_date=self.future_date, status='disposed',
+        )
+        serializer = ProdBatchSerializer(batch, data={'status': 'available'}, partial=True)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        serializer.save()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, 'disposed')  # unchanged — patch silently ignored
+
+    def test_ingredient_batch_status_ignored_on_patch(self):
+        from inventory.serializers import IngBatchSerializer
+
+        batch = IngredientBatch.objects.create(
+            ingredient=self.ingredient, batch_number='ING-STATUS-001',
+            unit_price=Decimal('25.00'),
+            initial_quantity=Decimal('10.00'), remaining_quantity=Decimal('10.00'),
+            expiration_date=self.future_date, status='depleted',
+        )
+        serializer = IngBatchSerializer(batch, data={'status': 'available'}, partial=True)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        serializer.save()
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, 'depleted')  # unchanged — patch silently ignored
+
+    def test_new_product_batch_defaults_to_available_regardless_of_input(self):
+        from inventory.serializers import ProdBatchSerializer
+
+        serializer = ProdBatchSerializer(data={
+            'product_id': self.product.pk, 'quantity': '10.00',
+            'expiration_date': self.future_date.isoformat(),
+            'status': 'disposed',  # attempted spoof on create
+        })
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        batch = serializer.save()
+        self.assertEqual(batch.status, 'available') # type: ignore
+
+    def test_status_still_mutable_via_create_stock_adjustment(self):
+        """Sanity check: read-only in the serializer, but the audited path still works."""
+        user = make_user()
+        batch = ProductBatch.objects.create(
+            product=self.product, batch_number='PRD-STATUS-002',
+            unit_price=Decimal('50.00'),
+            initial_quantity=Decimal('10.00'), remaining_quantity=Decimal('10.00'),
+            expiration_date=self.future_date,
+        )
+        BatchService.create_stock_adjustment(
+            adjustment_type='spoilage', quantity=Decimal('10.00'),
+            unit_cost=Decimal('10.00'), adjusted_by=user,
+            product_batch=batch,
+        )
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, 'disposed')
+
+
+class BatchDateValidationTests(TestCase):
+    """
+    Covers: expiration_date wasn't checked against date_received on batch
+    creation or update, so a batch could be logged as already expired the
+    moment it was received.
+    """
+
+    def setUp(self):
+        self.category = Category.objects.create(name='Dairy')
+        self.product = Product.objects.create(
+            category=self.category, name='Fresh Milk', unit='liter',
+            unit_price=Decimal('50.00'), shelf_life=7,
+        )
+        self.ingredient = Ingredient.objects.create(
+            name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
+            shelf_life=3, ingredient_type='raw_milk',
+        )
+        self.today = timezone.now().date()
+
+    # --- ProductBatch: create ---
+
+    def test_product_batch_rejects_expiration_before_explicit_date_received(self):
+        from inventory.serializers import ProdBatchSerializer
+        serializer = ProdBatchSerializer(data={
+            'product_id': self.product.pk, 'quantity': '10.00',
+            'date_received': self.today.isoformat(),
+            'expiration_date': (self.today - timedelta(days=1)).isoformat(),
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('expiration_date', serializer.errors)
+
+    def test_product_batch_rejects_expiration_before_default_date_received(self):
+        """date_received omitted -> defaults to today; expiration in the past must still be rejected."""
+        from inventory.serializers import ProdBatchSerializer
+        serializer = ProdBatchSerializer(data={
+            'product_id': self.product.pk, 'quantity': '10.00',
+            'expiration_date': (self.today - timedelta(days=1)).isoformat(),
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('expiration_date', serializer.errors)
+
+    def test_product_batch_allows_expiration_equal_to_date_received(self):
+        """Same-day expiration is a boundary-valid case, not rejected."""
+        from inventory.serializers import ProdBatchSerializer
+        serializer = ProdBatchSerializer(data={
+            'product_id': self.product.pk, 'quantity': '10.00',
+            'date_received': self.today.isoformat(),
+            'expiration_date': self.today.isoformat(),
+        })
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
+    def test_product_batch_allows_future_expiration(self):
+        from inventory.serializers import ProdBatchSerializer
+        serializer = ProdBatchSerializer(data={
+            'product_id': self.product.pk, 'quantity': '10.00',
+            'date_received': self.today.isoformat(),
+            'expiration_date': (self.today + timedelta(days=30)).isoformat(),
+        })
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
+    # --- ProductBatch: update ---
+
+    def test_product_batch_update_rejects_new_expiration_before_existing_date_received(self):
+        from inventory.serializers import ProdBatchSerializer
+        batch = ProductBatch.objects.create(
+            product=self.product, batch_number='PRD-DATE-001',
+            unit_price=Decimal('50.00'),
+            initial_quantity=Decimal('10.00'), remaining_quantity=Decimal('10.00'),
+            date_received=self.today, expiration_date=self.today + timedelta(days=30),
+        )
+        serializer = ProdBatchSerializer(
+            batch, data={'expiration_date': (self.today - timedelta(days=1)).isoformat()}, partial=True,
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('expiration_date', serializer.errors)
+
+    def test_product_batch_update_rejects_new_date_received_after_existing_expiration(self):
+        from inventory.serializers import ProdBatchSerializer
+        batch = ProductBatch.objects.create(
+            product=self.product, batch_number='PRD-DATE-002',
+            unit_price=Decimal('50.00'),
+            initial_quantity=Decimal('10.00'), remaining_quantity=Decimal('10.00'),
+            date_received=self.today, expiration_date=self.today + timedelta(days=5),
+        )
+        serializer = ProdBatchSerializer(
+            batch, data={'date_received': (self.today + timedelta(days=10)).isoformat()}, partial=True,
+        )
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('expiration_date', serializer.errors)
+
+    def test_product_batch_update_unrelated_field_still_succeeds(self):
+        """Regression guard: the new validate() shouldn't block ordinary patches
+        that don't touch either date field."""
+        from inventory.serializers import ProdBatchSerializer
+        batch = ProductBatch.objects.create(
+            product=self.product, batch_number='PRD-DATE-003',
+            unit_price=Decimal('50.00'),
+            initial_quantity=Decimal('10.00'), remaining_quantity=Decimal('10.00'),
+            date_received=self.today, expiration_date=self.today + timedelta(days=30),
+        )
+        serializer = ProdBatchSerializer(batch, data={'notes': 'restocked shelf'}, partial=True)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
+    # --- IngredientBatch: create ---
+
+    def test_ingredient_batch_rejects_expiration_before_date_received(self):
+        from inventory.serializers import IngBatchSerializer
+        serializer = IngBatchSerializer(data={
+            'ingredient_id': self.ingredient.pk, 'quantity': '10.00',
+            'date_received': self.today.isoformat(),
+            'expiration_date': (self.today - timedelta(days=1)).isoformat(),
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('expiration_date', serializer.errors)
+
+    def test_ingredient_batch_allows_future_expiration(self):
+        from inventory.serializers import IngBatchSerializer
+        serializer = IngBatchSerializer(data={
+            'ingredient_id': self.ingredient.pk, 'quantity': '10.00',
+            'date_received': self.today.isoformat(),
+            'expiration_date': (self.today + timedelta(days=10)).isoformat(),
+        })
+        self.assertTrue(serializer.is_valid(), serializer.errors)

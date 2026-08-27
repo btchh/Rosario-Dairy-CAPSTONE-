@@ -1,3 +1,4 @@
+from datetime import datetime
 from django.utils import timezone
 # Batch Number Generator
 
@@ -13,3 +14,22 @@ def generate_batch_number(prefix, sequence):
     seq = f"{sequence:03d}"  # Format sequence as a three-digit number with leading zeros
     return f"{prefix}-{year}{month}-{seq}" # Return the formatted batch number
 
+
+def to_date(value):
+    """
+    Normalizes a date/datetime value to a plain date. DateField's
+    default=timezone.now (used by date_received) returns an aware datetime,
+    and Django doesn't coerce that to a date on the in-memory instance until
+    it round-trips through the DB — a freshly created instance that never
+    specified date_received can still be holding the raw datetime. Mirrors
+    what Django's own DateField.to_python() does on save, so behavior stays
+    consistent whether the value came from a fresh instance or a DB fetch.
+    datetime is a subclass of date, so this check order matters.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if timezone.is_aware(value):
+            value = timezone.localtime(value)
+        return value.date()
+    return value

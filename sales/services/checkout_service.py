@@ -14,6 +14,10 @@ def checkout(cart_items, staff_user, payment_method='cash',
     a customer is charged what they were quoted at order time rather than
     whatever the price has drifted to by fulfillment.
     """
+    valid_payment_methods = [choice[0] for choice in Transaction.PAYMENT_CHOICES]
+    if payment_method not in valid_payment_methods:
+        raise ValueError(f"Invalid payment_method '{payment_method}'. Must be one of {valid_payment_methods}.")
+
     with db_transaction.atomic():
         txn = Transaction.objects.create(
             handled_by=staff_user,

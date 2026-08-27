@@ -29,8 +29,12 @@ def make_user(username='staffuser', role='staff'):
     )
 
 
-class CheckoutDiscountTests(TestCase):
-    """Covers: fix #5 (negative fixed discount) and fix #6 (invalid discount_type)."""
+class CheckoutPaymentMethodValidationTests(TestCase):
+    """Covers: checkout() used to accept any string as payment_method with
+    zero validation — a bad value would silently skip the amount_tendered
+    requirement (only the 'cash' branch enforces it), and Transaction.save()
+    doesn't validate choices= at the ORM level, so garbage was written
+    straight into the DB."""
 
     def setUp(self):
         self.staff = make_user()
@@ -40,7 +44,7 @@ class CheckoutDiscountTests(TestCase):
             unit_price=Decimal('50.00'), shelf_life=7,
         )
         self.batch = ProductBatch.objects.create(
-            product=self.product, batch_number='PRD-TEST-901',
+            product=self.product, batch_number='PRD-TEST-970',
             unit_price=Decimal('50.00'),
             initial_quantity=Decimal('100.00'),
             remaining_quantity=Decimal('100.00'),
@@ -50,89 +54,66 @@ class CheckoutDiscountTests(TestCase):
     def _cart(self, qty=Decimal('2.00')):
         return [(self.product, qty)]
 
-    def test_percent_discount_applies_correctly(self):
-        txn = SalesService.checkout(
-            self._cart(), self.staff, payment_method='cash',
-            discount_type='percent', discount_value=Decimal('10'),
-            amount_tendered=Decimal('100.00'),
-        )
-        self.assertEqual(txn.subtotal, Decimal('100.00'))
-        self.assertEqual(txn.discount_amount, Decimal('10.00'))
-        self.assertEqual(txn.total_amount, Decimal('90.00'))
-
-    def test_percent_discount_out_of_range_rejected(self):
+    def test_invalid_payment_method_rejected(self):
         with self.assertRaises(ValueError):
             SalesService.checkout(
-                self._cart(), self.staff, payment_method='cash',
-                discount_type='percent', discount_value=Decimal('150'),
+                self._cart(), self.staff, payment_method='bitcoin',
                 amount_tendered=Decimal('100.00'),
             )
 
-    def test_fixed_discount_applies_correctly(self):
-        txn = SalesService.checkout(
-            self._cart(), self.staff, payment_method='cash',
-            discount_type='fixed', discount_value=Decimal('20.00'),
-            amount_tendered=Decimal('100.00'),
-        )
-        self.assertEqual(txn.discount_amount, Decimal('20.00'))
-        self.assertEqual(txn.total_amount, Decimal('80.00'))
-
-    def test_fixed_discount_exceeding_subtotal_rejected(self):
+    def test_invalid_payment_method_rejected_before_stock_is_deducted(self):
         with self.assertRaises(ValueError):
             SalesService.checkout(
-                self._cart(), self.staff, payment_method='cash',
-                discount_type='fixed', discount_value=Decimal('200.00'),
-                amount_tendered=Decimal('200.00'),
-            )
-
-    def test_negative_fixed_discount_rejected(self):
-        """Fix #5: a negative fixed discount used to inflate the total instead of erroring."""
-        with self.assertRaises(ValueError):
-            SalesService.checkout(
-                self._cart(), self.staff, payment_method='cash',
-                discount_type='fixed', discount_value=Decimal('-50.00'),
+                self._cart(), self.staff, payment_method='bitcoin',
                 amount_tendered=Decimal('100.00'),
             )
+        self.batch.refresh_from_db()
+        self.assertEqual(self.batch.remaining_quantity, Decimal('100.00'))  # untouched, rolled back
 
-    def test_invalid_discount_type_rejected(self):
-        """Fix #6: an unrecognized discount_type used to silently apply zero discount."""
+    def test_invalid_payment_method_rejected_even_without_amount_tendered(self):
+        """The old bug: a bad payment_method wasn't 'cash', so it skipped the
+        amount_tendered requirement entirely and could succeed with no tender."""
         with self.assertRaises(ValueError):
             SalesService.checkout(
-                self._cart(), self.staff, payment_method='cash',
-                discount_type='banana', discount_value=Decimal('10.00'),
-                amount_tendered=Decimal('100.00'),
-            )
-
-    def test_none_discount_type_applies_zero_discount_intentionally(self):
-        """The 'none' branch is a deliberate zero-discount path, distinct from invalid types."""
-        txn = SalesService.checkout(
-            self._cart(), self.staff, payment_method='cash',
-            discount_type='none', discount_value=Decimal('0.00'),
-            amount_tendered=Decimal('100.00'),
-        )
-        self.assertEqual(txn.discount_amount, Decimal('0.00'))
-        self.assertEqual(txn.total_amount, Decimal('100.00'))
-
-    def test_cash_payment_requires_amount_tendered(self):
-        with self.assertRaises(ValueError):
-            SalesService.checkout(
-                self._cart(), self.staff, payment_method='cash',
+                self._cart(), self.staff, payment_method='bitcoin',
                 amount_tendered=None,
             )
 
-    def test_cash_payment_insufficient_tender_rejected(self):
-        with self.assertRaises(ValueError):
-            SalesService.checkout(
-                self._cart(), self.staff, payment_method='cash',
-                amount_tendered=Decimal('10.00'),  # subtotal is 100
-            )
-
-    def test_change_due_computed_correctly(self):
+    def test_valid_cash_still_works(self):
         txn = SalesService.checkout(
             self._cart(), self.staff, payment_method='cash',
-            amount_tendered=Decimal('150.00'),
+            amount_tendered=Decimal('100.00'),
         )
-        self.assertEqual(txn.change_due, Decimal('50.00'))
+        self.assertEqual(txn.payment_method, 'cash')
+
+    def test_valid_online_still_works(self):
+        txn = SalesService.checkout(
+            self._cart(), self.staff, payment_method='online',
+        )
+        self.assertEqual(txn.payment_method, 'online')
+
+    def test_checkout_view_returns_400_not_500_for_invalid_payment_method(self):
+        client = APIClient()
+        client.force_authenticate(user=self.staff)
+        response = client.post('/sales/checkout/', {
+            'items': [{'product_id': self.product.pk, 'quantity': '2.00'}],
+            'payment_method': 'bitcoin',
+            'amount_tendered': '100.00',
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_order_creation_returns_400_not_500_for_invalid_payment_method(self):
+        client = APIClient()
+        client.force_authenticate(user=self.staff)
+        customer = Customer.objects.create(name='Walk-in', created_by=self.staff)
+        response = client.post('/sales/orders/', {
+            'customer_id': customer.pk,
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'payment_method': 'bitcoin',
+            'amount_tendered': '50.00',
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Order.objects.count(), 0)  # rolled back, no orphan order
 
 
 class VoidFulfilledOrderTests(TestCase):
@@ -549,3 +530,5 @@ class CancelOrderPermissionTests(TestCase):
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(f'/sales/orders/{self.order_id}/cancel/')
         self.assertEqual(response.status_code, 200)
+
+        

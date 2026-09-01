@@ -19,7 +19,7 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
       handled_by=<user id>
       include_voided=true   (defaults to false — voided sales hidden by default)
     """
-    queryset = Transaction.objects.select_related('handled_by').prefetch_related(
+    queryset = Transaction.objects.select_related('handled_by', 'customer').prefetch_related(
         'items__product_batch__product'
     ).order_by('-created_at')
     serializer_class = TransactionSerializer

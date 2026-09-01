@@ -29,8 +29,86 @@ from inventory.models import (
 )
 from inventory.services.batch_service import BatchService
 from inventory.services.batch_sequence_service import next_sequence
+from rest_framework.test import APIClient
 
 User = get_user_model()
+
+
+class StaffCategoryVisibilityAPITests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.staff = make_user('visibilitystaff')
+        self.admin = make_user('visibilityadmin', role='admin')
+        self.visible_category = Category.objects.create(name='Visible')
+        self.hidden_category = Category.objects.create(
+            name='Hidden', is_visible_to_staff=False
+        )
+        self.visible_product = Product.objects.create(
+            category=self.visible_category, name='Visible Product', unit='piece',
+            unit_price=Decimal('10.00'), shelf_life=7,
+        )
+        self.hidden_product = Product.objects.create(
+            category=self.hidden_category, name='Hidden Product', unit='piece',
+            unit_price=Decimal('10.00'), shelf_life=7,
+        )
+        self.hidden_batch = ProductBatch.objects.create(
+            product=self.hidden_product, batch_number='PRD-HIDDEN-001',
+            unit_price=Decimal('10.00'), initial_quantity=Decimal('10.00'),
+            remaining_quantity=Decimal('10.00'), expiration_date='2026-12-31',
+        )
+
+    def test_new_categories_are_visible_to_staff_by_default(self):
+        self.assertTrue(self.visible_category.is_visible_to_staff)
+
+    def test_staff_lists_and_retrieves_only_visible_categories(self):
+        self.client.force_authenticate(user=self.staff)
+        response = self.client.get('/inventory/categories/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([item['id'] for item in response.data], [self.visible_category.pk])
+        response = self.client.get(f'/inventory/categories/{self.hidden_category.pk}/')
+        self.assertEqual(response.status_code, 404)
+
+    def test_admin_can_see_and_toggle_hidden_category(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(f'/inventory/categories/{self.hidden_category.pk}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data['is_visible_to_staff'])
+        response = self.client.patch(
+            f'/inventory/categories/{self.hidden_category.pk}/',
+            {'is_visible_to_staff': True}, format='json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.hidden_category.refresh_from_db()
+        self.assertTrue(self.hidden_category.is_visible_to_staff)
+
+    def test_staff_cannot_toggle_or_manage_categories_and_products(self):
+        self.client.force_authenticate(user=self.staff)
+        response = self.client.patch(
+            f'/inventory/categories/{self.visible_category.pk}/',
+            {'is_visible_to_staff': False}, format='json',
+        )
+        self.assertEqual(response.status_code, 403)
+        response = self.client.delete(f'/inventory/products/{self.visible_product.pk}/')
+        self.assertEqual(response.status_code, 403)
+
+    def test_hidden_products_and_batches_are_not_exposed_to_staff(self):
+        self.client.force_authenticate(user=self.staff)
+        response = self.client.get('/inventory/products/')
+        self.assertEqual([item['id'] for item in response.data], [self.visible_product.pk])
+        response = self.client.get(f'/inventory/products/{self.hidden_product.pk}/')
+        self.assertEqual(response.status_code, 404)
+        response = self.client.get(f'/inventory/product-batches/{self.hidden_batch.pk}/')
+        self.assertEqual(response.status_code, 404)
+
+    def test_staff_cannot_create_batch_for_hidden_product(self):
+        self.client.force_authenticate(user=self.staff)
+        response = self.client.post('/inventory/product-batches/', {
+            'product_id': self.hidden_product.pk,
+            'quantity': '2.00',
+            'expiration_date': '2026-12-31',
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('product_id', response.data)
 
 
 def make_user(username='staffuser', role='staff'):

@@ -43,7 +43,10 @@ class OrderViewSet(viewsets.ModelViewSet):
                     {'error': f"Quantity for item at index {index} must be greater than zero."}, status=400
                 )
             try:
-                product = Product.objects.get(pk=product_id, is_active=True)
+                products = Product.objects.filter(is_active=True)
+                if request.user.role == 'staff':
+                    products = products.filter(category__is_visible_to_staff=True)
+                product = products.get(pk=product_id)
             except Product.DoesNotExist:
                 return Response(
                     {'error': f"Product {product_id} at index {index} not found or is inactive."}, status=400

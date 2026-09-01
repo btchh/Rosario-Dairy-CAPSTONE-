@@ -48,6 +48,7 @@ def place_order(customer, items, handled_by, discount_type='none', discount_valu
             discount_type=discount_type,
             discount_value=discount_value,
             amount_tendered=amount_tendered,
+            customer=customer,
         )
 
         order.transaction = txn  # pyright: ignore[reportAttributeAccessIssue]

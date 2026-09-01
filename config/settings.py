@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'accounts',
     'sales',
     'systemsetting',
+    'reporting',
 ]
 
 MIDDLEWARE = [
@@ -87,7 +88,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'rosario_dairy',
         'USER': 'postgres',
-        'PASSWORD': 'root',
+        'PASSWORD': '12345678',
         'HOST': 'localhost',
         'PORT': '5432',
     }

@@ -19,6 +19,10 @@ class Transaction(models.Model):
   ]
 
   handled_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='transactions_handled')
+  customer = models.ForeignKey(
+    'Customer', on_delete=models.PROTECT, related_name='transactions',
+    null=True, blank=True
+  )
   subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
   discount_type = models.CharField(max_length=10, choices=DISCOUNT_CHOICES, default='none')
   discount_value = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))

@@ -18,6 +18,105 @@ from sales.services import SalesService
 User = get_user_model()
 
 
+class HiddenCategorySalesAPITests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.staff = make_user('hiddenstaff')
+        self.admin = make_user('hiddenadmin', role='admin')
+        self.category = Category.objects.create(
+            name='Admin Only', is_visible_to_staff=False
+        )
+        self.product = Product.objects.create(
+            category=self.category, name='Hidden Product', unit='piece',
+            unit_price=Decimal('10.00'), shelf_life=7,
+        )
+        ProductBatch.objects.create(
+            product=self.product, batch_number='PRD-HIDDEN-SALE',
+            unit_price=Decimal('10.00'), initial_quantity=Decimal('20.00'),
+            remaining_quantity=Decimal('20.00'), expiration_date='2026-12-31',
+        )
+        self.customer = Customer.objects.create(
+            name='Test Customer', created_by=self.staff
+        )
+
+    def test_staff_cannot_checkout_hidden_product_by_known_id(self):
+        self.client.force_authenticate(user=self.staff)
+        response = self.client.post('/sales/checkout/', {
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'payment_method': 'cash', 'amount_tendered': '20.00',
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('not found', response.data['error'])
+
+    def test_staff_cannot_order_hidden_product_by_known_id(self):
+        self.client.force_authenticate(user=self.staff)
+        response = self.client.post('/sales/orders/', {
+            'customer_id': self.customer.pk,
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('not found', response.data['error'])
+
+    def test_admin_can_checkout_hidden_product(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/sales/checkout/', {
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'payment_method': 'cash', 'amount_tendered': '20.00',
+        }, format='json')
+        self.assertEqual(response.status_code, 201)
+
+
+class TransactionCustomerHistoryTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.staff = make_user('customerhistorystaff')
+        self.category = Category.objects.create(name='Customer History')
+        self.product = Product.objects.create(
+            category=self.category, name='History Product', unit='piece',
+            unit_price=Decimal('10.00'), shelf_life=7,
+        )
+        ProductBatch.objects.create(
+            product=self.product, batch_number='PRD-CUSTOMER-HISTORY',
+            unit_price=Decimal('10.00'), initial_quantity=Decimal('10.00'),
+            remaining_quantity=Decimal('10.00'), expiration_date='2026-12-31',
+        )
+        self.customer = Customer.objects.create(
+            name='Juan Dela Cruz', contact_number='09171234567',
+            created_by=self.staff,
+        )
+        self.client.force_authenticate(user=self.staff)
+
+    def test_checkout_customer_is_returned_in_sales_history(self):
+        checkout = self.client.post('/sales/checkout/', {
+            'customer_id': self.customer.pk,
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'payment_method': 'cash', 'amount_tendered': '20.00',
+        }, format='json')
+        self.assertEqual(checkout.status_code, 201)
+        self.assertEqual(checkout.data['customer']['name'], 'Juan Dela Cruz')
+
+        history = self.client.get('/sales/transactions/')
+        self.assertEqual(history.status_code, 200)
+        self.assertEqual(history.data[0]['customer']['name'], 'Juan Dela Cruz')
+
+    def test_checkout_without_customer_remains_walk_in_compatible(self):
+        checkout = self.client.post('/sales/checkout/', {
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'payment_method': 'cash', 'amount_tendered': '20.00',
+        }, format='json')
+        self.assertEqual(checkout.status_code, 201)
+        self.assertIsNone(checkout.data['customer'])
+
+    def test_order_transaction_carries_the_order_customer(self):
+        response = self.client.post('/sales/orders/', {
+            'customer_id': self.customer.pk,
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'payment_method': 'cash', 'amount_tendered': '20.00',
+        }, format='json')
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['transaction']['customer']['name'], 'Juan Dela Cruz')
+
+
 def make_user(username='staffuser', role='staff'):
     return User.objects.create_user(  # pyright: ignore[reportAttributeAccessIssue]
         username=username,
@@ -220,8 +319,6 @@ class BestSellersReportTests(TestCase):
     def test_default_limit_used_when_absent(self):
         response = self.client.get('/sales/reports/best-sellers/')
         self.assertEqual(response.status_code, 200)
-
-
 class TransactionHistoryTests(TestCase):
     """Covers: new GET /sales/transactions/ and /sales/transactions/<id>/ endpoints."""
 
@@ -530,5 +627,3 @@ class CancelOrderPermissionTests(TestCase):
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(f'/sales/orders/{self.order_id}/cancel/')
         self.assertEqual(response.status_code, 200)
-
-        

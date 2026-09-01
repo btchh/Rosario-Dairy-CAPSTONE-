@@ -5,9 +5,11 @@ from django.db.models import Sum
 from ..models import Product, Ingredient, ProductBatch, IngredientBatch, FEFOConf
 
 
-def check_product_stock():
+def check_product_stock(visible_to_staff=False):
   low_stock_prods = []
   products = Product.objects.filter(is_active=True)
+  if visible_to_staff:
+    products = products.filter(category__is_visible_to_staff=True)
   config = FEFOConf.get_config()
   for product in products:
     low_stock_threshold = product.low_stock_threshold if product.low_stock_threshold is not None else config.low_stock_threshold
@@ -27,13 +29,16 @@ def check_ingredient_stock():
       low_stock_ings.append({'ingredient': ingredient, 'remaining_quantity': total_remaining})
   return low_stock_ings
 
-def check_product_expiration():
+def check_product_expiration(visible_to_staff=False):
   now = timezone.now().date()
   config = FEFOConf.get_config()
   near_expiry_threshold = now + timedelta(days=config.near_expiry_threshold)
-  return ProductBatch.objects.filter(
+  batches = ProductBatch.objects.filter(
     status='available', expiration_date__lte=near_expiry_threshold
-  ).order_by('expiration_date')
+  )
+  if visible_to_staff:
+    batches = batches.filter(product__category__is_visible_to_staff=True)
+  return batches.order_by('expiration_date')
 
 def check_ingredient_expiration():
   now = timezone.now().date()

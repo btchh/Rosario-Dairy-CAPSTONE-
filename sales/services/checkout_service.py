@@ -6,7 +6,7 @@ from inventory.services.batch_service import BatchService
 
 def checkout(cart_items, staff_user, payment_method='cash',
             discount_type='none', discount_value=Decimal('0.00'),
-            amount_tendered=None):
+            amount_tendered=None, customer=None):
     """
     cart_items: list of (product, quantity) OR (product, quantity, locked_price)
     tuples. When locked_price is supplied (e.g. an Order's snapshotted
@@ -21,6 +21,7 @@ def checkout(cart_items, staff_user, payment_method='cash',
     with db_transaction.atomic():
         txn = Transaction.objects.create(
             handled_by=staff_user,
+            customer=customer,
             payment_method=payment_method,
             subtotal=Decimal('0.00'),
             total_amount=Decimal('0.00')

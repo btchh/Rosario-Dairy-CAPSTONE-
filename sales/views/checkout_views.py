@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from ..serializers import TransactionSerializer
+from ..models import Customer
 from ..services import SalesService
 from inventory.models import Product
 from decimal import Decimal, InvalidOperation
@@ -13,6 +14,14 @@ class CheckoutView(viewsets.ViewSet):
         raw_items = request.data.get('items', [])
         payment_method = request.data.get('payment_method', 'cash')
         discount_type = request.data.get('discount_type', 'none')
+        customer_id = request.data.get('customer_id')
+
+        customer = None
+        if customer_id not in (None, ''):
+            try:
+                customer = Customer.objects.get(pk=customer_id)
+            except (Customer.DoesNotExist, ValueError, TypeError):
+                return Response({'error': 'Customer not found.'}, status=400)
 
         try:
             discount_value = Decimal(str(request.data.get('discount_value', '0')))
@@ -45,14 +54,18 @@ class CheckoutView(viewsets.ViewSet):
                 return Response({'error': f"Quantity for product {product_id} must be greater than zero."}, status=400)
 
             try:
-                product = Product.objects.get(pk=product_id, is_active=True)
+                products = Product.objects.filter(is_active=True)
+                if request.user.role == 'staff':
+                    products = products.filter(category__is_visible_to_staff=True)
+                product = products.get(pk=product_id)
             except Product.DoesNotExist:
                 return Response({'error': f"Product {product_id} not found or is inactive."}, status=400)
             cart_items.append((product, quantity))
 
         try:
             txn = SalesService.checkout(cart_items, request.user, payment_method,
-                            discount_type, discount_value, amount_tendered)
+                            discount_type, discount_value, amount_tendered,
+                            customer=customer)
         except ValueError as e:
             return Response({'error': str(e)}, status=400)
 

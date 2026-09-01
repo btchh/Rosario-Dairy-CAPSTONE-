@@ -35,6 +35,15 @@ class ProdBatchSerializer(serializers.ModelSerializer):
     ]
     read_only_fields = ['id', 'batch_number', 'initial_quantity', 'remaining_quantity', 'status', 'created_at', 'updated_at']
 
+  def get_fields(self):
+    fields = super().get_fields()
+    request = self.context.get('request')
+    if request and request.user.role == 'staff':
+      fields['product_id'].queryset = Product.objects.filter(
+        category__is_visible_to_staff=True
+      )
+    return fields
+
   def validate(self, attrs):
     """
     Rejects an expiration_date earlier than date_received. On partial

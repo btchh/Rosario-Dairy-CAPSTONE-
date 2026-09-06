@@ -1,3 +1,5 @@
+from typing import cast
+
 from django.http import FileResponse
 from django.utils import timezone
 from rest_framework import status
@@ -13,7 +15,8 @@ class ReportTypeMixin:
     def get_report_type(self, request):
         serializer = ReportTypeQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
-        return serializer.validated_data['type']
+        validated_data = cast(dict[str, str], serializer.validated_data)
+        return validated_data['type']
 
     @staticmethod
     def serialized_data(report_type, data):
@@ -60,9 +63,10 @@ class ReportRefreshView(APIView):
     permission_classes = [IsAdmin | IsStaff]
 
     def post(self, request):
-        generated_at, refreshed = refresh_reports(
-            visible_to_staff=request.user.role == 'staff'
-        )
+        visible_to_staff = request.user.role == 'staff'
+        generated_at, refreshed = refresh_reports(visible_to_staff=visible_to_staff)
+        if not visible_to_staff:
+            refresh_reports(visible_to_staff=True)
         return Response({
             'message': 'Report metrics refreshed successfully.',
             'generated_at': generated_at,

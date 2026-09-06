@@ -22,6 +22,7 @@ staticfiles/
 
 # Editor
 .vscode/
+.codex/
 .idea/
 *.swp
 

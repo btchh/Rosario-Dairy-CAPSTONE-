@@ -1,9 +1,16 @@
 from datetime import datetime
 from rest_framework import viewsets, status
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from ..models import Transaction
 from ..serializers import TransactionSerializer
+
+
+class TransactionPagination(PageNumberPagination):
+    page_size = 50
+    page_size_query_param = 'page_size'
+    max_page_size = 200
 
 
 class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
@@ -17,6 +24,7 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
       end_date=YYYY-MM-DD
       payment_method=cash|online
       handled_by=<user id>
+      customer_id=<customer id>
       include_voided=true   (defaults to false — voided sales hidden by default)
     """
     queryset = Transaction.objects.select_related('handled_by', 'customer').prefetch_related(
@@ -24,6 +32,7 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
     ).order_by('-created_at')
     serializer_class = TransactionSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = TransactionPagination
 
     @staticmethod
     def _parse_date_param(value, field_name):
@@ -70,6 +79,17 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
             except ValueError:
                 return Response({'error': 'handled_by must be a valid user id.'}, status=status.HTTP_400_BAD_REQUEST)
             queryset = queryset.filter(handled_by_id=handled_by)
+
+        customer_id = params.get('customer_id')
+        if customer_id:
+            try:
+                customer_id = int(customer_id)
+            except ValueError:
+                return Response(
+                    {'error': 'customer_id must be a valid customer id.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            queryset = queryset.filter(customer_id=customer_id)
 
         include_voided = params.get('include_voided', 'false').lower() == 'true'
         if not include_voided:

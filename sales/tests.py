@@ -97,7 +97,7 @@ class TransactionCustomerHistoryTests(TestCase):
 
         history = self.client.get('/sales/transactions/')
         self.assertEqual(history.status_code, 200)
-        self.assertEqual(history.data[0]['customer']['name'], 'Juan Dela Cruz')
+        self.assertEqual(history.data['results'][0]['customer']['name'], 'Juan Dela Cruz')
 
     def test_checkout_without_customer_remains_walk_in_compatible(self):
         checkout = self.client.post('/sales/checkout/', {
@@ -319,6 +319,39 @@ class BestSellersReportTests(TestCase):
     def test_default_limit_used_when_absent(self):
         response = self.client.get('/sales/reports/best-sellers/')
         self.assertEqual(response.status_code, 200)
+
+
+class SalesByCategoryReportTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = make_user(username='categoryadmin', role='admin')
+        self.category = Category.objects.create(name='Category Report')
+        product = Product.objects.create(
+            category=self.category, name='Report Milk', unit='liter',
+            unit_price=Decimal('50.00'), shelf_life=7,
+        )
+        batch = ProductBatch.objects.create(
+            product=product, batch_number='PRD-CATEGORY-REPORT',
+            unit_price=Decimal('50.00'), initial_quantity=Decimal('10.00'),
+            remaining_quantity=Decimal('10.00'), expiration_date='2026-12-31',
+        )
+        transaction = Transaction.objects.create(
+            handled_by=self.admin, subtotal=Decimal('50.00'),
+            total_amount=Decimal('50.00'),
+        )
+        TransactionItem.objects.create(
+            transaction=transaction, product_batch=batch,
+            quantity=Decimal('1.00'), unit_price=Decimal('50.00'),
+        )
+        self.client.force_authenticate(user=self.admin)
+
+    def test_category_data_queryset_is_evaluated_once(self):
+        with self.assertNumQueries(1):
+            response = self.client.get('/sales/reports/sales-by-category/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data[0]['name'], self.category.name)
+
+
 class TransactionHistoryTests(TestCase):
     """Covers: new GET /sales/transactions/ and /sales/transactions/<id>/ endpoints."""
 
@@ -354,13 +387,29 @@ class TransactionHistoryTests(TestCase):
         self._make_txn()
         response = self.client.get('/sales/transactions/')
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 2)
+        self.assertEqual(response.data['count'], 2)
+        self.assertEqual(len(response.data['results']), 2)
 
     def test_retrieve_single_transaction(self):
         txn = self._make_txn()
         response = self.client.get(f'/sales/transactions/{txn.pk}/')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['id'], txn.pk)
+        self.assertFalse(response.data['is_voided'])
+
+    def test_list_is_paginated_at_fifty_transactions(self):
+        Transaction.objects.bulk_create([
+            Transaction(
+                handled_by=self.staff, subtotal=Decimal('1.00'),
+                total_amount=Decimal('1.00'),
+            )
+            for _ in range(51)
+        ])
+        response = self.client.get('/sales/transactions/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['count'], 51)
+        self.assertEqual(len(response.data['results']), 50)
+        self.assertIsNotNone(response.data['next'])
 
     def test_unauthenticated_request_rejected(self):
         self.client.force_authenticate(user=None)
@@ -374,14 +423,15 @@ class TransactionHistoryTests(TestCase):
         txn.is_voided = True
         txn.save()
         response = self.client.get('/sales/transactions/')
-        self.assertEqual(len(response.data), 0)
+        self.assertEqual(response.data['count'], 0)
 
     def test_include_voided_true_shows_voided_transaction(self):
         txn = self._make_txn()
         txn.is_voided = True
         txn.save()
         response = self.client.get('/sales/transactions/?include_voided=true')
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data['count'], 1)
+        self.assertTrue(response.data['results'][0]['is_voided'])
 
     # --- payment_method filter ---
 
@@ -390,8 +440,8 @@ class TransactionHistoryTests(TestCase):
         self._make_txn(payment_method='online')
         response = self.client.get('/sales/transactions/?payment_method=online')
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]['payment_method'], 'online')
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data['results'][0]['payment_method'], 'online')
 
     def test_payment_method_filter_invalid_rejected(self):
         self._make_txn()
@@ -405,11 +455,31 @@ class TransactionHistoryTests(TestCase):
         self._make_txn(staff=self.other_staff)
         response = self.client.get(f'/sales/transactions/?handled_by={self.other_staff.pk}')
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data['count'], 1)
 
     def test_handled_by_filter_non_numeric_rejected(self):
         self._make_txn()
         response = self.client.get('/sales/transactions/?handled_by=notanumber')
+        self.assertEqual(response.status_code, 400)
+
+    def test_customer_id_filter(self):
+        first = Customer.objects.create(name='First', created_by=self.staff)
+        second = Customer.objects.create(name='Second', created_by=self.staff)
+        Transaction.objects.create(
+            handled_by=self.staff, customer=first,
+            subtotal=Decimal('10.00'), total_amount=Decimal('10.00'),
+        )
+        Transaction.objects.create(
+            handled_by=self.staff, customer=second,
+            subtotal=Decimal('20.00'), total_amount=Decimal('20.00'),
+        )
+        response = self.client.get(f'/sales/transactions/?customer_id={second.pk}')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data['results'][0]['customer']['id'], second.pk)
+
+    def test_customer_id_filter_rejects_non_numeric_value(self):
+        response = self.client.get('/sales/transactions/?customer_id=notanumber')
         self.assertEqual(response.status_code, 400)
 
     # --- date range filter ---
@@ -428,7 +498,7 @@ class TransactionHistoryTests(TestCase):
         self._make_txn()
         response = self.client.get('/sales/transactions/?start_date=2020-01-01&end_date=2020-01-02')
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 0)
+        self.assertEqual(response.data['count'], 0)
 
     def test_date_range_includes_today(self):
         self._make_txn()
@@ -436,7 +506,7 @@ class TransactionHistoryTests(TestCase):
         today = timezone.now().date().isoformat()
         response = self.client.get(f'/sales/transactions/?start_date={today}&end_date={today}')
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data['count'], 1)
 
 
 class PlaceOrderTests(TestCase):
@@ -553,6 +623,20 @@ class PlaceOrderTests(TestCase):
         self.assertEqual(Order.objects.count(), 0)
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.remaining_quantity, Decimal('100.00'))
+
+    def test_order_list_filters_by_customer_id(self):
+        other_customer = Customer.objects.create(name='Other', created_by=self.staff)
+        matching = Order.objects.create(customer=self.customer, handled_by=self.staff)
+        Order.objects.create(customer=other_customer, handled_by=self.staff)
+
+        response = self.client.get(f'/sales/orders/?customer_id={self.customer.pk}')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([item['id'] for item in response.data], [matching.pk])
+
+    def test_order_customer_id_filter_rejects_non_numeric_value(self):
+        response = self.client.get('/sales/orders/?customer_id=notanumber')
+        self.assertEqual(response.status_code, 400)
 
 
 class OrderMutationRemovedTests(TestCase):

@@ -5,7 +5,6 @@ class DailySalesItemSerializer(serializers.Serializer):
     product_name = serializers.CharField()
     quantity = serializers.DecimalField(max_digits=14, decimal_places=2)
     total_revenue = serializers.DecimalField(max_digits=14, decimal_places=2)
-    date = serializers.DateField()
 
 
 class DailySalesSerializer(serializers.Serializer):
@@ -15,13 +14,45 @@ class DailySalesSerializer(serializers.Serializer):
     items = DailySalesItemSerializer(many=True)
 
 
-class PeriodSalesSerializer(serializers.Serializer):
+class DailyBreakdownItemSerializer(serializers.Serializer):
+    date = serializers.DateField()
+    transaction_count = serializers.IntegerField()
+    revenue = serializers.DecimalField(max_digits=14, decimal_places=2)
+
+
+class TopProductItemSerializer(serializers.Serializer):
+    product_name = serializers.CharField()
+    quantity = serializers.DecimalField(max_digits=14, decimal_places=2)
+    revenue = serializers.DecimalField(max_digits=14, decimal_places=2)
+
+
+class WeeklyBreakdownItemSerializer(serializers.Serializer):
+    week_start = serializers.DateField()
+    week_end = serializers.DateField()
+    transaction_count = serializers.IntegerField()
+    revenue = serializers.DecimalField(max_digits=14, decimal_places=2)
+
+
+class WeeklySalesSerializer(serializers.Serializer):
     start_date = serializers.DateField()
     end_date = serializers.DateField()
     revenue = serializers.DecimalField(max_digits=14, decimal_places=2)
     transaction_count = serializers.IntegerField()
     previous_revenue = serializers.DecimalField(max_digits=14, decimal_places=2)
     growth_rate = serializers.FloatField(allow_null=True)
+    daily_breakdown = DailyBreakdownItemSerializer(many=True)
+    top_products = TopProductItemSerializer(many=True)
+
+
+class MonthlySalesSerializer(serializers.Serializer):
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    revenue = serializers.DecimalField(max_digits=14, decimal_places=2)
+    transaction_count = serializers.IntegerField()
+    previous_revenue = serializers.DecimalField(max_digits=14, decimal_places=2)
+    growth_rate = serializers.FloatField(allow_null=True)
+    weekly_breakdown = WeeklyBreakdownItemSerializer(many=True)
+    top_products = TopProductItemSerializer(many=True)
 
 
 class StockItemSerializer(serializers.Serializer):
@@ -63,6 +94,12 @@ class ForecastReportSerializer(serializers.Serializer):
     forecast = ForecastPointSerializer(many=True)
 
 
+class CustomerTopItemSerializer(serializers.Serializer):
+    customer_name = serializers.CharField()
+    transaction_count = serializers.IntegerField()
+    total_spent = serializers.DecimalField(max_digits=14, decimal_places=2)
+
+
 class CustomerReportSerializer(serializers.Serializer):
     as_of = serializers.DateField()
     total_customers = serializers.IntegerField()
@@ -70,12 +107,13 @@ class CustomerReportSerializer(serializers.Serializer):
     customers_with_purchases = serializers.IntegerField()
     average_lifetime_value = serializers.DecimalField(max_digits=14, decimal_places=2)
     total_lifetime_value = serializers.DecimalField(max_digits=14, decimal_places=2)
+    top_customers = CustomerTopItemSerializer(many=True)
 
 
 REPORT_SERIALIZERS = {
     'daily_sales': DailySalesSerializer,
-    'weekly_sales': PeriodSalesSerializer,
-    'monthly_sales': PeriodSalesSerializer,
+    'weekly_sales': WeeklySalesSerializer,
+    'monthly_sales': MonthlySalesSerializer,
     'inventory': InventoryReportSerializer,
     'sarima_forecast': ForecastReportSerializer,
     'customer': CustomerReportSerializer,

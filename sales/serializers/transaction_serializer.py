@@ -21,5 +21,5 @@ class TransactionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Transaction
-        fields = ['id', 'handled_by', 'customer', 'subtotal', 'discount_type', 'discount_value', 'discount_amount', 'total_amount', 'amount_tendered', 'change_due', 'payment_method', 'delivery_status', 'items', 'created_at']
-        read_only_fields = ['id', 'handled_by', 'subtotal', 'discount_amount', 'total_amount', 'change_due', 'items', 'created_at']
+        fields = ['id', 'handled_by', 'customer', 'subtotal', 'discount_type', 'discount_value', 'discount_amount', 'total_amount', 'amount_tendered', 'change_due', 'payment_method', 'delivery_status', 'is_voided', 'items', 'created_at']
+        read_only_fields = ['id', 'handled_by', 'subtotal', 'discount_amount', 'total_amount', 'change_due', 'delivery_status', 'is_voided', 'items', 'created_at']

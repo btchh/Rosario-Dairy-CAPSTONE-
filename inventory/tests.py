@@ -25,7 +25,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from inventory.models import (
     Category, Product, ProductBatch, Ingredient, IngredientBatch,
-    Supplier, StockAdjustment, StockCount, BatchSequence,
+    Supplier, StockAdjustment, StockCount, BatchSequence, FEFOConf,
 )
 from inventory.services.batch_service import BatchService
 from inventory.services.batch_sequence_service import next_sequence
@@ -120,6 +120,97 @@ def make_user(username='staffuser', role='staff'):
         first_name='Test',
         last_name='User',
     )
+
+
+class StockAlertQueryTests(TestCase):
+    def setUp(self):
+        self.today = timezone.localdate()
+        self.admin = make_user('stockalertadmin', role='admin')
+        self.category = Category.objects.create(name='Stock Alerts')
+        FEFOConf.objects.create(
+            near_expiry_threshold=7,
+            critical_expiry_threshold=3,
+            low_stock_threshold=15,
+        )
+
+    def test_product_stock_check_uses_one_aggregate_query(self):
+        for index in range(3):
+            product = Product.objects.create(
+                category=self.category, name=f'Product {index}', unit='piece',
+                unit_price=Decimal('10.00'), shelf_life=7,
+                low_stock_threshold=Decimal('20.00'),
+            )
+            ProductBatch.objects.create(
+                product=product, batch_number=f'PRD-STOCK-{index}',
+                unit_price=Decimal('10.00'), initial_quantity=Decimal('5.00'),
+                remaining_quantity=Decimal('5.00'),
+                expiration_date=self.today + timedelta(days=30),
+            )
+
+        with self.assertNumQueries(2):
+            rows = BatchService.check_product_stock()
+
+        self.assertEqual(len(rows), 3)
+
+    def test_ingredient_stock_check_uses_one_aggregate_query(self):
+        for index in range(3):
+            ingredient = Ingredient.objects.create(
+                name=f'Ingredient {index}', unit='liter',
+                unit_price=Decimal('10.00'), shelf_life=7,
+                low_stock_threshold=Decimal('20.00'),
+            )
+            IngredientBatch.objects.create(
+                ingredient=ingredient, batch_number=f'ING-STOCK-{index}',
+                unit_price=Decimal('10.00'), initial_quantity=Decimal('5.00'),
+                remaining_quantity=Decimal('5.00'),
+                expiration_date=self.today + timedelta(days=30),
+            )
+
+        with self.assertNumQueries(2):
+            rows = BatchService.check_ingredient_stock()
+
+        self.assertEqual(len(rows), 3)
+
+    def test_expiration_check_excludes_expired_and_labels_urgency(self):
+        product = Product.objects.create(
+            category=self.category, name='Expiry Product', unit='piece',
+            unit_price=Decimal('10.00'), shelf_life=7,
+        )
+        for suffix, offset in (
+            ('EXPIRED', -1), ('CRITICAL', 2), ('NEAR', 5), ('LATER', 8),
+        ):
+            ProductBatch.objects.create(
+                product=product, batch_number=f'PRD-{suffix}',
+                unit_price=Decimal('10.00'), initial_quantity=Decimal('5.00'),
+                remaining_quantity=Decimal('5.00'),
+                expiration_date=self.today + timedelta(days=offset),
+            )
+
+        rows = list(BatchService.check_product_expiration())
+
+        self.assertEqual(
+            [(row.batch_number, row.expiry_status) for row in rows],
+            [('PRD-CRITICAL', 'critical'), ('PRD-NEAR', 'near_expiry')],
+        )
+        response = APIClient()
+        response.force_authenticate(user=self.admin)
+        payload = response.get('/inventory/expiring/products/')
+        self.assertEqual(payload.status_code, 200)
+        self.assertEqual(
+            [item['expiry_status'] for item in payload.data],
+            ['critical', 'near_expiry'],
+        )
+
+    def test_fefo_config_rejects_critical_window_larger_than_near_window(self):
+        client = APIClient()
+        client.force_authenticate(user=self.admin)
+        response = client.patch(
+            '/inventory/fefo-config/1/',
+            {'near_expiry_threshold': 3, 'critical_expiry_threshold': 5},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('critical_expiry_threshold', response.data)
 
 
 class CreateStockAdjustmentTests(TestCase):

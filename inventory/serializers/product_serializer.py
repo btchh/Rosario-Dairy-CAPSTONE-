@@ -14,6 +14,8 @@ class ProductSerializer(serializers.ModelSerializer):
   total_stock = serializers.SerializerMethodField()
 
   def get_total_stock(self, obj):
+    if hasattr(obj, 'available_stock'):
+      return obj.available_stock
     return obj.batches.filter(status='available').aggregate(
       total=Sum('remaining_quantity')
     )['total'] or 0

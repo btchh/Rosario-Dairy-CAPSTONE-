@@ -52,8 +52,7 @@ def place_order(customer, items, handled_by, discount_type='none', discount_valu
         )
 
         order.transaction = txn  # pyright: ignore[reportAttributeAccessIssue]
-        order.status = 'fulfilled'
-        order.save()
+        order.save(update_fields=['transaction', 'updated_at'])
 
     order.refresh_from_db()
     return order

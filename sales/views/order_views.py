@@ -2,6 +2,7 @@ from typing import cast
 from decimal import Decimal, InvalidOperation
 from rest_framework import viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from accounts.permissions import IsAdmin
@@ -16,6 +17,19 @@ class OrderViewSet(viewsets.ModelViewSet):
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
     http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        customer_id = self.request.query_params.get('customer_id')
+        if customer_id:
+            try:
+                customer_id = int(customer_id)
+            except ValueError as exc:
+                raise ValidationError({
+                    'customer_id': 'customer_id must be a valid customer id.'
+                }) from exc
+            queryset = queryset.filter(customer_id=customer_id)
+        return queryset
 
     def create(self, request, *args, **kwargs):
         serializer = OrderSerializer(data=request.data)

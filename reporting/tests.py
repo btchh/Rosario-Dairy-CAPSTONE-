@@ -1,5 +1,6 @@
 from datetime import timedelta
 from decimal import Decimal
+from unittest.mock import call, patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -98,7 +99,7 @@ class ReportAPITests(TestCase):
         self.assertEqual(data['items'][0]['product_name'], 'Milk')
         self.assertEqual(data['items'][0]['quantity'], '3.00')
         self.assertEqual(data['items'][0]['total_revenue'], '150.00')
-        self.assertEqual(data['items'][0]['date'], str(timezone.localdate()))
+        self.assertNotIn('date', data['items'][0])
 
     def test_daily_sales_pdf_contains_product_breakdown(self):
         self.client.force_authenticate(user=self.staff)
@@ -107,6 +108,34 @@ class ReportAPITests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(content.startswith(b'%PDF'))
         self.assertGreater(len(content), 2000)
+
+    def test_weekly_sales_includes_complete_daily_breakdown_and_top_products(self):
+        self.client.force_authenticate(user=self.staff)
+        response = self.client.get('/api/reports/preview/?type=weekly_sales')
+        data = response.data['data']
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(data['daily_breakdown']), 7)
+        self.assertEqual(data['daily_breakdown'][-1]['date'], str(timezone.localdate()))
+        self.assertEqual(
+            sum(day['transaction_count'] for day in data['daily_breakdown']), 1
+        )
+        self.assertEqual(data['top_products'][0]['product_name'], 'Milk')
+        self.assertEqual(data['top_products'][0]['quantity'], '2.00')
+        self.assertEqual(data['top_products'][0]['revenue'], '100.00')
+
+    def test_monthly_sales_uses_weekly_breakdown(self):
+        self.client.force_authenticate(user=self.staff)
+        response = self.client.get('/api/reports/preview/?type=monthly_sales')
+        data = response.data['data']
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('daily_breakdown', data)
+        self.assertGreaterEqual(len(data['weekly_breakdown']), 1)
+        self.assertEqual(data['weekly_breakdown'][0]['week_start'], data['start_date'])
+        self.assertEqual(data['weekly_breakdown'][-1]['week_end'], data['end_date'])
+        self.assertEqual(data['end_date'], str(timezone.localdate()))
+        self.assertEqual(data['top_products'][0]['product_name'], 'Milk')
 
     def test_staff_inventory_report_excludes_hidden_categories(self):
         hidden_category = Category.objects.create(
@@ -136,3 +165,24 @@ class ReportAPITests(TestCase):
         response = self.client.post('/api/reports/refresh/', {}, format='json')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.data['report_types']), 6)
+
+    @patch('reporting.views.refresh_reports')
+    def test_admin_refreshes_admin_and_staff_cache_scopes(self, refresh_mock):
+        admin = User.objects.create_user(
+            username='reportadmin', password='testpass123!',
+            email='reportadmin@example.com', role='admin',
+        )
+        refreshed = {name: {} for name in (
+            'daily_sales', 'weekly_sales', 'monthly_sales', 'inventory',
+            'sarima_forecast', 'customer',
+        )}
+        refresh_mock.return_value = (timezone.now(), refreshed)
+        self.client.force_authenticate(user=admin)
+
+        response = self.client.post('/api/reports/refresh/', {}, format='json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            refresh_mock.call_args_list,
+            [call(visible_to_staff=False), call(visible_to_staff=True)],
+        )

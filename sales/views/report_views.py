@@ -83,7 +83,7 @@ class SalesByCategoryReportView(APIView):
         if start_date and end_date and start_date > end_date:
             return Response({'error': "'start_date' must be on or before 'end_date'."}, status=400)
 
-        data = SalesService.get_sales_by_category(start_date, end_date)
+        data = list(SalesService.get_sales_by_category(start_date, end_date))
         total = sum(float(row['total_sold']) for row in data)
         return Response([
             {'name': row['category_name'],

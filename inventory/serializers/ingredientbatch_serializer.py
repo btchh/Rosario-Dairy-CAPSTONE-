@@ -15,6 +15,7 @@ class IngBatchSerializer(serializers.ModelSerializer):
     source='ingredient',
     write_only=True
   ) 
+  expiry_status = serializers.CharField(read_only=True, required=False)
   quantity = serializers.DecimalField(
     max_digits = 10,
     decimal_places = 2, 
@@ -25,7 +26,7 @@ class IngBatchSerializer(serializers.ModelSerializer):
   class Meta:
     model = IngredientBatch
     fields = [
-      'id', 'ingredient', 'ingredient_id','batch_number', 'supplier', 'unit_price', 'initial_quantity', 'remaining_quantity', 'quantity','expiration_date', 'date_received', 'status', 'notes', 'created_at', 'updated_at'
+      'id', 'ingredient', 'ingredient_id','batch_number', 'supplier', 'unit_price', 'initial_quantity', 'remaining_quantity', 'quantity','expiration_date', 'expiry_status', 'date_received', 'status', 'notes', 'created_at', 'updated_at'
     ]
     read_only_fields = ['id', 'batch_number', 'initial_quantity', 'remaining_quantity', 'status', 'created_at', 'updated_at']
 

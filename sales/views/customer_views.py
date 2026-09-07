@@ -1,10 +1,9 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from django.db.models import ProtectedError
 from ..models import Customer
 from ..serializers import CustomerSerializer
-from accounts.permissions import IsAdmin
+from accounts.permissions import IsAdmin, IsStaff
 
 
 class CustomerViewSet(viewsets.ModelViewSet):
@@ -14,7 +13,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ['update', 'partial_update', 'destroy']:
             return [IsAdmin()]
-        return [IsAuthenticated()]
+        return [(IsAdmin | IsStaff)()]
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)

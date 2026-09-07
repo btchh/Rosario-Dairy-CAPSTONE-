@@ -1,6 +1,8 @@
-Django
-djangorestframework
-djangorestframework-simplejwt
-django-cors-headers
-psycopg2-binary
-reportlab
+Django==6.1
+djangorestframework==3.18.0
+djangorestframework-simplejwt==5.5.1
+django-cors-headers==4.9.0
+psycopg2-binary==2.9.12
+reportlab==5.0.1
+gunicorn==23.0.0
+redis==8.1.0

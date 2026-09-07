@@ -1,7 +1,9 @@
 from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal
+from functools import partial
 from io import BytesIO
+from xml.sax.saxutils import escape
 
 from django.core.cache import cache
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Min, Q, Sum
@@ -17,6 +19,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 
 from inventory.models import Ingredient, IngredientBatch, Product, ProductBatch
 from sales.models import Customer, Transaction, TransactionItem
+from systemsetting.runtime import get_brand_name, get_runtime_settings
 
 
 REPORT_TYPES = (
@@ -46,6 +49,7 @@ class NumberedCanvas(canvas.Canvas):
     """Defers page drawing so the footer can display Page X of Y."""
 
     def __init__(self, *args, **kwargs):
+        self.footer_label = kwargs.pop('footer_label', 'Rosario Dairy System - Confidential')
         super().__init__(*args, **kwargs)
         self._saved_page_states = []
 
@@ -69,7 +73,7 @@ class NumberedCanvas(canvas.Canvas):
         self.line(0.6 * inch, 0.48 * inch, page_width - 0.6 * inch, 0.48 * inch)
         self.setFillColor(colors.HexColor('#64748B'))
         self.setFont('Helvetica', 8)
-        self.drawString(0.6 * inch, 0.3 * inch, 'Rosario Dairy System - Confidential')
+        self.drawString(0.6 * inch, 0.3 * inch, self.footer_label)
         self.drawRightString(
             page_width - 0.6 * inch, 0.3 * inch,
             f'Page {self._pageNumber} of {page_count}',
@@ -394,7 +398,8 @@ def get_report(report_type, force_refresh=False, visible_to_staff=False):
     if report_type not in REPORT_BUILDERS:
         raise ValueError(f'Unsupported report type: {report_type}')
     scope = 'staff' if visible_to_staff else 'admin'
-    key = f'{CACHE_PREFIX}{scope}:{report_type}'
+    settings_version = get_runtime_settings()['version']
+    key = f'{CACHE_PREFIX}{settings_version}:{scope}:{report_type}'
     if not force_refresh:
         cached = cache.get(key)
         if cached is not None:
@@ -454,6 +459,28 @@ def _format_growth_rate(value):
 
 
 def generate_pdf(report_type, data):
+    runtime_settings = get_runtime_settings()
+    brand_name = get_brand_name()
+    currency = runtime_settings['currency']
+    system_label = runtime_settings['system_name'] or f'{brand_name} System'
+    business_details = [
+        runtime_settings['business_address'],
+        runtime_settings['business_contact'],
+        runtime_settings['business_email'],
+        f"TIN: {runtime_settings['tin']}" if runtime_settings['tin'] else '',
+        runtime_settings['business_type'],
+    ]
+    business_details = [escape(str(value)) for value in business_details if value]
+    date_patterns = {
+        'MM/DD/YYYY': '%m/%d/%Y',
+        'DD/MM/YYYY': '%d/%m/%Y',
+        'YYYY-MM-DD': '%Y-%m-%d',
+    }
+    brand_markup = escape(brand_name)
+    if system_label != brand_name:
+        brand_markup += f'<br/><font size="8">{escape(system_label)}</font>'
+    if business_details:
+        brand_markup += f'<br/><font size="7">{" | ".join(business_details)}</font>'
     buffer = BytesIO()
     page_size = landscape(A4)
     margin = 0.6 * inch
@@ -462,8 +489,8 @@ def generate_pdf(report_type, data):
         buffer, pagesize=page_size,
         rightMargin=margin, leftMargin=margin,
         topMargin=margin, bottomMargin=0.65 * inch,
-        title=f'Rosario Dairy - {report_type.replace("_", " ").title()}',
-        author='Rosario Dairy System',
+        title=f'{brand_name} - {report_type.replace("_", " ").title()}',
+        author=brand_name,
         subject='Operational report export',
     )
     styles = getSampleStyleSheet()
@@ -508,13 +535,17 @@ def generate_pdf(report_type, data):
         fontName='Helvetica-Bold', fontSize=11, leading=14, spaceAfter=0,
     )
     generated = timezone.localtime()
+    generated_label = generated.strftime(
+        f"{date_patterns[runtime_settings['date_format']]} at %I:%M %p"
+    )
     report_title, report_period = _report_metadata(report_type, data)
     banner = Table([
         [
-            _as_table_paragraph('RD', mark_style),
-            _as_table_paragraph('Rosario Dairy System', brand_style),
+            _as_table_paragraph(''.join(word[0] for word in brand_name.split())[:3].upper(), mark_style),
+            _as_table_paragraph(brand_markup, brand_style),
             _as_table_paragraph(
-                f'<b>REPORT EXPORT</b><br/>Generated {generated:%B %d, %Y at %I:%M %p}',
+                f'<b>REPORT EXPORT - {currency}</b><br/>'
+                f'Generated {generated_label}',
                 banner_meta_style,
             ),
         ]
@@ -806,6 +837,11 @@ def generate_pdf(report_type, data):
             first=True,
         )
 
-    document.build(story, canvasmaker=NumberedCanvas)
+    document.build(
+        story,
+        canvasmaker=partial(
+            NumberedCanvas, footer_label=f'{brand_name} - Confidential'
+        ),
+    )
     buffer.seek(0)
     return buffer

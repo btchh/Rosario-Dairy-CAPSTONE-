@@ -1,11 +1,16 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-from . import views
+from django.urls import path
 
-router = DefaultRouter()
-router.register(r'system', views.SystemSettingsViewSet, basename='system-settings')
-router.register(r'notifications', views.NotificationSettingsViewSet, basename='notification-settings')
+from .views import NotificationSettingsView, SettingsOverviewView, SystemSettingsView
+
 
 urlpatterns = [
-  path('', include(router.urls)),
+    path('', SettingsOverviewView.as_view(), name='settings-overview'),
+    path('system/', SystemSettingsView.as_view(), name='system-settings'),
+    path('notifications/', NotificationSettingsView.as_view(), name='notification-settings'),
+    path('system/<int:pk>/', SystemSettingsView.as_view(), name='system-settings-detail'),
+    path(
+        'notifications/<int:pk>/',
+        NotificationSettingsView.as_view(),
+        name='notification-settings-detail',
+    ),
 ]

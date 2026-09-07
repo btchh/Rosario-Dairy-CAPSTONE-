@@ -1,20 +1,25 @@
-from rest_framework import viewsets
-from rest_framework.response import Response
+from rest_framework.generics import RetrieveUpdateAPIView
+from rest_framework.permissions import SAFE_METHODS
+from django.http import Http404
+
+from accounts.permissions import IsAdmin, IsStaff
 from ..models import NotificationSettings
 from ..serializers import NotificationSettingsSerializer
-from accounts.permissions import IsAdmin
-from typing import Any
 
-class NotificationSettingsViewSet(viewsets.ModelViewSet):
-    queryset = NotificationSettings.objects.all()
+
+class NotificationSettingsView(RetrieveUpdateAPIView):
+    """Singleton notification preferences: staff read, admin update."""
+
     serializer_class = NotificationSettingsSerializer
-    permission_classes = [IsAdmin]
-    http_method_names = ['get', 'put', 'patch']
+    http_method_names = ['get', 'put', 'patch', 'head', 'options']
 
-    def get_object(self) -> Any:
-        return NotificationSettings.get_config()
+    def get_permissions(self):
+        permission = (IsAdmin | IsStaff) if self.request.method in SAFE_METHODS else IsAdmin
+        return [permission()]
 
-    def list(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        return Response(serializer.data)
+    def get_object(self):
+        if self.kwargs.get('pk') not in (None, 1):
+            raise Http404
+        instance = NotificationSettings.get_config()
+        self.check_object_permissions(self.request, instance)
+        return instance

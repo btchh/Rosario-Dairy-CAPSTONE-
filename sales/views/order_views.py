@@ -4,8 +4,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from accounts.permissions import IsAdmin
+from accounts.permissions import IsAdmin, IsStaff
 from inventory.models import Product
 from ..models import Order
 from ..serializers import OrderSerializer
@@ -15,7 +14,7 @@ from ..services import SalesService
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = Order.objects.select_related('customer', 'handled_by', 'transaction').prefetch_related('items').all()
     serializer_class = OrderSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdmin | IsStaff]
     http_method_names = ['get', 'post', 'head', 'options']
 
     def get_queryset(self):
@@ -90,7 +89,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         return Response(OrderSerializer(order).data, status=201)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdmin])
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def cancel(self, request, pk=None):
         order = self.get_object()
         if order.status == 'cancelled':

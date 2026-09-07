@@ -289,6 +289,187 @@ class AdminResetPasswordViewTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
 
+class ForgotPasswordViewTests(TestCase):
+    endpoint = '/accounts/forgot-password/'
+    confirm_endpoint = '/accounts/reset-password/'
+    success_message = (
+        'If the credentials match our records, a password reset code has been sent.'
+    )
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        self.client = APIClient()
+        self.user = make_user('forgotuser')
+        self.payload = {
+            'username': self.user.username,
+            'email': self.user.email,
+        }
+
+    def test_missing_any_field_returns_400(self):
+        for field in self.payload:
+            with self.subTest(field=field):
+                payload = self.payload.copy()
+                payload.pop(field)
+                response = self.client.post(self.endpoint, payload, format='json')
+                self.assertEqual(response.status_code, 400)
+                self.assertIn('error', response.data)
+
+    def test_wrong_email_returns_generic_200_without_sending_email(self):
+        from django.core import mail
+
+        payload = {**self.payload, 'email': 'wrong@example.com'}
+        response = self.client.post(self.endpoint, payload, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['message'], self.success_message)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_nonexistent_username_returns_generic_200(self):
+        payload = {**self.payload, 'username': 'missing-user'}
+        response = self.client.post(self.endpoint, payload, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['message'], self.success_message)
+
+    def test_inactive_user_returns_generic_200_without_sending_email(self):
+        from django.core import mail
+
+        self.user.is_active = False
+        self.user.save(update_fields=['is_active'])
+        response = self.client.post(self.endpoint, self.payload, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['message'], self.success_message)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def _request_otp(self):
+        import re
+        from django.core import mail
+
+        response = self.client.post(self.endpoint, self.payload, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(mail.outbox), 1)
+        match = re.search(r'\b(\d{6})\b', mail.outbox[0].body)
+        self.assertIsNotNone(match)
+        return match.group(1)
+
+    def test_matching_credentials_send_otp_to_account_email(self):
+        from django.core import mail
+
+        self._request_otp()
+        self.assertEqual(mail.outbox[0].to, [self.user.email])
+
+    def test_invalid_otp_returns_400_without_changing_password(self):
+        otp = self._request_otp()
+        wrong_otp = '000001' if otp == '000000' else '000000'
+        response = self.client.post(self.confirm_endpoint, {
+            **self.payload, 'otp': wrong_otp,
+            'new_password': 'BrandNewPass123!',
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('testpass123!'))
+
+    def test_weak_new_password_returns_400(self):
+        otp = self._request_otp()
+        response = self.client.post(self.confirm_endpoint, {
+            **self.payload, 'otp': otp, 'new_password': '123',
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('error', response.data)
+
+    def test_valid_otp_resets_password_and_clears_lockout(self):
+        from datetime import timedelta
+        from django.utils import timezone
+
+        self.user.failed_login_attempts = 5
+        self.user.locked_until = timezone.now() + timedelta(minutes=15)
+        self.user.save(update_fields=['failed_login_attempts', 'locked_until'])
+        self.payload['email'] = self.user.email.upper()
+        otp = self._request_otp()
+
+        response = self.client.post(self.confirm_endpoint, {
+            **self.payload, 'otp': otp, 'new_password': 'BrandNewPass123!',
+        }, format='json')
+
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('BrandNewPass123!'))
+        self.assertEqual(self.user.failed_login_attempts, 0)
+        self.assertIsNone(self.user.locked_until)
+
+    def test_otp_is_single_use(self):
+        otp = self._request_otp()
+        payload = {
+            **self.payload, 'otp': otp, 'new_password': 'BrandNewPass123!',
+        }
+        first = self.client.post(self.confirm_endpoint, payload, format='json')
+        second = self.client.post(self.confirm_endpoint, payload, format='json')
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 400)
+
+    def test_resend_cooldown_prevents_duplicate_email(self):
+        from django.core import mail
+
+        self.client.post(self.endpoint, self.payload, format='json')
+        self.client.post(self.endpoint, self.payload, format='json')
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_expired_otp_is_rejected_and_deleted(self):
+        from django.utils import timezone
+        from accounts.models import PasswordResetChallenge
+
+        otp = self._request_otp()
+        challenge = PasswordResetChallenge.objects.get(user=self.user)
+        challenge.expires_at = timezone.now() - timedelta(seconds=1)
+        challenge.save(update_fields=['expires_at'])
+
+        response = self.client.post(self.confirm_endpoint, {
+            **self.payload, 'otp': otp, 'new_password': 'BrandNewPass123!',
+        }, format='json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(PasswordResetChallenge.objects.filter(user=self.user).exists())
+
+    def test_fifth_invalid_attempt_invalidates_otp(self):
+        from accounts.models import PasswordResetChallenge
+
+        otp = self._request_otp()
+        wrong_otp = '000001' if otp == '000000' else '000000'
+        for _ in range(5):
+            response = self.client.post(self.confirm_endpoint, {
+                **self.payload, 'otp': wrong_otp,
+                'new_password': 'BrandNewPass123!',
+            }, format='json')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(PasswordResetChallenge.objects.filter(user=self.user).exists())
+
+
+class LogoutViewTests(TestCase):
+    def test_inactive_user_with_valid_access_token_can_blacklist_refresh_token(self):
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        user = make_user('logoutuser')
+        refresh = RefreshToken.for_user(user)
+        access = str(refresh.access_token)
+        refresh_value = str(refresh)
+        user.is_active = False
+        user.save(update_fields=['is_active'])
+
+        response = self.client.post(
+            '/accounts/logout/',
+            {'refresh_token': refresh_value},
+            format='json',
+            HTTP_AUTHORIZATION=f'Bearer {access}',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        refresh_response = self.client.post(
+            '/accounts/refresh/', {'refresh': refresh_value}, format='json'
+        )
+        self.assertEqual(refresh_response.status_code, 401)
+
+
 # ---------------------------------------------------------------------------
 # Round 4: last_login population (UPDATE_LAST_LOGIN) + exposure in user views
 # ---------------------------------------------------------------------------
@@ -354,11 +535,14 @@ from django.utils import timezone
 class LoginLockoutTests(TestCase):
     """
     Covers CooldownTokenObtainPairSerializer: 5 consecutive failed logins
-    locks the account for 15 minutes and returns 429 (not 401), successful
+    locks the account for 15 minutes while returning generic 401 responses, successful
     login resets the counter, and lockout is scoped per-account.
     """
 
     def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
         self.client = APIClient()
         self.user = make_user('lockoutuser')
         self.other_user = make_user('otheruser')
@@ -376,11 +560,11 @@ class LoginLockoutTests(TestCase):
         self.assertEqual(self.user.failed_login_attempts, 4)
         self.assertIsNone(self.user.locked_until)
 
-    def test_fifth_failed_attempt_locks_account_and_returns_429(self):
+    def test_fifth_failed_attempt_locks_account_and_returns_generic_401(self):
         for _ in range(5):
             response = self._bad_login()
-        self.assertEqual(response.status_code, 429)
-        self.assertIn('Retry-After', response.headers)
+        self.assertEqual(response.status_code, 401)
+        self.assertNotIn('Retry-After', response.headers)
         self.user.refresh_from_db()
         self.assertEqual(self.user.failed_login_attempts, 5)
         self.assertIsNotNone(self.user.locked_until)
@@ -391,7 +575,7 @@ class LoginLockoutTests(TestCase):
         response = self.client.post('/accounts/login/', {
             'username': 'lockoutuser', 'password': 'testpass123!',
         }, format='json')
-        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.status_code, 401)
 
     def test_successful_login_resets_failed_attempts(self):
         self.user.failed_login_attempts = 3

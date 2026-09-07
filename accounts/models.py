@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.conf import settings
 
 # Create your models here.
 
@@ -29,3 +30,20 @@ class Users(AbstractUser):
 
     def __str__(self):
         return self.username
+
+
+class PasswordResetChallenge(models.Model):
+    """A short-lived, server-side password-reset challenge for one user."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='password_reset_challenge',
+    )
+    otp_digest = models.CharField(max_length=64)
+    expires_at = models.DateTimeField()
+    failed_attempts = models.PositiveSmallIntegerField(default=0)
+    last_sent_at = models.DateTimeField()
+
+    def __str__(self):
+        return f'Password reset challenge for {self.user}'

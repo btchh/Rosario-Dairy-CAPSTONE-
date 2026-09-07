@@ -1,2 +1,3 @@
-from .settings_views import SystemSettingsViewSet
-from .notification_views import NotificationSettingsViewSet
+from .settings_views import SystemSettingsView
+from .notification_views import NotificationSettingsView
+from .overview_views import SettingsOverviewView

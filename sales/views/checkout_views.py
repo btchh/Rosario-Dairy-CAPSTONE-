@@ -1,6 +1,6 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from accounts.permissions import IsAdmin, IsStaff
 from ..serializers import TransactionSerializer
 from ..models import Customer
 from ..services import SalesService
@@ -8,7 +8,7 @@ from inventory.models import Product
 from decimal import Decimal, InvalidOperation
 
 class CheckoutView(viewsets.ViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdmin | IsStaff]
 
     def create(self, request):
         raw_items = request.data.get('items', [])

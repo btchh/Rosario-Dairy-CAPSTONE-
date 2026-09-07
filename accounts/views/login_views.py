@@ -2,13 +2,29 @@
 from datetime import timedelta
 from typing import cast
 from django.utils import timezone
+from django.db import transaction
 from accounts.models import Users
-from rest_framework.exceptions import Throttled
+from accounts.throttles import LoginRateThrottle
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 LOGIN_MAX_FAILED_ATTEMPTS = 5
 LOGIN_LOCKOUT_MINUTES = 15
+GENERIC_LOGIN_ERROR = 'No active account found with the given credentials'
+
+
+def _record_failed_login(user_pk):
+    """Increment an account's failure count without losing concurrent writes."""
+    with transaction.atomic():
+        user = Users.objects.select_for_update().get(pk=user_pk)
+        now = timezone.now()
+        if user.locked_until and user.locked_until > now:
+            return
+        user.failed_login_attempts += 1
+        if user.failed_login_attempts >= LOGIN_MAX_FAILED_ATTEMPTS:
+            user.locked_until = now + timedelta(minutes=LOGIN_LOCKOUT_MINUTES)
+        user.save(update_fields=['failed_login_attempts', 'locked_until'])
 
 
 class CooldownTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -16,9 +32,8 @@ class CooldownTokenObtainPairSerializer(TokenObtainPairSerializer):
     Wraps the default JWT login serializer with a failed-attempt lockout:
     after LOGIN_MAX_FAILED_ATTEMPTS consecutive failures, the account is
     locked for LOGIN_LOCKOUT_MINUTES. Any successful login resets the
-    counter. Locked-out attempts return 429 (Throttled) with a Retry-After
-    header rather than the generic 401 used for plain bad credentials, so
-    the two cases are distinguishable client-side.
+    counter. Locked, invalid, and nonexistent accounts intentionally return
+    the same generic 401 response.
     """
 
     def validate(self, attrs):
@@ -29,35 +44,14 @@ class CooldownTokenObtainPairSerializer(TokenObtainPairSerializer):
         )
 
         if user is not None and user.locked_until and user.locked_until > timezone.now():
-            remaining = int((user.locked_until - timezone.now()).total_seconds())
-            raise Throttled(
-                wait=remaining,
-                detail=(
-                    "Account locked due to repeated failed login attempts. "
-                    f"Try again in {remaining // 60 + 1} minute(s)."
-                ),
-            )
+            raise AuthenticationFailed(GENERIC_LOGIN_ERROR)
 
         try:
             data = super().validate(attrs)
-        except Exception:
+        except AuthenticationFailed:
             if user is not None:
-                user.failed_login_attempts += 1
-                just_locked = False
-                if user.failed_login_attempts >= LOGIN_MAX_FAILED_ATTEMPTS:
-                    user.locked_until = timezone.now() + timedelta(minutes=LOGIN_LOCKOUT_MINUTES)
-                    just_locked = True
-                user.save(update_fields=['failed_login_attempts', 'locked_until'])
-                if just_locked:
-                    remaining = int((user.locked_until - timezone.now()).total_seconds())
-                    raise Throttled(
-                        wait=remaining,
-                        detail=(
-                            "Account locked due to repeated failed login attempts. "
-                            f"Try again in {remaining // 60 + 1} minute(s)."
-                        ),
-                    )
-            raise
+                _record_failed_login(user.pk)
+            raise AuthenticationFailed(GENERIC_LOGIN_ERROR)
 
         # Successful login — reset the counter. Use self.user (set by
         # TokenObtainPairSerializer.validate() above) rather than the
@@ -73,3 +67,4 @@ class CooldownTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 class CooldownTokenObtainPairView(TokenObtainPairView):
     serializer_class = CooldownTokenObtainPairSerializer
+    throttle_classes = [LoginRateThrottle]

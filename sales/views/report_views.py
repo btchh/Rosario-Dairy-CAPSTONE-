@@ -1,7 +1,6 @@
 from datetime import datetime
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from accounts.permissions import IsAdmin
 from ..services import SalesService
 
@@ -18,7 +17,7 @@ def _parse_date_param(value, param_name):
 
 
 class RevenueReportView(APIView):
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = [IsAdmin]
 
     def get(self, request):
         period = request.query_params.get('period', 'monthly')
@@ -43,7 +42,7 @@ class RevenueReportView(APIView):
         ])
 
 class BestSellersReportView(APIView):
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = [IsAdmin]
 
     def get(self, request):
         try:
@@ -71,7 +70,7 @@ class BestSellersReportView(APIView):
         ])
 
 class SalesByCategoryReportView(APIView):
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = [IsAdmin]
 
     def get(self, request):
         try:

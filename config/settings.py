@@ -10,8 +10,23 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import os
 from pathlib import Path
 from datetime import timedelta
+from django.core.exceptions import ImproperlyConfigured
+
+
+def env_bool(name, default=False):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def env_list(name, default=''):
+    return [item.strip() for item in os.getenv(name, default).split(',') if item.strip()]
+
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -19,13 +34,21 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-&$iy_)w@o4g2%@^9i0il+%g@ye^t0k893oj^mwd4h8*s3%@*$p'
+DJANGO_ENV = os.getenv('DJANGO_ENV', 'development').strip().lower()
+IS_PRODUCTION = DJANGO_ENV == 'production'
+DEBUG = env_bool('DJANGO_DEBUG', not IS_PRODUCTION)
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', '')
+if not SECRET_KEY:
+    if IS_PRODUCTION:
+        raise ImproperlyConfigured('DJANGO_SECRET_KEY is required in production.')
+    SECRET_KEY = 'django-insecure-development-only-change-before-production'
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = env_list(
+    'DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,[::1]' if not IS_PRODUCTION else ''
+)
+if IS_PRODUCTION and not ALLOWED_HOSTS:
+    raise ImproperlyConfigured('DJANGO_ALLOWED_HOSTS is required in production.')
 
 
 # Application definition
@@ -52,6 +75,7 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'systemsetting.middleware.RuntimeSettingsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -86,14 +110,34 @@ DATABASES = {
 #   Postgre
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'rosario_dairy',
-        'USER': 'postgres',
-        'PASSWORD': 'root',
-        'HOST': 'localhost',
-        'PORT': '5432',
+        'NAME': os.getenv('DB_NAME', 'rosario_dairy'),
+        'USER': os.getenv('DB_USER', 'postgres'),
+        'PASSWORD': os.getenv('DB_PASSWORD', 'root' if not IS_PRODUCTION else ''),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '5432'),
     }
 
 }
+if IS_PRODUCTION and not DATABASES['default']['PASSWORD']:
+    raise ImproperlyConfigured('DB_PASSWORD is required in production.')
+
+REDIS_URL = os.getenv('REDIS_URL', '')
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_URL,
+        }
+    }
+elif IS_PRODUCTION:
+    raise ImproperlyConfigured('REDIS_URL is required in production.')
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'rosario-dairy-development',
+        }
+    }
 
 
 # Password validation
@@ -120,7 +164,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = os.getenv('DJANGO_TIME_ZONE', 'Asia/Manila')
 
 USE_I18N = True
 
@@ -131,15 +175,23 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': [
-    'rest_framework.permissions.IsAuthenticated',
+        'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_THROTTLE_RATES': {
+        'login': '10/minute',
+        'password_reset_request': '5/minute',
+        'password_reset_confirm': '10/minute',
+    },
 }
+if os.getenv('DJANGO_NUM_PROXIES'):
+    REST_FRAMEWORK['NUM_PROXIES'] = int(os.environ['DJANGO_NUM_PROXIES'])
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
@@ -149,11 +201,54 @@ SIMPLE_JWT = {
 
 AUTH_USER_MODEL = 'accounts.Users'
 
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:5173',
-    'https://localhost',
-]
+CORS_ALLOWED_ORIGINS = env_list(
+    'CORS_ALLOWED_ORIGINS',
+    'http://localhost:5173,https://localhost' if not IS_PRODUCTION else '',
+)
 
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r'^https://[a-z0-9]+-5173\.asse\.devtunnels\.ms$',
-]
+] if not IS_PRODUCTION else []
+
+CSRF_TRUSTED_ORIGINS = env_list('CSRF_TRUSTED_ORIGINS')
+
+SECURE_SSL_REDIRECT = env_bool('DJANGO_SECURE_SSL_REDIRECT', IS_PRODUCTION)
+SESSION_COOKIE_SECURE = env_bool('DJANGO_SESSION_COOKIE_SECURE', IS_PRODUCTION)
+CSRF_COOKIE_SECURE = env_bool('DJANGO_CSRF_COOKIE_SECURE', IS_PRODUCTION)
+SECURE_HSTS_SECONDS = int(
+    os.getenv('DJANGO_SECURE_HSTS_SECONDS', '3600' if IS_PRODUCTION else '0')
+)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool(
+    'DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS', False
+)
+SECURE_HSTS_PRELOAD = env_bool('DJANGO_SECURE_HSTS_PRELOAD', False)
+if env_bool('DJANGO_BEHIND_HTTPS_PROXY', IS_PRODUCTION):
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Transactional email. Without SMTP credentials, development prints emails
+# to the console instead of attempting delivery.
+BREVO_SMTP_LOGIN = os.getenv('BREVO_SMTP_LOGIN', '')
+BREVO_SMTP_KEY = os.getenv('BREVO_SMTP_KEY', '')
+if BREVO_SMTP_LOGIN and BREVO_SMTP_KEY:
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+elif IS_PRODUCTION:
+    raise ImproperlyConfigured(
+        'BREVO_SMTP_LOGIN and BREVO_SMTP_KEY are required in production.'
+    )
+else:
+    EMAIL_BACKEND = os.getenv(
+        'DJANGO_EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend'
+    )
+EMAIL_HOST = 'smtp-relay.brevo.com'
+EMAIL_PORT = 587
+EMAIL_HOST_USER = BREVO_SMTP_LOGIN
+EMAIL_HOST_PASSWORD = BREVO_SMTP_KEY
+EMAIL_USE_TLS = True
+EMAIL_TIMEOUT = 10
+DEFAULT_FROM_EMAIL = os.getenv(
+    'DEFAULT_FROM_EMAIL', 'Rosario Dairy <noreply@localhost>'
+)
+
+PASSWORD_RESET_OTP_TIMEOUT = 10 * 60
+PASSWORD_RESET_OTP_RESEND_COOLDOWN = 60
+PASSWORD_RESET_OTP_MAX_ATTEMPTS = 5

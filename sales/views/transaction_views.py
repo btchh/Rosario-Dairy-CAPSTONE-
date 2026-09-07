@@ -2,7 +2,7 @@ from datetime import datetime
 from rest_framework import viewsets, status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from accounts.permissions import IsAdmin, IsStaff
 from ..models import Transaction
 from ..serializers import TransactionSerializer
 
@@ -31,7 +31,7 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
         'items__product_batch__product'
     ).order_by('-created_at')
     serializer_class = TransactionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdmin | IsStaff]
     pagination_class = TransactionPagination
 
     @staticmethod

@@ -1,8 +1,12 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
+from unittest.mock import patch
+from django.http import JsonResponse
+from django.test import RequestFactory
 from .models import SystemSettings, NotificationSettings
 from .runtime import get_runtime_settings
+from .middleware import RuntimeSettingsMiddleware
 
 User = get_user_model()
 
@@ -78,6 +82,26 @@ class SystemSettingsViewTests(TestCase):
         config.currency = 'USD'
         config.save()
         self.assertEqual(get_runtime_settings()['currency'], 'USD')
+
+    def test_runtime_settings_fall_back_to_database_when_cache_is_down(self):
+        config = SystemSettings.get_config()
+        config.currency = 'USD'
+        config.save()
+        with patch('systemsetting.runtime.cache.get', side_effect=ConnectionError), \
+             patch('systemsetting.runtime.cache.set', side_effect=ConnectionError), \
+             self.assertLogs('systemsetting.runtime', level='ERROR'):
+            self.assertEqual(get_runtime_settings()['currency'], 'USD')
+
+    def test_middleware_uses_safe_defaults_when_settings_cannot_load(self):
+        middleware = RuntimeSettingsMiddleware(
+            lambda request: JsonResponse({'ok': True})
+        )
+        with patch(
+            'systemsetting.middleware.get_runtime_settings',
+            side_effect=ConnectionError,
+        ), self.assertLogs('systemsetting.middleware', level='ERROR'):
+            response = middleware(RequestFactory().get('/'))
+        self.assertEqual(response.status_code, 200)
 
     def test_overview_bootstraps_both_setting_groups_for_staff(self):
         self.client.force_authenticate(user=self.staff)

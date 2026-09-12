@@ -1,8 +1,12 @@
+import logging
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.utils import timezone, translation
 
-from .runtime import get_runtime_settings
+from .runtime import get_default_runtime_settings, get_runtime_settings
+
+
+logger = logging.getLogger(__name__)
 
 
 class RuntimeSettingsMiddleware:
@@ -12,7 +16,13 @@ class RuntimeSettingsMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        config = get_runtime_settings()
+        try:
+            config = get_runtime_settings()
+        except Exception:
+            # Runtime preferences must not turn a transient cache/database
+            # problem into a site-wide outage.
+            logger.exception('Unable to load runtime settings; using safe defaults')
+            config = get_default_runtime_settings()
         try:
             timezone.activate(ZoneInfo(config['timezone']))
         except ZoneInfoNotFoundError:

@@ -29,6 +29,10 @@ def create_stock_adjustment(adjustment_type, quantity, unit_cost, adjusted_by, r
         if batch.remaining_quantity <= Decimal('0.00'):
             batch.remaining_quantity = Decimal('0.00')
             batch.status = 'disposed' if adjustment_type in ['spoilage', 'expired'] else 'depleted'
+        elif adjustment_type == 'correction' and batch.status == 'depleted':
+            # A physical count can rediscover stock in a batch previously
+            # considered empty. Make it eligible for stock totals and FEFO.
+            batch.status = 'available'
         batch.save()
 
         adjustment = StockAdjustment(

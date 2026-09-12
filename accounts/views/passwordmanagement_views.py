@@ -14,6 +14,12 @@ class ChangePasswordView(APIView):
     old_password = request.data.get('old_password')
     new_password = request.data.get('new_password')
 
+    if not old_password or not new_password:
+      return Response(
+        {'error': "'old_password' and 'new_password' are required."},
+        status=status.HTTP_400_BAD_REQUEST,
+      )
+
     try:
       user_service.change_password(request.user, old_password, new_password)
       return Response({'message': 'Password changed successfully'}, status=status.HTTP_200_OK)

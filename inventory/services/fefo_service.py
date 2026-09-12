@@ -7,7 +7,7 @@ def deduct_product_batch(product, quantity):
   quantity = Decimal(str(quantity))
   if quantity <= Decimal('0.00'):
     raise ValueError("Quantity must be greater than zero.")
-  today = timezone.now().date()
+  today = timezone.localdate()
   batches = list(
     ProductBatch.objects.select_for_update()
     .filter(product=product, status='available', expiration_date__gte=today)
@@ -35,7 +35,7 @@ def deduct_ingredient_batch(ingredient, quantity):
   quantity = Decimal(str(quantity))
   if quantity <= Decimal('0.00'):
     raise ValueError("Quantity must be greater than zero.")
-  today = timezone.now().date()
+  today = timezone.localdate()
   batches = list(
     IngredientBatch.objects.select_for_update()
     .filter(ingredient=ingredient, status='available', expiration_date__gte=today)

@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 from datetime import timedelta
 from django.core.exceptions import ImproperlyConfigured
+from dotenv import load_dotenv
 
 
 def env_bool(name, default=False):
@@ -29,6 +30,7 @@ def env_list(name, default=''):
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / '.env')
 
 
 # Quick-start development settings - unsuitable for production
@@ -246,8 +248,10 @@ EMAIL_HOST_PASSWORD = BREVO_SMTP_KEY
 EMAIL_USE_TLS = True
 EMAIL_TIMEOUT = 10
 DEFAULT_FROM_EMAIL = os.getenv(
-    'DEFAULT_FROM_EMAIL', 'Rosario Dairy <noreply@localhost>'
+    'DEFAULT_FROM_EMAIL', '' if IS_PRODUCTION else 'Rosario Dairy <noreply@localhost>'
 )
+if IS_PRODUCTION and not DEFAULT_FROM_EMAIL:
+    raise ImproperlyConfigured('DEFAULT_FROM_EMAIL is required in production.')
 
 PASSWORD_RESET_OTP_TIMEOUT = 10 * 60
 PASSWORD_RESET_OTP_RESEND_COOLDOWN = 60

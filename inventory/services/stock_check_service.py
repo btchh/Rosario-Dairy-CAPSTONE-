@@ -57,7 +57,7 @@ def check_ingredient_stock():
   return low_stock_ings
 
 def check_product_expiration(visible_to_staff=False):
-  now = timezone.now().date()
+  now = timezone.localdate()
   config = FEFOConf.get_config()
   near_expiry_threshold = now + timedelta(days=config.near_expiry_threshold)
   critical_expiry_threshold = now + timedelta(days=config.critical_expiry_threshold)
@@ -69,7 +69,7 @@ def check_product_expiration(visible_to_staff=False):
   return batches.order_by('expiration_date')
 
 def check_ingredient_expiration():
-  now = timezone.now().date()
+  now = timezone.localdate()
   config = FEFOConf.get_config()
   near_expiry_threshold = now + timedelta(days=config.near_expiry_threshold)
   critical_expiry_threshold = now + timedelta(days=config.critical_expiry_threshold)

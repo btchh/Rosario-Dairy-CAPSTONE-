@@ -14,8 +14,8 @@ def next_sequence(prefix):
     that specific case is handled with a small retry on IntegrityError
     rather than a lock.
     """
-    now = timezone.now()
-    year, month = now.year, now.month
+    today = timezone.localdate()
+    year, month = today.year, today.month
 
     for attempt in range(3):
         try:

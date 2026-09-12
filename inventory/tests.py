@@ -16,8 +16,9 @@ one place true concurrency is worth the extra weight, since it's the whole
 point of the BatchSequence redesign.
 """
 import threading
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
+from unittest.mock import patch
 from django.db import IntegrityError
 from django.db import connections
 from django.test import TestCase, TransactionTestCase
@@ -316,6 +317,59 @@ class CreateStockAdjustmentTests(TestCase):
         )
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.remaining_quantity, Decimal('90.00'))
+
+    def test_correction_restores_depleted_batch_to_available(self):
+        self.batch.remaining_quantity = Decimal('0.00')
+        self.batch.status = 'depleted'
+        self.batch.save()
+
+        BatchService.create_stock_adjustment(
+            adjustment_type='correction', quantity=Decimal('-5.00'),
+            unit_cost=Decimal('10.00'), adjusted_by=self.user,
+            product_batch=self.batch,
+        )
+
+        self.batch.refresh_from_db()
+        self.assertEqual(self.batch.remaining_quantity, Decimal('5.00'))
+        self.assertEqual(self.batch.status, 'available')
+
+    def test_adjustment_api_rejects_nan_and_invalid_batch_id(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        payloads = [
+            {
+                'product_batch_id': self.batch.pk,
+                'adjustment_type': 'correction',
+                'quantity': 'NaN',
+                'unit_cost': '10.00',
+            },
+            {
+                'product_batch_id': {'invalid': True},
+                'adjustment_type': 'correction',
+                'quantity': '1.00',
+                'unit_cost': '10.00',
+            },
+        ]
+        for payload in payloads:
+            with self.subTest(payload=payload):
+                response = client.post(
+                    '/inventory/stock-adjustments/', payload, format='json'
+                )
+                self.assertEqual(response.status_code, 400)
+
+    def test_stock_count_api_rejects_nan_and_invalid_batch_id(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        payloads = [
+            {'product_batch_id': self.batch.pk, 'counted_quantity': 'NaN'},
+            {'product_batch_id': {'invalid': True}, 'counted_quantity': '1.00'},
+        ]
+        for payload in payloads:
+            with self.subTest(payload=payload):
+                response = client.post(
+                    '/inventory/stock-counts/', payload, format='json'
+                )
+                self.assertEqual(response.status_code, 400)
 
 
 class ReconcileTests(TestCase):
@@ -968,6 +1022,21 @@ class ExpiredBatchExclusionTests(TestCase):
         )
         with self.assertRaises(ValueError):
             BatchService.deduct_product_batch(self.product, Decimal('10.00'))
+
+    def test_fefo_uses_active_local_date_for_expiry_boundary(self):
+        local_today = date(2026, 9, 8)
+        ProductBatch.objects.create(
+            product=self.product, batch_number='PRD-LOCAL-DATE',
+            unit_price=Decimal('50.00'),
+            initial_quantity=Decimal('10.00'), remaining_quantity=Decimal('10.00'),
+            expiration_date=local_today - timedelta(days=1),
+        )
+        with patch(
+            'inventory.services.fefo_service.timezone.localdate',
+            return_value=local_today,
+        ):
+            with self.assertRaises(ValueError):
+                BatchService.deduct_product_batch(self.product, Decimal('1.00'))
 
     def test_batch_expiring_today_is_still_sellable(self):
         """Boundary case: a batch dated exactly today hasn't expired yet — still fair game."""

@@ -4,8 +4,9 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
+from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.crypto import constant_time_compare, salted_hmac
 
@@ -65,19 +66,30 @@ def request_password_reset(username, email):
         )
 
     minutes = max(1, settings.PASSWORD_RESET_OTP_TIMEOUT // 60)
-    brand_name = get_brand_name()
     try:
-        send_mail(
-            subject=f'{brand_name} password reset code',
-            message=(
-                f'Your {brand_name} password reset code is: {otp}\n\n'
-                f'This code expires in {minutes} minutes. If you did not '
-                'request it, you can ignore this email.'
-            ),
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[user.email],
-            fail_silently=False,
+        brand_name = get_brand_name()
+        text_message = (
+            f'Your {brand_name} password reset code is: {otp}\n\n'
+            f'This code expires in {minutes} minutes. If you did not '
+            'request it, you can ignore this email.'
         )
+        html_message = render_to_string(
+            'accounts/email/password_reset_otp.html',
+            {
+                'brand_name': brand_name,
+                'otp': otp,
+                'minutes': minutes,
+                'username': user.username,
+            },
+        )
+        email_message = EmailMultiAlternatives(
+            subject=f'{brand_name} password reset code',
+            body=text_message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[user.email],
+        )
+        email_message.attach_alternative(html_message, 'text/html')
+        email_message.send(fail_silently=False)
     except Exception:
         # Only remove the challenge created by this request. A newer request
         # must not be invalidated if mail delivery completes out of order.

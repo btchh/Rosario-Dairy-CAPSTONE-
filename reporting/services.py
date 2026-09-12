@@ -3,6 +3,7 @@ from datetime import timedelta
 from decimal import Decimal
 from functools import partial
 from io import BytesIO
+import logging
 from xml.sax.saxutils import escape
 
 from django.core.cache import cache
@@ -33,6 +34,7 @@ PDF_PRIMARY_DARK = colors.HexColor('#172554')
 PDF_ROW_ALT = colors.HexColor('#F3F4F6')
 PDF_BORDER = colors.HexColor('#CBD5E1')
 PDF_TEXT = colors.HexColor('#111827')
+logger = logging.getLogger(__name__)
 STATUS_COLORS = {
     'expired': '#DC2626',
     'expiring_soon': '#D97706',
@@ -401,14 +403,21 @@ def get_report(report_type, force_refresh=False, visible_to_staff=False):
     settings_version = get_runtime_settings()['version']
     key = f'{CACHE_PREFIX}{settings_version}:{scope}:{report_type}'
     if not force_refresh:
-        cached = cache.get(key)
+        try:
+            cached = cache.get(key)
+        except Exception:
+            logger.exception('Report cache read failed; generating report directly')
+            cached = None
         if cached is not None:
             return cached
     if report_type == 'inventory':
         data = inventory_status(visible_to_staff=visible_to_staff)
     else:
         data = REPORT_BUILDERS[report_type]()
-    cache.set(key, data, CACHE_TIMEOUT)
+    try:
+        cache.set(key, data, CACHE_TIMEOUT)
+    except Exception:
+        logger.exception('Report cache write failed')
     return data
 
 

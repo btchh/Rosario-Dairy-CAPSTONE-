@@ -49,5 +49,5 @@ class LogoutView(APIView):
     try:
       user_service.logout(refresh_token)
       return Response({'message': 'Logged out successfully'}, status=status.HTTP_200_OK)
-    except Exception as e:
-      return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception:
+      return Response({'error': 'Invalid or expired refresh token.'}, status=status.HTTP_400_BAD_REQUEST)

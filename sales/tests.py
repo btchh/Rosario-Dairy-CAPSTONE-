@@ -214,6 +214,26 @@ class CheckoutPaymentMethodValidationTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(Order.objects.count(), 0)  # rolled back, no orphan order
 
+    def test_checkout_rejects_non_object_items_without_500(self):
+        client = APIClient()
+        client.force_authenticate(user=self.staff)
+        response = client.post(
+            '/sales/checkout/', {'items': ['not-an-object']}, format='json'
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_checkout_rejects_nan_and_bad_product_id_without_500(self):
+        client = APIClient()
+        client.force_authenticate(user=self.staff)
+        payloads = [
+            {'items': [{'product_id': self.product.pk, 'quantity': 'NaN'}]},
+            {'items': [{'product_id': {}, 'quantity': '1.00'}]},
+        ]
+        for payload in payloads:
+            with self.subTest(payload=payload):
+                response = client.post('/sales/checkout/', payload, format='json')
+                self.assertEqual(response.status_code, 400)
+
 
 class VoidFulfilledOrderTests(TestCase):
     """Voiding a fulfilled order — restoring stock via a locked, fresh re-fetch

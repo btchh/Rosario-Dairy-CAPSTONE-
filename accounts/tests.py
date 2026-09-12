@@ -358,6 +358,20 @@ class ForgotPasswordViewTests(TestCase):
         self._request_otp()
         self.assertEqual(mail.outbox[0].to, [self.user.email])
 
+    def test_otp_email_includes_styled_html_and_plain_text_fallback(self):
+        from django.core import mail
+
+        otp = self._request_otp()
+        message = mail.outbox[0]
+        self.assertIn(otp, message.body)
+        self.assertEqual(len(message.alternatives), 1)
+        html = message.alternatives[0]
+        self.assertEqual(html.mimetype, 'text/html')
+        self.assertIn(otp, html.content)
+        self.assertIn('Password reset', html.content)
+        self.assertIn('#1E3A8A', html.content)
+        self.assertNotIn('>RD<', html.content)
+
     def test_invalid_otp_returns_400_without_changing_password(self):
         otp = self._request_otp()
         wrong_otp = '000001' if otp == '000000' else '000000'
@@ -667,6 +681,14 @@ class PasswordChangeCooldownTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.user.refresh_from_db()
         self.assertIsNotNone(self.user.last_password_change_at)
+
+    def test_missing_password_fields_return_400(self):
+        for payload in ({'old_password': 'testpass123!'}, {'new_password': 'NewComplexPass123!'}, {}):
+            with self.subTest(payload=payload):
+                response = self.client.post(
+                    '/accounts/change-password/', payload, format='json'
+                )
+                self.assertEqual(response.status_code, 400)
 
     def test_second_change_within_window_returns_400_with_cooldown_message(self):
         self._change(new='NewComplexPass123!')

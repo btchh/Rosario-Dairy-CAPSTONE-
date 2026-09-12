@@ -6,3 +6,4 @@ psycopg2-binary==2.9.12
 reportlab==5.0.1
 gunicorn==23.0.0
 redis==8.1.0
+python-dotenv==1.2.3

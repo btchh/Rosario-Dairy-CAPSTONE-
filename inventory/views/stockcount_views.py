@@ -4,8 +4,9 @@ from ..models import StockCount, ProductBatch, IngredientBatch
 from ..serializers import StockCountSerializer
 from ..services import batch_service
 from accounts.permissions import IsAdmin, IsStaff
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from django.db.models import Q
+from config.api_inputs import parse_decimal
 
 class StockCountViewSet(viewsets.ModelViewSet):
     queryset = StockCount.objects.all()
@@ -29,17 +30,16 @@ class StockCountViewSet(viewsets.ModelViewSet):
         notes = request.data.get('notes', '')
 
         try:
-            counted_quantity = Decimal(str(counted_quantity))
-        except (InvalidOperation, TypeError):
-            return Response({'error': 'counted_quantity must be a valid number.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if counted_quantity < 0:
-            return Response({'error': 'counted_quantity cannot be negative.'}, status=status.HTTP_400_BAD_REQUEST)
+            counted_quantity = parse_decimal(
+                counted_quantity, 'counted_quantity', min_value=Decimal('0.00')
+            )
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             product_batch = ProductBatch.objects.get(id=product_batch_id) if product_batch_id else None
             ingredient_batch = IngredientBatch.objects.get(id=ingredient_batch_id) if ingredient_batch_id else None
-        except (ProductBatch.DoesNotExist, IngredientBatch.DoesNotExist):
+        except (ProductBatch.DoesNotExist, IngredientBatch.DoesNotExist, ValueError, TypeError):
             return Response({'error': 'product_batch_id or ingredient_batch_id does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
 
         if (request.user.role == 'staff' and product_batch and

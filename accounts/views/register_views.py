@@ -42,5 +42,3 @@ class RegisterView(APIView):
       return Response({'error': 'Username or email already exists'}, status=status.HTTP_400_BAD_REQUEST)
     except ValueError as e:
       return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-      return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -1,5 +1,5 @@
 from typing import cast
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -9,6 +9,7 @@ from inventory.models import Product
 from ..models import Order
 from ..serializers import OrderSerializer
 from ..services import SalesService
+from config.api_inputs import parse_decimal, require_item_list
 
 
 class OrderViewSet(viewsets.ModelViewSet):
@@ -36,8 +37,10 @@ class OrderViewSet(viewsets.ModelViewSet):
         validated_data = cast(dict, serializer.validated_data)
 
         raw_items = request.data.get('items', [])
-        if not raw_items:
-            return Response({'error': 'No items provided.'}, status=400)
+        try:
+            raw_items = require_item_list(raw_items)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=400)
 
         items = []
         for index, entry in enumerate(raw_items):
@@ -48,19 +51,17 @@ class OrderViewSet(viewsets.ModelViewSet):
                     {'error': f"Item at index {index} requires 'product_id' and 'quantity'."}, status=400
                 )
             try:
-                quantity = Decimal(str(quantity))
-            except InvalidOperation:
-                return Response({'error': f"Invalid quantity for item at index {index}."}, status=400)
-            if quantity <= 0:
-                return Response(
-                    {'error': f"Quantity for item at index {index} must be greater than zero."}, status=400
+                quantity = parse_decimal(
+                    quantity, 'quantity', min_value=Decimal('0.01')
                 )
+            except ValueError as exc:
+                return Response({'error': f'Item at index {index}: {exc}'}, status=400)
             try:
                 products = Product.objects.filter(is_active=True)
                 if request.user.role == 'staff':
                     products = products.filter(category__is_visible_to_staff=True)
                 product = products.get(pk=product_id)
-            except Product.DoesNotExist:
+            except (Product.DoesNotExist, ValueError, TypeError):
                 return Response(
                     {'error': f"Product {product_id} at index {index} not found or is inactive."}, status=400
                 )
@@ -70,9 +71,11 @@ class OrderViewSet(viewsets.ModelViewSet):
         amount_tendered = request.data.get('amount_tendered')
         if amount_tendered is not None:
             try:
-                amount_tendered = Decimal(str(amount_tendered))
-            except InvalidOperation:
-                return Response({'error': 'amount_tendered must be a valid number.'}, status=400)
+                amount_tendered = parse_decimal(
+                    amount_tendered, 'amount_tendered', min_value=Decimal('0.00')
+                )
+            except ValueError as exc:
+                return Response({'error': str(exc)}, status=400)
 
         try:
             order = SalesService.place_order(

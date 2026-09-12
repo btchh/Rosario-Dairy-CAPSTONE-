@@ -4,8 +4,9 @@ from ..models import StockAdjustment, ProductBatch, IngredientBatch
 from ..serializers import StockAdjustmentSerializer
 from ..services import batch_service
 from accounts.permissions import IsAdmin, IsStaff
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from django.db.models import Q
+from config.api_inputs import parse_decimal
 
 class StockAdjustmentViewSet(viewsets.ModelViewSet):
     queryset = StockAdjustment.objects.all()
@@ -36,19 +37,21 @@ class StockAdjustmentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        try:
-            quantity = Decimal(str(request.data.get('quantity')))
-            unit_cost = Decimal(str(unit_cost)) if unit_cost not in (None, '') else None
-        except (InvalidOperation, TypeError):
-            return Response({'error': 'quantity and unit_cost must be valid numbers'}, status=status.HTTP_400_BAD_REQUEST)
-
         if unit_cost is None:
             return Response({'error': 'unit_cost is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
+            quantity = parse_decimal(request.data.get('quantity'), 'quantity')
+            unit_cost = parse_decimal(
+                unit_cost, 'unit_cost', min_value=Decimal('0.00')
+            )
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
             product_batch = ProductBatch.objects.get(id=product_batch_id) if product_batch_id else None
             ingredient_batch = IngredientBatch.objects.get(id=ingredient_batch_id) if ingredient_batch_id else None
-        except (ProductBatch.DoesNotExist, IngredientBatch.DoesNotExist):
+        except (ProductBatch.DoesNotExist, IngredientBatch.DoesNotExist, ValueError, TypeError):
             return Response({'error': 'product_batch_id or ingredient_batch_id does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
 
         if (request.user.role == 'staff' and product_batch and

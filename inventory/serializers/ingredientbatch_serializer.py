@@ -43,7 +43,7 @@ class IngBatchSerializer(serializers.ModelSerializer):
       date_received = to_date(attrs.get('date_received', self.instance.date_received))
       expiration_date = to_date(attrs.get('expiration_date', self.instance.expiration_date))
     else:
-      date_received = to_date(attrs.get('date_received')) or timezone.now().date()
+      date_received = to_date(attrs.get('date_received')) or timezone.localdate()
       expiration_date = to_date(attrs.get('expiration_date'))
 
     if expiration_date is not None and date_received is not None and expiration_date < date_received:

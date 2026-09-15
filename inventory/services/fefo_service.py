@@ -1,8 +1,10 @@
 from decimal import Decimal
+from django.db import transaction
 from django.utils import timezone
 from ..models import ProductBatch, IngredientBatch
 
 
+@transaction.atomic
 def deduct_product_batch(product, quantity):
   quantity = Decimal(str(quantity))
   if quantity <= Decimal('0.00'):
@@ -11,7 +13,7 @@ def deduct_product_batch(product, quantity):
   batches = list(
     ProductBatch.objects.select_for_update()
     .filter(product=product, status='available', expiration_date__gte=today)
-    .order_by('expiration_date')
+    .order_by('expiration_date', 'pk')
   )
   total_available = sum(b.remaining_quantity for b in batches)
   if total_available < quantity:
@@ -30,7 +32,8 @@ def deduct_product_batch(product, quantity):
     quantity -= take
 
   return consumed
-  
+
+@transaction.atomic
 def deduct_ingredient_batch(ingredient, quantity):
   quantity = Decimal(str(quantity))
   if quantity <= Decimal('0.00'):
@@ -39,7 +42,7 @@ def deduct_ingredient_batch(ingredient, quantity):
   batches = list(
     IngredientBatch.objects.select_for_update()
     .filter(ingredient=ingredient, status='available', expiration_date__gte=today)
-    .order_by('expiration_date')
+    .order_by('expiration_date', 'pk')
   )
   total_avalable = sum(b.remaining_quantity for b in batches)
   if total_avalable < quantity:

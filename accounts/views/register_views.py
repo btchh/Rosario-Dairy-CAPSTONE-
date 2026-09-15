@@ -16,8 +16,8 @@ class RegisterView(APIView):
     password = request.data.get('password')
     email = request.data.get('email')
     role = request.data.get('role')
-    first_name = request.data.get('first_name')
-    last_name = request.data.get('last_name')
+    first_name = request.data.get('first_name', '')
+    last_name = request.data.get('last_name', '')
     phone_number = request.data.get('phone_number')
     address = request.data.get('address')
 

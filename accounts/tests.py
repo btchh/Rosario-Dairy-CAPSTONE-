@@ -91,6 +91,27 @@ class UserDetailPatchValidationTests(TestCase):
         self.assertEqual(self.staff.first_name, 'Updated')
         self.assertEqual(self.staff.phone_number, '09171234567')
 
+    def test_non_boolean_active_status_returns_400_not_500(self):
+        response = self.client.patch(
+            f'/accounts/users/{self.staff.pk}/',
+            {'is_active': 'false'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.staff.refresh_from_db()
+        self.assertTrue(self.staff.is_active)
+
+    def test_patch_deactivation_records_a_reason(self):
+        response = self.client.patch(
+            f'/accounts/users/{self.staff.pk}/',
+            {'is_active': False},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.staff.refresh_from_db()
+        self.assertFalse(self.staff.is_active)
+        self.assertEqual(self.staff.deactivation_reason, 'suspended')
+
 
 class UserDetailPatchGuardTests(TestCase):
     """Pre-existing guards (not part of this session's fixes, but exercised by the same view —
@@ -209,6 +230,34 @@ class RegisterAndLoginTests(TestCase):
         response = self.client.post('/accounts/register/', {
             'username': 'admin1', 'password': 'ComplexPass123!', 'email': 'unique@example.com',
             'role': 'staff', 'first_name': 'New', 'last_name': 'User',
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_register_rejects_invalid_email(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/accounts/register/', {
+            'username': 'bademail', 'password': 'ComplexPass123!',
+            'email': 'not-an-email', 'role': 'staff',
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(User.objects.filter(username='bademail').exists())
+
+    def test_register_defaults_optional_names_to_blank(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/accounts/register/', {
+            'username': 'minimaluser', 'password': 'ComplexPass123!',
+            'email': 'minimal@example.com', 'role': 'staff',
+        }, format='json')
+        self.assertEqual(response.status_code, 201)
+        user = User.objects.get(username='minimaluser')
+        self.assertEqual(user.first_name, '')
+        self.assertEqual(user.last_name, '')
+
+    def test_register_rejects_case_variant_duplicate_email(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/accounts/register/', {
+            'username': 'casevariant', 'password': 'ComplexPass123!',
+            'email': self.admin.email.upper(), 'role': 'staff',
         }, format='json')
         self.assertEqual(response.status_code, 400)
 
@@ -380,6 +429,7 @@ class ForgotPasswordViewTests(TestCase):
             'new_password': 'BrandNewPass123!',
         }, format='json')
         self.assertEqual(response.status_code, 400)
+
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password('testpass123!'))
 
@@ -482,6 +532,70 @@ class LogoutViewTests(TestCase):
             '/accounts/refresh/', {'refresh': refresh_value}, format='json'
         )
         self.assertEqual(refresh_response.status_code, 401)
+
+    def test_cannot_blacklist_another_users_refresh_token(self):
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        attacker = make_user('logoutattacker')
+        victim = make_user('logoutvictim')
+        attacker_refresh = RefreshToken.for_user(attacker)
+        victim_refresh = RefreshToken.for_user(victim)
+
+        response = self.client.post(
+            '/accounts/logout/',
+            {'refresh_token': str(victim_refresh)},
+            format='json',
+            HTTP_AUTHORIZATION=f'Bearer {str(attacker_refresh.access_token)}',
+        )
+        self.assertEqual(response.status_code, 400)
+        refresh_response = self.client.post(
+            '/accounts/refresh/', {'refresh': str(victim_refresh)}, format='json'
+        )
+        self.assertEqual(refresh_response.status_code, 200)
+
+
+class PasswordResetSessionRevocationTests(TestCase):
+    def test_current_refresh_token_still_works(self):
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        user = make_user('currenttokenuser')
+        refresh = RefreshToken.for_user(user)
+        response = self.client.post(
+            '/accounts/refresh/', {'refresh': str(refresh)}, format='json'
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('access', response.data)
+
+    def test_password_reset_invalidates_existing_access_and_refresh_tokens(self):
+        from rest_framework_simplejwt.tokens import RefreshToken
+        from accounts.services import user_service
+
+        user = make_user('tokenresetuser')
+        refresh = RefreshToken.for_user(user)
+        access_value = str(refresh.access_token)
+        refresh_value = str(refresh)
+
+        user_service.forgot_password(user, 'BrandNewPass123!')
+
+        access_response = self.client.get(
+            '/accounts/user/', HTTP_AUTHORIZATION=f'Bearer {access_value}'
+        )
+        refresh_response = self.client.post(
+            '/accounts/refresh/', {'refresh': refresh_value}, format='json'
+        )
+        self.assertEqual(access_response.status_code, 401)
+        self.assertEqual(refresh_response.status_code, 401)
+
+
+class SuperuserBootstrapTests(TestCase):
+    def test_create_superuser_assigns_application_admin_role(self):
+        user = User.objects.create_superuser(
+            username='bootstrapadmin',
+            email='bootstrap@example.com',
+            password='ComplexPass123!',
+        )
+        self.assertTrue(user.is_superuser)
+        self.assertEqual(user.role, 'admin')
 
 
 # ---------------------------------------------------------------------------
@@ -612,6 +726,16 @@ class LoginLockoutTests(TestCase):
         }, format='json')
         self.assertEqual(response.status_code, 200)
 
+    def test_first_failure_after_expired_lockout_starts_at_one(self):
+        self.user.failed_login_attempts = 5
+        self.user.locked_until = timezone.now() - timedelta(minutes=1)
+        self.user.save()
+        response = self._bad_login()
+        self.assertEqual(response.status_code, 401)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.failed_login_attempts, 1)
+        self.assertIsNone(self.user.locked_until)
+
     def test_lockout_is_scoped_per_account_not_global(self):
         """Locking one user out must not block a different user from logging in."""
         for _ in range(5):
@@ -661,6 +785,20 @@ class ProfileEditCooldownTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.user.refresh_from_db()
         self.assertEqual(self.user.first_name, 'Updated')
+
+    def test_empty_edit_does_not_start_cooldown(self):
+        response = self.client.patch('/accounts/user/', {}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.last_profile_update_at)
+
+    def test_no_op_edit_does_not_start_cooldown(self):
+        response = self.client.patch(
+            '/accounts/user/', {'first_name': self.user.first_name}, format='json'
+        )
+        self.assertEqual(response.status_code, 400)
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.last_profile_update_at)
 
 
 class PasswordChangeCooldownTests(TestCase):

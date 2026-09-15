@@ -1,4 +1,5 @@
 from django.db import transaction as db_transaction
+from django.utils import timezone
 from decimal import Decimal
 from ..models import Order, OrderItem, Transaction
 from inventory.models import ProductBatch
@@ -70,7 +71,8 @@ def void_fulfilled_order(order, admin_user):
         skipped_batches = []
         for item in txn.items.select_related('product_batch').all():
             batch = ProductBatch.objects.select_for_update().get(pk=item.product_batch_id)  # pyright: ignore[reportAttributeAccessIssue]
-            if batch.status in ('expired', 'disposed'):
+            if (batch.status in ('expired', 'disposed') or
+                    batch.expiration_date < timezone.localdate()):
                 skipped_batches.append(batch.batch_number)
                 continue
 

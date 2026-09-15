@@ -5,6 +5,11 @@ class TransactionItem(models.Model):
   product_batch = models.ForeignKey('inventory.ProductBatch', on_delete=models.PROTECT, related_name='+')
   quantity = models.DecimalField(max_digits=10, decimal_places=2)
   unit_price = models.DecimalField(max_digits=10, decimal_places=2)  # snapshot
+  product_id_snapshot = models.PositiveBigIntegerField(null=True, editable=False)
+  product_name_snapshot = models.CharField(max_length=100, null=True, editable=False)
+  product_variant_snapshot = models.CharField(max_length=100, blank=True, null=True, editable=False)
+  category_id_snapshot = models.PositiveBigIntegerField(null=True, editable=False)
+  category_name_snapshot = models.CharField(max_length=100, null=True, editable=False)
 
   def __str__(self):
     return f"{self.quantity} x {self.product_batch.batch_number}"

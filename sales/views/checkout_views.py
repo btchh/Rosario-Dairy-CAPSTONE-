@@ -26,7 +26,8 @@ class CheckoutView(viewsets.ViewSet):
 
         try:
             discount_value = parse_decimal(
-                request.data.get('discount_value', '0'), 'discount_value'
+                request.data.get('discount_value', '0'), 'discount_value',
+                max_digits=20,
             )
         except ValueError as exc:
             return Response({'error': str(exc)}, status=400)
@@ -35,7 +36,8 @@ class CheckoutView(viewsets.ViewSet):
         if amount_tendered is not None:
             try:
                 amount_tendered = parse_decimal(
-                    amount_tendered, 'amount_tendered', min_value=Decimal('0.00')
+                    amount_tendered, 'amount_tendered',
+                    min_value=Decimal('0.00'), max_digits=20,
                 )
             except ValueError as exc:
                 return Response({'error': str(exc)}, status=400)

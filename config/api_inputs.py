@@ -12,10 +12,10 @@ def require_item_list(value):
     return value
 
 
-def parse_decimal(value, field_name, *, min_value=None):
+def parse_decimal(value, field_name, *, min_value=None, max_digits=10):
     """Validate finite, database-safe decimal input used by manual API views."""
     field = serializers.DecimalField(
-        max_digits=10,
+        max_digits=max_digits,
         decimal_places=2,
         min_value=min_value,
         coerce_to_string=False,

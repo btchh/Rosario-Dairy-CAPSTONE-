@@ -9,11 +9,14 @@ from ..models import Product, Ingredient, ProductBatch, IngredientBatch, FEFOCon
 STOCK_OUTPUT_FIELD = DecimalField(max_digits=20, decimal_places=2)
 
 
-def _available_stock(relation_name):
+def _available_stock(relation_name, today):
   return Coalesce(
     Sum(
       f'{relation_name}__remaining_quantity',
-      filter=Q(**{f'{relation_name}__status': 'available'}),
+      filter=Q(**{
+        f'{relation_name}__status': 'available',
+        f'{relation_name}__expiration_date__gte': today,
+      }),
     ),
     Decimal('0.00'),
     output_field=STOCK_OUTPUT_FIELD,
@@ -30,8 +33,9 @@ def _expiry_status(critical_expiry_threshold):
 
 def check_product_stock(visible_to_staff=False):
   low_stock_prods = []
+  today = timezone.localdate()
   products = Product.objects.filter(is_active=True).select_related('category').annotate(
-    available_stock=_available_stock('batches')
+    available_stock=_available_stock('batches', today)
   )
   if visible_to_staff:
     products = products.filter(category__is_visible_to_staff=True)
@@ -45,8 +49,9 @@ def check_product_stock(visible_to_staff=False):
 
 def check_ingredient_stock():
   low_stock_ings = []
+  today = timezone.localdate()
   ingredients = Ingredient.objects.filter(is_active=True).annotate(
-    available_stock=_available_stock('batches')
+    available_stock=_available_stock('batches', today)
   )
   config = FEFOConf.get_config()
   for ingredient in ingredients:

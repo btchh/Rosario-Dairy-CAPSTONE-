@@ -4,7 +4,7 @@ from django.utils import timezone
 from accounts.models import Users
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 
 _SELF_EDIT_BLOCKED_FIELDS = ('role', 'is_active', 'is_superuser', 'is_staff', 'username', 'deactivation_reason')
 
@@ -24,36 +24,61 @@ def update_own_profile(user, data):
     (admin or staff — both call this the same way). Only first_name,
     last_name, phone_number, address, and email may be changed here.
     """
-    if user.last_profile_update_at is not None:
-        elapsed = timezone.now() - user.last_profile_update_at
-        cooldown = timedelta(minutes=PROFILE_EDIT_COOLDOWN_MINUTES)
-        if elapsed < cooldown:
-            remaining = int((cooldown - elapsed).total_seconds())
-            raise ValueError(
-                f"Profile can only be updated once every {PROFILE_EDIT_COOLDOWN_MINUTES} "
-                f"minutes. Try again in {remaining // 60 + 1} minute(s)."
-            )
-
+    data = {key: data.get(key) for key in data}
     blocked = [f for f in _SELF_EDIT_BLOCKED_FIELDS if f in data]
     if blocked:
         raise ValueError(
             f"Cannot change the following field(s) via profile update: {', '.join(blocked)}."
         )
 
+    unknown = sorted(set(data) - set(_SELF_EDIT_ALLOWED_FIELDS))
+    if unknown:
+        raise ValueError(f"Unsupported field(s): {', '.join(unknown)}.")
+    if not data:
+        raise ValueError('At least one profile field is required.')
+
     if 'email' in data:
         try:
+            data['email'] = Users.objects.normalize_email(data['email'].strip())
             validate_email(data['email'])
-        except ValidationError:
+        except (AttributeError, TypeError, ValidationError):
             raise ValueError("Invalid email format.")
 
-    for field in _SELF_EDIT_ALLOWED_FIELDS:
-        if field in data:
-            setattr(user, field, data[field])
-
-    user.last_profile_update_at = timezone.now()
     try:
-        user.save()
-    except IntegrityError:
-        raise ValueError("Email already in use.")
+        with transaction.atomic():
+            locked_user = cast(
+                Users, Users.objects.select_for_update().get(pk=user.pk)
+            )
+            if locked_user.last_profile_update_at is not None:
+                elapsed = timezone.now() - locked_user.last_profile_update_at
+                cooldown = timedelta(minutes=PROFILE_EDIT_COOLDOWN_MINUTES)
+                if elapsed < cooldown:
+                    remaining = int((cooldown - elapsed).total_seconds())
+                    raise ValueError(
+                        f"Profile can only be updated once every "
+                        f"{PROFILE_EDIT_COOLDOWN_MINUTES} minutes. Try again in "
+                        f"{remaining // 60 + 1} minute(s)."
+                    )
 
-    return user
+            if 'email' in data and Users.objects.filter(
+                email__iexact=data['email']
+            ).exclude(pk=locked_user.pk).exists():
+                raise ValueError("Email already in use.")
+
+            changed = False
+            for field in _SELF_EDIT_ALLOWED_FIELDS:
+                if field in data and getattr(locked_user, field) != data[field]:
+                    setattr(locked_user, field, data[field])
+                    changed = True
+            if not changed:
+                raise ValueError('No profile changes were provided.')
+
+            locked_user.last_profile_update_at = timezone.now()
+            try:
+                locked_user.full_clean(exclude=['password'])
+            except ValidationError as exc:
+                raise ValueError(' '.join(exc.messages)) from exc
+            locked_user.save()
+            return locked_user
+    except IntegrityError as exc:
+        raise ValueError("Email already in use.") from exc

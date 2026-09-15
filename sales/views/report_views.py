@@ -64,7 +64,8 @@ class BestSellersReportView(APIView):
 
         data = SalesService.get_best_sellers(limit, start_date, end_date)
         return Response([
-            {'product': f"{row['product_name']} {row['product_variant'] or ''}".strip(),
+            {'product_id': row['product_id'],
+             'product': f"{row['product_name']} {row['product_variant'] or ''}".strip(),
              'sales': float(row['total_sold'])}
             for row in data
         ])
@@ -85,7 +86,8 @@ class SalesByCategoryReportView(APIView):
         data = list(SalesService.get_sales_by_category(start_date, end_date))
         total = sum(float(row['total_sold']) for row in data)
         return Response([
-            {'name': row['category_name'],
+            {'category_id': row['category_id'],
+             'name': row['category_name'],
              'value': round((float(row['total_sold']) / total) * 100, 1) if total else 0}
             for row in data
         ])

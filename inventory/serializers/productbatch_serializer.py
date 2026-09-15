@@ -54,6 +54,12 @@ class ProdBatchSerializer(serializers.ModelSerializer):
     datetime (see to_date()'s docstring) if the instance was created
     without an explicit date_received and never re-fetched from the DB.
     """
+    if (self.instance is not None and 'product' in attrs and
+        attrs['product'].pk != self.instance.product_id):
+      raise serializers.ValidationError({
+        'product_id': 'A batch cannot be reassigned to another product.'
+      })
+
     if self.instance is not None:
       date_received = to_date(attrs.get('date_received', self.instance.date_received))
       expiration_date = to_date(attrs.get('expiration_date', self.instance.expiration_date))

@@ -1,5 +1,8 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 from django.db.models import Sum
+from django.utils import timezone
 from ..models import Product, Category
 from .category_serializer import CategorySerializer
 
@@ -16,7 +19,14 @@ class ProductSerializer(serializers.ModelSerializer):
   def get_total_stock(self, obj):
     if hasattr(obj, 'available_stock'):
       return obj.available_stock
-    return obj.batches.filter(status='available').aggregate(
+    if hasattr(obj, 'available_batches_for_total'):
+      return sum(
+        (batch.remaining_quantity for batch in obj.available_batches_for_total),
+        Decimal('0.00'),
+      )
+    return obj.batches.filter(
+      status='available', expiration_date__gte=timezone.localdate()
+    ).aggregate(
       total=Sum('remaining_quantity')
     )['total'] or 0
   

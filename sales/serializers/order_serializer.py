@@ -39,4 +39,6 @@ class OrderSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Percentage discount must be between 0 and 100.")
         if discount_type == 'fixed' and discount_value < 0:
             raise serializers.ValidationError("Discount value cannot be negative.")
+        if discount_type == 'none' and discount_value != Decimal('0.00'):
+            raise serializers.ValidationError("Discount value must be zero when discount type is none.")
         return attrs

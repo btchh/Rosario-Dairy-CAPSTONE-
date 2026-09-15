@@ -1,8 +1,17 @@
 from django.db import models
-from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import AbstractUser, UserManager
 from django.conf import settings
+from django.db.models.functions import Lower
 
 # Create your models here.
+
+class UsersManager(UserManager):
+    def create_superuser(self, username, email=None, password=None, **extra_fields):
+        extra_fields.setdefault('role', 'admin')
+        if extra_fields['role'] != 'admin':
+            raise ValueError('Superusers must have role="admin".')
+        return super().create_superuser(username, email, password, **extra_fields)
+
 
 class Users(AbstractUser):
     ROLE_CHOICES = [
@@ -26,6 +35,15 @@ class Users(AbstractUser):
     locked_until = models.DateTimeField(blank=True, null=True)
     last_profile_update_at = models.DateTimeField(blank=True, null=True)
     last_password_change_at = models.DateTimeField(blank=True, null=True)
+
+    objects = UsersManager()
+
+    class Meta(AbstractUser.Meta):
+        constraints = [
+            models.UniqueConstraint(
+                Lower('email'), name='accounts_users_email_ci_unique'
+            ),
+        ]
 
 
     def __str__(self):

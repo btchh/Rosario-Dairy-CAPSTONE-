@@ -4,5 +4,5 @@ from .register_views import RegisterView
 from .userdetail_views import UserDetailView
 from .userlist_views import UserListView
 from .getuser_views import GetUserView
-from .login_views import CooldownTokenObtainPairView
+from .login_views import CooldownTokenObtainPairView, PasswordAwareTokenRefreshView
 from .forgotpassword_views import ForgotPasswordView, PasswordResetConfirmView

@@ -19,7 +19,7 @@ import threading
 from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db import connections
 from django.test import TestCase, TransactionTestCase
 from django.contrib.auth import get_user_model
@@ -1295,3 +1295,176 @@ class BatchDateValidationTests(TestCase):
             'expiration_date': (self.today + timedelta(days=10)).isoformat(),
         })
         self.assertTrue(serializer.is_valid(), serializer.errors)
+
+
+class InventoryAuditRegressionTests(TestCase):
+    def setUp(self):
+        self.today = timezone.localdate()
+        self.user = make_user('inventoryauditadmin', role='admin')
+        self.category = Category.objects.create(name='Audit Category')
+        self.product = Product.objects.create(
+            category=self.category, name='Audit Product', unit='piece',
+            unit_price=Decimal('10.00'), shelf_life=7, low_stock_threshold=5,
+        )
+        self.ingredient = Ingredient.objects.create(
+            name='Audit Ingredient', unit='kg', unit_price=Decimal('5.00'),
+            shelf_life=7, low_stock_threshold=5,
+        )
+
+    def test_expired_product_stock_is_excluded_from_total_and_low_stock_check(self):
+        from inventory.serializers import ProductSerializer
+
+        ProductBatch.objects.create(
+            product=self.product, batch_number='PRD-AUDIT-EXP',
+            initial_quantity=Decimal('100.00'), remaining_quantity=Decimal('100.00'),
+            expiration_date=self.today - timedelta(days=1), status='available',
+        )
+
+        self.assertEqual(ProductSerializer(self.product).data['total_stock'], 0)
+        alert = next(
+            item for item in BatchService.check_product_stock()
+            if item['product'].pk == self.product.pk
+        )
+        self.assertEqual(alert['remaining_quantity'], Decimal('0.00'))
+
+    def test_expired_ingredient_stock_is_excluded_from_total_and_low_stock_check(self):
+        from inventory.serializers import IngredientSerializer
+
+        IngredientBatch.objects.create(
+            ingredient=self.ingredient, batch_number='ING-AUDIT-EXP',
+            initial_quantity=Decimal('100.00'), remaining_quantity=Decimal('100.00'),
+            expiration_date=self.today - timedelta(days=1), status='available',
+        )
+
+        self.assertEqual(IngredientSerializer(self.ingredient).data['total_stock'], 0)
+        alert = next(
+            item for item in BatchService.check_ingredient_stock()
+            if item['ingredient'].pk == self.ingredient.pk
+        )
+        self.assertEqual(alert['remaining_quantity'], Decimal('0.00'))
+
+    def test_product_batch_cannot_be_reassigned(self):
+        from inventory.serializers import ProdBatchSerializer
+
+        other = Product.objects.create(
+            category=self.category, name='Other Product', unit='piece',
+            unit_price=Decimal('10.00'), shelf_life=7,
+        )
+        batch = ProductBatch.objects.create(
+            product=self.product, batch_number='PRD-AUDIT-MOVE',
+            initial_quantity=Decimal('10.00'), remaining_quantity=Decimal('7.00'),
+            expiration_date=self.today + timedelta(days=7),
+        )
+        serializer = ProdBatchSerializer(
+            batch, data={'product_id': other.pk}, partial=True,
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('product_id', serializer.errors)
+
+    def test_ingredient_batch_cannot_be_reassigned(self):
+        from inventory.serializers import IngBatchSerializer
+
+        other = Ingredient.objects.create(
+            name='Other Ingredient', unit='kg', unit_price=Decimal('5.00'),
+            shelf_life=7,
+        )
+        batch = IngredientBatch.objects.create(
+            ingredient=self.ingredient, batch_number='ING-AUDIT-MOVE',
+            initial_quantity=Decimal('10.00'), remaining_quantity=Decimal('7.00'),
+            expiration_date=self.today + timedelta(days=7),
+        )
+        serializer = IngBatchSerializer(
+            batch, data={'ingredient_id': other.pk}, partial=True,
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('ingredient_id', serializer.errors)
+
+    def test_negative_shelf_life_and_threshold_are_rejected(self):
+        from inventory.serializers import IngredientSerializer, ProductSerializer
+
+        product = ProductSerializer(data={
+            'category_id': self.category.pk, 'name': 'Invalid Product',
+            'unit': 'piece', 'unit_price': '1.00', 'shelf_life': -1,
+            'low_stock_threshold': -1,
+        })
+        ingredient = IngredientSerializer(data={
+            'name': 'Invalid Ingredient', 'unit': 'kg', 'unit_price': '1.00',
+            'shelf_life': -1, 'low_stock_threshold': -1,
+        })
+
+        self.assertFalse(product.is_valid())
+        self.assertIn('shelf_life', product.errors)
+        self.assertIn('low_stock_threshold', product.errors)
+        self.assertFalse(ingredient.is_valid())
+        self.assertIn('shelf_life', ingredient.errors)
+        self.assertIn('low_stock_threshold', ingredient.errors)
+
+    def test_ingredient_batch_grade_is_available_through_serializer(self):
+        from inventory.serializers import IngBatchSerializer
+
+        serializer = IngBatchSerializer(data={
+            'ingredient_id': self.ingredient.pk, 'quantity': '10.00',
+            'grade': 'A',
+            'expiration_date': (self.today + timedelta(days=7)).isoformat(),
+        })
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        batch = serializer.save()
+
+        self.assertEqual(batch.grade, 'A')
+        self.assertEqual(IngBatchSerializer(batch).data['grade'], 'A')
+
+    def test_terminal_batch_rejects_correction_without_creating_phantom_stock(self):
+        batch = ProductBatch.objects.create(
+            product=self.product, batch_number='PRD-AUDIT-DISPOSED',
+            initial_quantity=Decimal('10.00'), remaining_quantity=Decimal('0.00'),
+            expiration_date=self.today + timedelta(days=7), status='disposed',
+        )
+
+        with self.assertRaises(ValueError):
+            BatchService.create_stock_adjustment(
+                adjustment_type='correction', quantity=Decimal('-5.00'),
+                unit_cost=Decimal('10.00'), adjusted_by=self.user,
+                product_batch=batch,
+            )
+
+        batch.refresh_from_db()
+        self.assertEqual(batch.remaining_quantity, Decimal('0.00'))
+        self.assertEqual(batch.status, 'disposed')
+        self.assertFalse(StockAdjustment.objects.filter(product_batch=batch).exists())
+
+    def test_adjustment_requires_exactly_one_batch_at_database_level(self):
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            StockAdjustment.objects.create(
+                adjustment_type='correction', quantity=Decimal('1.00'),
+                unit_cost=Decimal('1.00'), adjusted_by=self.user,
+            )
+
+    def test_stock_count_requires_exactly_one_batch_at_database_level(self):
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            StockCount.objects.create(
+                expected_quantity=Decimal('1.00'), counted_quantity=Decimal('1.00'),
+                variance=Decimal('0.00'), counted_by=self.user,
+            )
+
+
+class FEFOTransactionBoundaryTests(TransactionTestCase):
+    def setUp(self):
+        category = Category.objects.create(name='Transaction Boundary')
+        self.product = Product.objects.create(
+            category=category, name='Transaction Product', unit='piece',
+            unit_price=Decimal('10.00'), shelf_life=7,
+        )
+        self.batch = ProductBatch.objects.create(
+            product=self.product, batch_number='PRD-AUDIT-ATOMIC',
+            initial_quantity=Decimal('10.00'), remaining_quantity=Decimal('10.00'),
+            expiration_date=timezone.localdate() + timedelta(days=7),
+        )
+
+    def test_direct_fefo_call_opens_its_own_transaction(self):
+        consumed = BatchService.deduct_product_batch(self.product, Decimal('2.00'))
+
+        self.assertEqual(consumed[0][1], Decimal('2.00'))
+        self.batch.refresh_from_db()
+        self.assertEqual(self.batch.remaining_quantity, Decimal('8.00'))

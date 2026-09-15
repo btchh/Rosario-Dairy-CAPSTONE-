@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.db.models import Sum
+from django.utils import timezone
 from ..models import Ingredient
 
 
@@ -9,7 +10,9 @@ class IngredientSerializer(serializers.ModelSerializer):
   def get_total_stock(self, obj):
     if hasattr(obj, 'available_stock'):
       return obj.available_stock
-    return obj.batches.filter(status='available'). aggregate(
+    return obj.batches.filter(
+      status='available', expiration_date__gte=timezone.localdate()
+    ).aggregate(
       total=Sum('remaining_quantity')
     )['total'] or 0
 

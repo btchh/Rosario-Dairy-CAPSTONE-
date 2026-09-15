@@ -16,6 +16,11 @@ def create_stock_adjustment(adjustment_type, quantity, unit_cost, adjusted_by, r
         else:
             batch = IngredientBatch.objects.select_for_update().get(pk=ingredient_batch.pk)  # type: ignore
 
+        if batch.status in ('expired', 'disposed'):
+            raise ValueError(
+                f"Batch {batch.batch_number} is {batch.status} and cannot be adjusted."
+            )
+
         if quantity > Decimal('0.00') and quantity > batch.remaining_quantity:
             raise ValueError(
                 f"Adjustment quantity ({quantity}) exceeds remaining stock ({batch.remaining_quantity}) for batch {batch.batch_number}."

@@ -4,6 +4,10 @@ from ..models import Transaction, TransactionItem
 from inventory.services.batch_service import BatchService
 
 
+MONEY_QUANTUM = Decimal('0.01')
+MAX_MONEY = Decimal('999999999999999999.99')
+
+
 def checkout(cart_items, staff_user, payment_method='cash',
             discount_type='none', discount_value=Decimal('0.00'),
             amount_tendered=None, customer=None):
@@ -17,6 +21,27 @@ def checkout(cart_items, staff_user, payment_method='cash',
     valid_payment_methods = [choice[0] for choice in Transaction.PAYMENT_CHOICES]
     if payment_method not in valid_payment_methods:
         raise ValueError(f"Invalid payment_method '{payment_method}'. Must be one of {valid_payment_methods}.")
+
+    discount_value = Decimal(str(discount_value))
+    if not discount_value.is_finite():
+        raise ValueError("Discount value must be a finite number.")
+    if discount_type == 'percent' and not (0 <= discount_value <= 100):
+        raise ValueError("Percentage discount must be between 0 and 100.")
+    if discount_type == 'fixed' and discount_value < 0:
+        raise ValueError("Discount value cannot be negative.")
+    if discount_type == 'none' and discount_value != Decimal('0.00'):
+        raise ValueError("Discount value must be zero when discount type is none.")
+    if discount_type not in ('none', 'percent', 'fixed'):
+        raise ValueError(f"Invalid discount_type '{discount_type}'. Must be one of 'none', 'percent', 'fixed'.")
+
+    if amount_tendered is not None:
+        amount_tendered = Decimal(str(amount_tendered))
+        if not amount_tendered.is_finite() or amount_tendered < 0 or amount_tendered > MAX_MONEY:
+            raise ValueError("Amount tendered must be between 0 and 999999999999999999.99.")
+
+    # Every checkout acquires product locks in the same order. This prevents
+    # two multi-product carts submitted in opposite orders from deadlocking.
+    cart_items = sorted(cart_items, key=lambda entry: entry[0].pk)
 
     with db_transaction.atomic():
         txn = Transaction.objects.create(
@@ -40,28 +65,34 @@ def checkout(cart_items, staff_user, payment_method='cash',
                     price = locked_price
                 else:
                     price = batch.unit_price if batch.unit_price is not None else batch.product.unit_price
+                price = Decimal(str(price))
+                line_subtotal = (Decimal(str(qty_taken)) * price).quantize(MONEY_QUANTUM)
+                if line_subtotal > MAX_MONEY or subtotal + line_subtotal > MAX_MONEY:
+                    raise ValueError("Sale total exceeds the maximum supported amount.")
+                sold_product = batch.product
                 TransactionItem.objects.create(
                     transaction=txn,
                     product_batch=batch,
                     quantity=qty_taken,
-                    unit_price=price
+                    unit_price=price,
+                    product_id_snapshot=sold_product.pk,
+                    product_name_snapshot=sold_product.name,
+                    product_variant_snapshot=sold_product.variant,
+                    category_id_snapshot=sold_product.category_id,
+                    category_name_snapshot=sold_product.category.name,
                 )
-                subtotal += Decimal(str(qty_taken)) * price
+                subtotal += line_subtotal
         # --- discount ---
         if discount_type == 'percent':
-            if not (0 <= discount_value <= 100):
-                raise ValueError("Percentage discount must be between 0 and 100.")
-            discount_amount = subtotal * (discount_value / Decimal('100'))
+            discount_amount = (
+                subtotal * (discount_value / Decimal('100'))
+            ).quantize(MONEY_QUANTUM)
         elif discount_type == 'fixed':
-            if discount_value < 0:
-                raise ValueError("Discount value cannot be negative.")
             if discount_value > subtotal:
                 raise ValueError("Fixed discount cannot exceed the subtotal.")
             discount_amount = discount_value
-        elif discount_type == 'none':
-            discount_amount = Decimal('0.00')
         else:
-            raise ValueError(f"Invalid discount_type '{discount_type}'. Must be one of 'none', 'percent', 'fixed'.")
+            discount_amount = Decimal('0.00')
         total = subtotal - discount_amount
         # --- cash tendered / change ---
         change_due = None

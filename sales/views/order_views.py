@@ -1,25 +1,50 @@
 from typing import cast
 from decimal import Decimal
+from django.db.models import Prefetch
+from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from accounts.permissions import IsAdmin, IsStaff
-from inventory.models import Product
-from ..models import Order
+from inventory.models import Product, ProductBatch
+from ..models import Order, OrderItem, TransactionItem
 from ..serializers import OrderSerializer
 from ..services import SalesService
 from config.api_inputs import parse_decimal, require_item_list
 
 
 class OrderViewSet(viewsets.ModelViewSet):
-    queryset = Order.objects.select_related('customer', 'handled_by', 'transaction').prefetch_related('items').all()
+    queryset = Order.objects.all()
     serializer_class = OrderSerializer
     permission_classes = [IsAdmin | IsStaff]
     http_method_names = ['get', 'post', 'head', 'options']
 
     def get_queryset(self):
-        queryset = super().get_queryset()
+        available_batches = ProductBatch.objects.filter(
+            status='available', expiration_date__gte=timezone.localdate()
+        ).only('product_id', 'remaining_quantity')
+        order_items = OrderItem.objects.select_related(
+            'product__category'
+        ).prefetch_related(Prefetch(
+            'product__batches',
+            queryset=available_batches,
+            to_attr='available_batches_for_total',
+        ))
+        transaction_items = TransactionItem.objects.select_related(
+            'product_batch__product__category'
+        ).prefetch_related(Prefetch(
+            'product_batch__product__batches',
+            queryset=available_batches,
+            to_attr='available_batches_for_total',
+        ))
+        queryset = super().get_queryset().select_related(
+            'customer', 'handled_by', 'transaction__handled_by',
+            'transaction__customer',
+        ).prefetch_related(
+            Prefetch('items', queryset=order_items),
+            Prefetch('transaction__items', queryset=transaction_items),
+        )
         customer_id = self.request.query_params.get('customer_id')
         if customer_id:
             try:
@@ -72,7 +97,8 @@ class OrderViewSet(viewsets.ModelViewSet):
         if amount_tendered is not None:
             try:
                 amount_tendered = parse_decimal(
-                    amount_tendered, 'amount_tendered', min_value=Decimal('0.00')
+                    amount_tendered, 'amount_tendered',
+                    min_value=Decimal('0.00'), max_digits=20,
                 )
             except ValueError as exc:
                 return Response({'error': str(exc)}, status=400)

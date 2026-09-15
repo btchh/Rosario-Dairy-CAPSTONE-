@@ -26,7 +26,7 @@ class IngBatchSerializer(serializers.ModelSerializer):
   class Meta:
     model = IngredientBatch
     fields = [
-      'id', 'ingredient', 'ingredient_id','batch_number', 'supplier', 'unit_price', 'initial_quantity', 'remaining_quantity', 'quantity','expiration_date', 'expiry_status', 'date_received', 'status', 'notes', 'created_at', 'updated_at'
+      'id', 'ingredient', 'ingredient_id','batch_number', 'supplier', 'grade', 'unit_price', 'initial_quantity', 'remaining_quantity', 'quantity','expiration_date', 'expiry_status', 'date_received', 'status', 'notes', 'created_at', 'updated_at'
     ]
     read_only_fields = ['id', 'batch_number', 'initial_quantity', 'remaining_quantity', 'status', 'created_at', 'updated_at']
 
@@ -39,6 +39,12 @@ class IngBatchSerializer(serializers.ModelSerializer):
     datetime (see to_date()'s docstring) if the instance was created
     without an explicit date_received and never re-fetched from the DB.
     """
+    if (self.instance is not None and 'ingredient' in attrs and
+        attrs['ingredient'].pk != self.instance.ingredient_id):
+      raise serializers.ValidationError({
+        'ingredient_id': 'A batch cannot be reassigned to another ingredient.'
+      })
+
     if self.instance is not None:
       date_received = to_date(attrs.get('date_received', self.instance.date_received))
       expiration_date = to_date(attrs.get('expiration_date', self.instance.expiration_date))

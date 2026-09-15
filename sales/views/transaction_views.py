@@ -1,9 +1,12 @@
 from datetime import datetime
+from django.db.models import Prefetch
+from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from accounts.permissions import IsAdmin, IsStaff
-from ..models import Transaction
+from inventory.models import ProductBatch
+from ..models import Transaction, TransactionItem
 from ..serializers import TransactionSerializer
 
 
@@ -27,12 +30,25 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
       customer_id=<customer id>
       include_voided=true   (defaults to false — voided sales hidden by default)
     """
-    queryset = Transaction.objects.select_related('handled_by', 'customer').prefetch_related(
-        'items__product_batch__product'
-    ).order_by('-created_at')
+    queryset = Transaction.objects.all()
     serializer_class = TransactionSerializer
     permission_classes = [IsAdmin | IsStaff]
     pagination_class = TransactionPagination
+
+    def get_queryset(self):
+        available_batches = ProductBatch.objects.filter(
+            status='available', expiration_date__gte=timezone.localdate()
+        ).only('product_id', 'remaining_quantity')
+        items = TransactionItem.objects.select_related(
+            'product_batch__product__category'
+        ).prefetch_related(Prefetch(
+            'product_batch__product__batches',
+            queryset=available_batches,
+            to_attr='available_batches_for_total',
+        ))
+        return super().get_queryset().select_related(
+            'handled_by', 'customer'
+        ).prefetch_related(Prefetch('items', queryset=items)).order_by('-created_at')
 
     @staticmethod
     def _parse_date_param(value, field_name):

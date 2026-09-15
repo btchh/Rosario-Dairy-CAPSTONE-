@@ -23,3 +23,14 @@ class StockAdjustment(models.Model):
 
   def __str__(self):
     return self.adjustment_type
+
+  class Meta:
+    constraints = [
+      models.CheckConstraint(
+        condition=(
+          models.Q(product_batch__isnull=False, ingredient_batch__isnull=True) |
+          models.Q(product_batch__isnull=True, ingredient_batch__isnull=False)
+        ),
+        name='stock_adjustment_exactly_one_batch',
+      ),
+    ]

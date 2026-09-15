@@ -7,9 +7,15 @@ correct rejection of bad states, correct locking-adjacent behavior against a
 single connection) rather than true concurrent-request races, which would
 need TransactionTestCase + threading + Postgres.
 """
+from datetime import timedelta
 from decimal import Decimal
+from unittest.mock import patch
+
+from django.db import IntegrityError, connection, transaction
+from django.test.utils import CaptureQueriesContext
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from rest_framework.test import APIClient
 from inventory.models import Category, Product, ProductBatch
 from sales.models import Customer, Order, OrderItem, Transaction, TransactionItem
@@ -731,3 +737,204 @@ class CancelOrderPermissionTests(TestCase):
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(f'/sales/orders/{self.order_id}/cancel/')
         self.assertEqual(response.status_code, 200)
+
+
+class SalesAuditRegressionTests(TestCase):
+    def setUp(self):
+        self.staff = make_user('salesauditstaff')
+        self.admin = make_user('salesauditadmin', role='admin')
+        self.category = Category.objects.create(name='Audit Category')
+        self.product = Product.objects.create(
+            category=self.category, name='Audit Product', unit='piece',
+            unit_price=Decimal('10.00'), shelf_life=7,
+        )
+        self.batch = ProductBatch.objects.create(
+            product=self.product, batch_number='PRD-SALES-AUDIT',
+            unit_price=Decimal('10.00'), initial_quantity=Decimal('100.00'),
+            remaining_quantity=Decimal('100.00'),
+            expiration_date=timezone.localdate() + timedelta(days=30),
+        )
+        self.customer = Customer.objects.create(
+            name='Audit Customer', created_by=self.staff,
+        )
+
+    def test_void_does_not_restore_stock_to_batch_that_has_since_expired(self):
+        order = SalesService.place_order(
+            self.customer, [(self.product, Decimal('10.00'))], self.staff,
+            amount_tendered=Decimal('100.00'),
+        )
+        self.batch.expiration_date = timezone.localdate() - timedelta(days=1)
+        self.batch.save(update_fields=['expiration_date'])
+
+        _, skipped = SalesService.void_fulfilled_order(order, self.admin)
+
+        self.batch.refresh_from_db()
+        self.assertEqual(self.batch.remaining_quantity, Decimal('90.00'))
+        self.assertIn(self.batch.batch_number, skipped)
+
+    def test_best_sellers_keep_same_named_products_separate(self):
+        other = Product.objects.create(
+            category=self.category, name=self.product.name, unit='piece',
+            unit_price=Decimal('10.00'), shelf_life=7,
+        )
+        ProductBatch.objects.create(
+            product=other, batch_number='PRD-SALES-AUDIT-OTHER',
+            unit_price=Decimal('10.00'), initial_quantity=Decimal('10.00'),
+            remaining_quantity=Decimal('10.00'),
+            expiration_date=timezone.localdate() + timedelta(days=30),
+        )
+        SalesService.checkout(
+            [(self.product, Decimal('2.00'))], self.staff,
+            payment_method='online',
+        )
+        SalesService.checkout(
+            [(other, Decimal('3.00'))], self.staff,
+            payment_method='online',
+        )
+
+        rows = list(SalesService.get_best_sellers())
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(
+            {row['product_id'] for row in rows}, {self.product.pk, other.pk}
+        )
+
+    def test_reports_use_sale_time_product_and_category_snapshots(self):
+        original_product_name = self.product.name
+        original_category_name = self.category.name
+        SalesService.checkout(
+            [(self.product, Decimal('1.00'))], self.staff,
+            payment_method='online',
+        )
+        self.product.name = 'Renamed Product'
+        self.product.save(update_fields=['name'])
+        self.category.name = 'Renamed Category'
+        self.category.save(update_fields=['name'])
+
+        product_row = list(SalesService.get_best_sellers())[0]
+        category_row = list(SalesService.get_sales_by_category())[0]
+
+        self.assertEqual(product_row['product_name'], original_product_name)
+        self.assertEqual(category_row['category_name'], original_category_name)
+
+    def test_same_named_categories_remain_distinct_in_report(self):
+        other_category = Category.objects.create(name=self.category.name)
+        other_product = Product.objects.create(
+            category=other_category, name='Other Product', unit='piece',
+            unit_price=Decimal('10.00'), shelf_life=7,
+        )
+        ProductBatch.objects.create(
+            product=other_product, batch_number='PRD-SALES-OTHER-CATEGORY',
+            unit_price=Decimal('10.00'), initial_quantity=Decimal('10.00'),
+            remaining_quantity=Decimal('10.00'),
+            expiration_date=timezone.localdate() + timedelta(days=30),
+        )
+        SalesService.checkout(
+            [(self.product, Decimal('2.00'))], self.staff,
+            payment_method='online',
+        )
+        SalesService.checkout(
+            [(other_product, Decimal('3.00'))], self.staff,
+            payment_method='online',
+        )
+
+        rows = list(SalesService.get_sales_by_category())
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(
+            {row['category_id'] for row in rows},
+            {self.category.pk, other_category.pk},
+        )
+
+    def test_none_discount_rejects_nonzero_value_without_deducting_stock(self):
+        client = APIClient()
+        client.force_authenticate(user=self.staff)
+
+        response = client.post('/sales/checkout/', {
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'payment_method': 'online',
+            'discount_type': 'none',
+            'discount_value': '-25.00',
+        }, format='json')
+
+        self.assertEqual(response.status_code, 400)
+        self.batch.refresh_from_db()
+        self.assertEqual(self.batch.remaining_quantity, Decimal('100.00'))
+        self.assertEqual(Transaction.objects.count(), 0)
+
+    def test_large_valid_line_total_is_stored_without_decimal_overflow(self):
+        self.product.unit_price = Decimal('99999999.99')
+        self.product.save(update_fields=['unit_price'])
+        self.batch.unit_price = Decimal('99999999.99')
+        self.batch.save(update_fields=['unit_price'])
+
+        order = SalesService.place_order(
+            self.customer, [(self.product, Decimal('2.00'))], self.staff,
+            payment_method='online',
+        )
+
+        self.assertEqual(order.items.get().subtotal, Decimal('199999999.98'))
+        self.assertEqual(order.transaction.total_amount, Decimal('199999999.98'))
+
+    def test_transaction_can_only_belong_to_one_order(self):
+        sale = Transaction.objects.create(handled_by=self.staff)
+        Order.objects.create(
+            customer=self.customer, handled_by=self.staff, transaction=sale,
+        )
+
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Order.objects.create(
+                customer=self.customer, handled_by=self.staff, transaction=sale,
+            )
+
+    def test_checkout_processes_products_in_stable_primary_key_order(self):
+        other = Product.objects.create(
+            category=self.category, name='Second Product', unit='piece',
+            unit_price=Decimal('10.00'), shelf_life=7,
+        )
+        processed = []
+
+        def record_product(product, quantity):
+            processed.append(product.pk)
+            return []
+
+        with patch(
+            'sales.services.checkout_service.BatchService.deduct_product_batch',
+            side_effect=record_product,
+        ):
+            SalesService.checkout(
+                [(other, Decimal('1.00')), (self.product, Decimal('1.00'))],
+                self.staff, payment_method='online',
+            )
+
+        self.assertEqual(processed, sorted(processed))
+
+    def test_transaction_history_query_count_does_not_grow_per_item(self):
+        for _ in range(3):
+            SalesService.checkout(
+                [(self.product, Decimal('1.00'))], self.staff,
+                payment_method='online',
+            )
+        client = APIClient()
+        client.force_authenticate(user=self.staff)
+
+        with CaptureQueriesContext(connection) as queries:
+            response = client.get('/sales/transactions/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertLessEqual(len(queries), 5)
+
+    def test_order_history_query_count_does_not_grow_per_item(self):
+        for _ in range(3):
+            SalesService.place_order(
+                self.customer, [(self.product, Decimal('1.00'))], self.staff,
+                payment_method='online',
+            )
+        client = APIClient()
+        client.force_authenticate(user=self.staff)
+
+        with CaptureQueriesContext(connection) as queries:
+            response = client.get('/sales/orders/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertLessEqual(len(queries), 7)

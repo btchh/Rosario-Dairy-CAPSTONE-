@@ -2,6 +2,7 @@ from datetime import timedelta
 from django.utils import timezone
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
 PASSWORD_CHANGE_COOLDOWN_MINUTES = 15
@@ -48,6 +49,9 @@ def forgot_password(user, new_password):
     user.save()
 
 
-def logout(refresh_token):
+def logout(refresh_token, user):
     token = RefreshToken(refresh_token)
+    expected_user_id = getattr(user, api_settings.USER_ID_FIELD)
+    if str(token.get(api_settings.USER_ID_CLAIM)) != str(expected_user_id):
+        raise ValueError('Refresh token does not belong to the authenticated user.')
     token.blacklist()

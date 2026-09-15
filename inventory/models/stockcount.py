@@ -9,7 +9,7 @@ class StockCount(models.Model):
   counted_quantity = models.DecimalField(max_digits=10, decimal_places=2)
   variance = models.DecimalField(max_digits=10, decimal_places=2)
   counted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='stock_counts')
-  count_date = models.DateField(default=timezone.now)
+  count_date = models.DateField(default=timezone.localdate)
   notes = models.TextField(blank=True, null=True)
   resulting_adjustment = models.ForeignKey('StockAdjustment', on_delete=models.SET_NULL, related_name='+', blank=True, null=True)
   created_at = models.DateTimeField(auto_now_add=True)
@@ -22,3 +22,12 @@ class StockCount(models.Model):
     verbose_name = "Stock Count"
     verbose_name_plural = "Stock Counts"
     ordering = ['-count_date']
+    constraints = [
+      models.CheckConstraint(
+        condition=(
+          models.Q(product_batch__isnull=False, ingredient_batch__isnull=True) |
+          models.Q(product_batch__isnull=True, ingredient_batch__isnull=False)
+        ),
+        name='stock_count_exactly_one_batch',
+      ),
+    ]

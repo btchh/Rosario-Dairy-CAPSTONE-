@@ -5,7 +5,7 @@ class OrderItem(models.Model):
   product = models.ForeignKey('inventory.Product', on_delete=models.PROTECT, related_name='+')
   quantity = models.DecimalField(max_digits=10, decimal_places=2)
   unit_price = models.DecimalField(max_digits=10, decimal_places=2)  # snapshot at order time
-  subtotal = models.DecimalField(max_digits=10, decimal_places=2)
+  subtotal = models.DecimalField(max_digits=20, decimal_places=2)
 
   def __str__(self):
     return f"{self.quantity} x {self.product.name} (Order #{self.order.pk})"

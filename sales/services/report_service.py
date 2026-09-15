@@ -1,5 +1,5 @@
-from django.db.models import Sum, F
-from django.db.models.functions import TruncDate, TruncWeek, TruncMonth, TruncYear
+from django.db.models import BigIntegerField, Sum, F
+from django.db.models.functions import Coalesce, TruncDate, TruncWeek, TruncMonth, TruncYear
 from ..models import Transaction, TransactionItem
 
 PERIOD_TRUNC = {
@@ -43,9 +43,22 @@ def get_best_sellers(limit=10, start_date=None, end_date=None):
 
     return (
         qs
+        .annotate(
+            report_product_id=Coalesce(
+                'product_id_snapshot', 'product_batch__product_id',
+                output_field=BigIntegerField(),
+            ),
+            report_product_name=Coalesce(
+                'product_name_snapshot', 'product_batch__product__name'
+            ),
+            report_product_variant=Coalesce(
+                'product_variant_snapshot', 'product_batch__product__variant'
+            ),
+        )
         .values(
-            product_name=F('product_batch__product__name'),
-            product_variant=F('product_batch__product__variant')
+            product_id=F('report_product_id'),
+            product_name=F('report_product_name'),
+            product_variant=F('report_product_variant'),
         )
         .annotate(total_sold=Sum('quantity'))
         .order_by('-total_sold')[:limit]
@@ -61,7 +74,19 @@ def get_sales_by_category(start_date=None, end_date=None):
 
     return (
         qs
-        .values(category_name=F('product_batch__product__category__name'))
+        .annotate(
+            report_category_id=Coalesce(
+                'category_id_snapshot', 'product_batch__product__category_id',
+                output_field=BigIntegerField(),
+            ),
+            report_category_name=Coalesce(
+                'category_name_snapshot', 'product_batch__product__category__name'
+            ),
+        )
+        .values(
+            category_id=F('report_category_id'),
+            category_name=F('report_category_name'),
+        )
         .annotate(total_sold=Sum('quantity'))
         .order_by('-total_sold')
     )

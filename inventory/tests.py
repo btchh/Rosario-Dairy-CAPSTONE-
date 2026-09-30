@@ -229,7 +229,7 @@ class CreateStockAdjustmentTests(TestCase):
             unit_price=Decimal('50.00'),
             initial_quantity=Decimal('100.00'),
             remaining_quantity=Decimal('100.00'),
-            expiration_date=timezone.now().date() + timedelta(days=30),
+            expiration_date=timezone.localdate() + timedelta(days=30),
         )
 
     def test_rejects_zero_quantity_for_non_correction(self):
@@ -387,7 +387,7 @@ class ReconcileTests(TestCase):
             unit_price=Decimal('50.00'),
             initial_quantity=Decimal('100.00'),
             remaining_quantity=Decimal('100.00'),
-            expiration_date=timezone.now().date() + timedelta(days=30),
+            expiration_date=timezone.localdate() + timedelta(days=30),
         )
 
     def test_reconcile_with_shortage_creates_correction_adjustment(self):
@@ -465,7 +465,7 @@ class ReconcileTests(TestCase):
         serializer = IngBatchSerializer(data={
             'ingredient_id': ingredient.pk,
             'quantity': '50.00',
-            'expiration_date': (timezone.now().date() + timedelta(days=30)).isoformat(),
+            'expiration_date': (timezone.localdate() + timedelta(days=30)).isoformat(),
         })
         self.assertTrue(serializer.is_valid(), serializer.errors)
         batch = serializer.save()
@@ -486,7 +486,7 @@ class BatchQuantityUpdateTests(TestCase):
             unit_price=Decimal('50.00'),
             initial_quantity=Decimal('100.00'),
             remaining_quantity=Decimal('100.00'),
-            expiration_date=timezone.now().date() + timedelta(days=30),
+            expiration_date=timezone.localdate() + timedelta(days=30),
         )
 
     def test_patching_quantity_does_not_error_and_does_not_touch_remaining_quantity(self):
@@ -510,7 +510,7 @@ class BatchQuantityUpdateTests(TestCase):
     def test_patching_expiration_date_persists(self):
         from inventory.serializers import ProdBatchSerializer
 
-        new_date = timezone.now().date() + timedelta(days=60)
+        new_date = timezone.localdate() + timedelta(days=60)
         serializer = ProdBatchSerializer(
             self.batch, data={'expiration_date': new_date.isoformat()}, partial=True,
         )
@@ -535,7 +535,7 @@ class DeductBatchTests(TestCase):
             category=self.category, name='Fresh Milk', unit='liter',
             unit_price=Decimal('50.00'), shelf_life=7,
         )
-        today = timezone.now().date()
+        today = timezone.localdate()
         # Two batches, different expiration dates — FEFO should drain the soonest first.
         self.batch_soon = ProductBatch.objects.create(
             product=self.product, batch_number='PRD-TEST-004',
@@ -602,7 +602,7 @@ class BatchQuantityPriceValidationTests(TestCase):
             name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
             shelf_life=3, ingredient_type='raw_milk',
         )
-        self.future_date = (timezone.now().date() + timedelta(days=30)).isoformat()
+        self.future_date = (timezone.localdate() + timedelta(days=30)).isoformat()
 
     # --- ProductBatch: quantity ---
 
@@ -801,7 +801,7 @@ class BatchSequenceServiceTests(TestCase):
             category=category, name='Fresh Milk', unit='liter',
             unit_price=Decimal('50.00'), shelf_life=7,
         )
-        future_date = (timezone.now().date() + timedelta(days=30)).isoformat()
+        future_date = (timezone.localdate() + timedelta(days=30)).isoformat()
 
         serializer1 = ProdBatchSerializer(data={
             'product_id': product.pk, 'quantity': '10.00', 'expiration_date': future_date,
@@ -832,7 +832,7 @@ class BatchSequenceServiceTests(TestCase):
             name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
             shelf_life=3, ingredient_type='raw_milk',
         )
-        future_date = (timezone.now().date() + timedelta(days=30)).isoformat()
+        future_date = (timezone.localdate() + timedelta(days=30)).isoformat()
 
         prod_serializer = ProdBatchSerializer(data={
             'product_id': product.pk, 'quantity': '10.00', 'expiration_date': future_date,
@@ -910,7 +910,7 @@ class BatchNumberUniquenessTests(TestCase):
             name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
             shelf_life=3, ingredient_type='raw_milk',
         )
-        self.future_date = timezone.now().date() + timedelta(days=30)
+        self.future_date = timezone.localdate() + timedelta(days=30)
 
     def test_duplicate_product_batch_number_rejected_at_db_level(self):
         ProductBatch.objects.create(
@@ -986,7 +986,7 @@ class ExpiredBatchExclusionTests(TestCase):
             name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
             shelf_life=3, ingredient_type='raw_milk',
         )
-        self.today = timezone.now().date()
+        self.today = timezone.localdate()
 
     # --- ProductBatch ---
 
@@ -1110,7 +1110,7 @@ class BatchStatusReadOnlyTests(TestCase):
             name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
             shelf_life=3, ingredient_type='raw_milk',
         )
-        self.future_date = timezone.now().date() + timedelta(days=30)
+        self.future_date = timezone.localdate() + timedelta(days=30)
 
     def test_product_batch_status_ignored_on_patch(self):
         from inventory.serializers import ProdBatchSerializer
@@ -1189,7 +1189,7 @@ class BatchDateValidationTests(TestCase):
             name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
             shelf_life=3, ingredient_type='raw_milk',
         )
-        self.today = timezone.now().date()
+        self.today = timezone.localdate()
 
     # --- ProductBatch: create ---
 

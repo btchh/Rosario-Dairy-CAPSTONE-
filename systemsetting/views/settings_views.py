@@ -1,21 +1,17 @@
 from rest_framework.generics import RetrieveUpdateAPIView
-from rest_framework.permissions import SAFE_METHODS
 from django.http import Http404
 
-from accounts.permissions import IsAdmin, IsStaff
+from accounts.permissions import IsAdmin
 from ..models import SystemSettings
 from ..serializers import SystemSettingsSerializer
 
 
 class SystemSettingsView(RetrieveUpdateAPIView):
-    """Singleton settings endpoint: staff can read; only admins can update."""
+    """Singleton business settings endpoint, accessible only to admins."""
 
     serializer_class = SystemSettingsSerializer
+    permission_classes = [IsAdmin]
     http_method_names = ['get', 'put', 'patch', 'head', 'options']
-
-    def get_permissions(self):
-        permission = (IsAdmin | IsStaff) if self.request.method in SAFE_METHODS else IsAdmin
-        return [permission()]
 
     def get_object(self):
         if self.kwargs.get('pk') not in (None, 1):

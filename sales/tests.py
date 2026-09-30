@@ -529,7 +529,7 @@ class TransactionHistoryTests(TestCase):
     def test_date_range_includes_today(self):
         self._make_txn()
         from django.utils import timezone
-        today = timezone.now().date().isoformat()
+        today = timezone.localdate().isoformat()
         response = self.client.get(f'/sales/transactions/?start_date={today}&end_date={today}')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['count'], 1)

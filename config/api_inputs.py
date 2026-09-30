@@ -1,6 +1,17 @@
 from collections.abc import Mapping
+from functools import wraps
 
 from rest_framework import serializers
+
+
+def object_body(handler):
+    """Validate the body before manually parsed views access object fields."""
+    @wraps(handler)
+    def validated(self, request, *args, **kwargs):
+        if not isinstance(request.data, Mapping):
+            raise serializers.ValidationError('Request body must be a JSON object.')
+        return handler(self, request, *args, **kwargs)
+    return validated
 
 
 def require_item_list(value):

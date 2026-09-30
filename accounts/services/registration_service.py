@@ -5,6 +5,8 @@ from accounts.models import Users
 
 
 def register_user(username, password, email, role, first_name, last_name, phone_number, address):
+    if not isinstance(password, str):
+        raise ValueError('Password must be text.')
     email = Users.objects.normalize_email(str(email).strip())
     user = Users(
         username=str(username).strip(),

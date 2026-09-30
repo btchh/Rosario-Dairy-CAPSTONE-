@@ -1,3 +1,4 @@
+from config.api_inputs import object_body
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from ..models import StockCount, ProductBatch, IngredientBatch
@@ -23,6 +24,7 @@ class StockCountViewSet(viewsets.ModelViewSet):
             )
         return qs
 
+    @object_body
     def create(self, request, *args, **kwargs):
         product_batch_id = request.data.get('product_batch_id')
         ingredient_batch_id = request.data.get('ingredient_batch_id')

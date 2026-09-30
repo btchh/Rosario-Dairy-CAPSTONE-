@@ -1,3 +1,4 @@
+from config.api_inputs import object_body
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -21,6 +22,7 @@ class ForgotPasswordView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [PasswordResetRequestRateThrottle]
 
+    @object_body
     def post(self, request):
         username = request.data.get('username')
         email = request.data.get('email')
@@ -38,6 +40,7 @@ class PasswordResetConfirmView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [PasswordResetConfirmRateThrottle]
 
+    @object_body
     def post(self, request):
         required = ('username', 'email', 'otp', 'new_password')
         values = {field: request.data.get(field) for field in required}

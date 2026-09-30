@@ -1,4 +1,3 @@
-from collections import defaultdict
 from datetime import timedelta
 from decimal import Decimal
 from functools import partial
@@ -8,7 +7,7 @@ from xml.sax.saxutils import escape
 
 from django.core.cache import cache
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Min, Q, Sum
-from django.db.models.functions import TruncDate
+from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
@@ -115,7 +114,8 @@ def daily_sales():
             transaction__is_voided=False,
             transaction__created_at__date=today,
         )
-        .values(product_name=F('product_batch__product__name'))
+        .annotate(sale_product_name=Coalesce('product_name_snapshot', 'product_batch__product__name'))
+        .values(product_name=F('sale_product_name'))
         .annotate(
             sold_quantity=Sum('quantity'),
             total_revenue=Sum(line_total),
@@ -132,6 +132,7 @@ def daily_sales():
     ]
     return {
         'date': today,
+        'product_revenue_basis': 'gross_before_discounts',
         'total_revenue': revenue,
         'transaction_count': count,
         'items': items,
@@ -154,19 +155,15 @@ def _period_items(start_date, end_date):
 
 
 def _daily_sales_breakdown(start_date, end_date):
-    period_items = TransactionItem.objects.filter(
-        transaction__is_voided=False,
-        transaction__created_at__date__gte=start_date,
-        transaction__created_at__date__lte=end_date,
-    )
     daily_rows = (
-        period_items
-        .annotate(day=TruncDate('transaction__created_at'))
-        .values('day')
-        .annotate(
-            transaction_count=Count('transaction_id', distinct=True),
-            revenue=Sum(_line_revenue()),
+        Transaction.objects.filter(
+            is_voided=False,
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date,
         )
+        .annotate(day=TruncDate('created_at'))
+        .values('day')
+        .annotate(transaction_count=Count('id'), revenue=Sum('total_amount'))
         .order_by('day')
     )
     daily_by_date = {row['day']: row for row in daily_rows}
@@ -186,7 +183,8 @@ def _daily_sales_breakdown(start_date, end_date):
 def _top_products(start_date, end_date):
     product_rows = (
         _period_items(start_date, end_date)
-        .values(product_name=F('product_batch__product__name'))
+        .annotate(sale_product_name=Coalesce('product_name_snapshot', 'product_batch__product__name'))
+        .values(product_name=F('sale_product_name'))
         .annotate(revenue=Sum(_line_revenue()), quantity=Sum('quantity'))
         .order_by('-revenue')[:10]
     )
@@ -208,6 +206,7 @@ def weekly_sales():
     top_products = _top_products(start_date, end_date)
     return {
         'start_date': start_date, 'end_date': end_date, 'revenue': revenue,
+        'product_revenue_basis': 'gross_before_discounts',
         'transaction_count': count, 'previous_revenue': previous_revenue,
         'growth_rate': _growth_rate(revenue, previous_revenue),
         'daily_breakdown': daily_breakdown, 'top_products': top_products,
@@ -243,6 +242,7 @@ def monthly_sales():
     top_products = _top_products(start_date, end_date)
     return {
         'start_date': start_date, 'end_date': end_date, 'revenue': revenue,
+        'product_revenue_basis': 'gross_before_discounts',
         'transaction_count': count, 'previous_revenue': previous_revenue,
         'growth_rate': _growth_rate(revenue, previous_revenue),
         'weekly_breakdown': weekly_breakdown, 'top_products': top_products,
@@ -317,40 +317,13 @@ def inventory_status(visible_to_staff=False):
     }
 
 
-def sarima_forecast():
-    """Thirty-day weekday-seasonal baseline; replace with a fitted SARIMA provider."""
-    today = timezone.localdate()
-    history_start = today - timedelta(days=84)
-    sales = Transaction.objects.filter(
-        is_voided=False, created_at__date__gte=history_start,
-        created_at__date__lt=today,
-    ).annotate(day=TruncDate('created_at')).values('day').annotate(
-        revenue=Sum('total_amount')
-    )
-    daily = {row['day']: _money(row['revenue']) for row in sales}
-    weekday_values = defaultdict(list)
-    cursor = history_start
-    while cursor < today:
-        weekday_values[cursor.weekday()].append(daily.get(cursor, Decimal('0.00')))
-        cursor += timedelta(days=1)
-    all_values = list(daily.values()) or [Decimal('0.00')]
-    fallback = sum(all_values, Decimal('0.00')) / len(all_values)
-    points = []
-    for offset in range(1, 31):
-        date = today + timedelta(days=offset)
-        values = weekday_values.get(date.weekday()) or [fallback]
-        predicted = sum(values, Decimal('0.00')) / len(values)
-        margin = predicted * Decimal('0.20')
-        points.append({
-            'date': date, 'predicted_revenue': predicted.quantize(Decimal('0.01')),
-            'lower_bound': max(Decimal('0.00'), predicted - margin).quantize(Decimal('0.01')),
-            'upper_bound': (predicted + margin).quantize(Decimal('0.01')),
-        })
-    return {
-        'generated_at': timezone.now(), 'horizon_days': 30,
-        'method': 'weekday_seasonal_baseline', 'is_placeholder': True,
-        'forecast': points,
-    }
+def sarima_forecast(period='monthly'):
+    """Read an evaluated hybrid snapshot; no model fitting during requests."""
+    from forecasting.serving import report
+    try:return report(period=period)
+    except ValueError as exc:
+        return {'generated_at':timezone.now(),'horizon_days':30,'method':'unavailable',
+            'is_placeholder':False,'forecast':[],'status':'data_conflict','warnings':[str(exc)]}
 
 
 def customer_report():
@@ -396,9 +369,11 @@ REPORT_BUILDERS = {
 }
 
 
-def get_report(report_type, force_refresh=False, visible_to_staff=False):
+def get_report(report_type, force_refresh=False, visible_to_staff=False, period='monthly'):
     if report_type not in REPORT_BUILDERS:
         raise ValueError(f'Unsupported report type: {report_type}')
+    if report_type == 'sarima_forecast':
+        return sarima_forecast(period)
     scope = 'staff' if visible_to_staff else 'admin'
     settings_version = get_runtime_settings()['version']
     key = f'{CACHE_PREFIX}{settings_version}:{scope}:{report_type}'
@@ -437,7 +412,9 @@ def _report_metadata(report_type, data):
     elif report_type in ('weekly_sales', 'monthly_sales'):
         period = f"{data.get('start_date', '-')} to {data.get('end_date', '-')}"
     elif report_type == 'sarima_forecast':
-        period = f"Next {data.get('horizon_days', 30)} days"
+        points = data.get('forecast', [])
+        period = (f"{points[0]['date']} to {points[0].get('end_date', points[0]['date'])}"
+                  if points else f"{data.get('period', 'monthly').title()} forecast unavailable")
     else:
         as_of = data.get('as_of', timezone.localdate())
         if hasattr(as_of, 'date'):
@@ -625,7 +602,7 @@ def generate_pdf(report_type, data):
         table_data.extend([
             [
                 cell if isinstance(cell, Paragraph) else _as_table_paragraph(
-                    cell,
+                    escape(str(cell)),
                     body_cell_right_style if index in body_right_columns else body_cell_style,
                 )
                 for index, cell in enumerate(row)
@@ -677,7 +654,7 @@ def generate_pdf(report_type, data):
             rows = [['No products sold today', '', '']]
             spans = [((0, 1), (-1, 1))]
         table = breakdown_table(
-            ['Product Name', 'Quantity Sold', 'Revenue'], rows,
+            ['Product Name', 'Quantity Sold', 'Gross Sales (Before Discounts)'], rows,
             (0.55, 0.22, 0.23), body_right_columns=(1, 2),
             header_right_columns=(1, 2), spans=spans,
         )
@@ -716,7 +693,7 @@ def generate_pdf(report_type, data):
         append_section(
             'Top Products',
             breakdown_table(
-                ['Product', 'Qty Sold', 'Revenue'], product_rows,
+                ['Product', 'Qty Sold', 'Gross Sales (Before Discounts)'], product_rows,
                 (0.50, 0.25, 0.25), body_right_columns=(1, 2),
                 header_right_columns=(1, 2), spans=product_spans,
             ),
@@ -756,7 +733,7 @@ def generate_pdf(report_type, data):
         append_section(
             'Top Products',
             breakdown_table(
-                ['Product', 'Qty Sold', 'Revenue'], product_rows,
+                ['Product', 'Qty Sold', 'Gross Sales (Before Discounts)'], product_rows,
                 (0.50, 0.25, 0.25), body_right_columns=(1, 2),
                 header_right_columns=(1, 2), spans=product_spans,
             ),
@@ -793,35 +770,74 @@ def generate_pdf(report_type, data):
 
     elif report_type == 'sarima_forecast':
         story.append(summary_table([
-            _summary_card_cell('HORIZON', '30 days'),
-            _summary_card_cell('METHOD', 'Weekday Seasonal Baseline'),
-            _summary_card_cell('STATUS', 'Placeholder Model'),
+            _summary_card_cell('PERIOD', data.get('period', 'monthly').title()),
+            _summary_card_cell('METHOD', 'SARIMA + Bulk Risk'),
+            _summary_card_cell('STATUS', data.get('status', 'pending_update').replace('_', ' ').title()),
         ]))
-        disclaimer_style = ParagraphStyle(
-            'ForecastDisclaimer', parent=body_cell_style,
-            fontName='Helvetica-Oblique', textColor=colors.HexColor('#64748B'),
-        )
-        story.extend([
-            Spacer(1, 3 * mm),
-            Paragraph(
-                'This forecast uses a weekday-seasonal baseline. Replace with a '
-                'fitted SARIMA model for production use.',
-                disclaimer_style,
-            ),
-        ])
-        forecast_rows = [[
-            point['date'], point['predicted_revenue'],
-            point['lower_bound'], point['upper_bound'],
-        ] for point in data['forecast']]
-        append_section(
-            '30-Day Forecast',
-            breakdown_table(
-                ['Date', 'Predicted Revenue', 'Lower Bound', 'Upper Bound'],
-                forecast_rows, (0.22, 0.26, 0.26, 0.26),
-                body_right_columns=(1, 2, 3), header_right_columns=(1, 2, 3),
-            ),
-            first=True,
-        )
+        disclaimer_style = ParagraphStyle('ForecastDisclaimer', parent=body_cell_style,
+            fontName='Helvetica-Oblique', textColor=colors.HexColor('#64748B'))
+        story.extend([Spacer(1, 3 * mm),Paragraph(
+            escape(data.get('limitations', 'Forecast evaluation is pending.')), disclaimer_style)])
+        provenance=data.get('data_provenance',{})
+        if provenance:
+            story.append(Paragraph(escape(
+                f"MIXED SCENARIO ONLY: {provenance.get('real_days')} real days and "
+                f"{provenance.get('simulated_days')} simulated days. Real records replace overlapping dummy records. "
+                "Results are not independent evidence of real-business accuracy."),disclaimer_style))
+            years=provenance.get('complete_calendar_years',[])
+            story.append(Paragraph(escape(f"Complete calendar years available: {len(years)}. "
+                "Yearly bulk estimation still requires five complete prior years; annual accuracy remains unverified."),disclaimer_style))
+            if data.get('period')=='yearly' and years:
+                append_section('Observed Calendar Years (Mixed Scenario)',breakdown_table(
+                    ['Year','Scenario revenue','Real days','Simulated days'],
+                    [[y['year'],y['revenue'],y['real_days'],y['simulated_days']] for y in years],
+                    (0.15,0.35,0.25,0.25)),first=True)
+        def displayed(value):
+            if value is None:
+                return 'N/A'
+            if isinstance(value, (float, Decimal)):
+                return f'{value:,.2f}'
+            return value
+
+        regular=data.get('regular', {});bulk=data.get('bulk', {});combined=data.get('combined', {})
+        model_details=regular.get('model',{})
+        if model_details:
+            days=model_details.get('training_days')
+            history=f'last {days} calendar days' if days else 'all available prior history'
+            story.append(Paragraph(escape(f'Training history: {history}. Period planning uses mean revenue.'),disclaimer_style))
+        withheld='Withheld'
+        rows=[['Regular SARIMA',regular.get('predicted_revenue',withheld),
+            regular.get('lower_bound',withheld),regular.get('upper_bound',withheld)],
+            ['Bulk risk (historical only)' if bulk.get('status')=='historical_only' else 'Bulk risk',bulk.get('expected_revenue') if bulk.get('expected_revenue') is not None else 'Insufficient history',
+             displayed(bulk.get('min_revenue')),displayed(bulk.get('max_revenue'))],
+            ['Combined planning',combined.get('predicted_revenue',withheld),
+             combined.get('lower_bound',withheld),combined.get('upper_bound',withheld)]]
+        append_section('Regular Sales and Bulk Risk',breakdown_table(
+            ['Component','Expected revenue','Low case','High case'],
+            [[displayed(value) for value in row] for row in rows],(0.28,0.24,0.24,0.24)),first=True)
+        if bulk:
+            story.append(Paragraph(escape(f"Bulk count: expected {displayed(bulk.get('expected_count'))}, historical min {displayed(bulk.get('min_count'))}, max {displayed(bulk.get('max_count'))}; {bulk.get('observed_periods',0)} complete past periods."),disclaimer_style))
+        score=data.get('metrics',{}).get('combined',{})
+        story.append(Paragraph(escape(f"Combined {data.get('period','monthly')} MAPE (%): {displayed(score.get('mape_percent'))}; WAPE (%): {displayed(score.get('wape_percent'))}. Acceptance target: WAPE at most {data.get('accuracy_target_percent',30)}% on at least five evaluated periods."),disclaimer_style))
+        if bulk.get('weighting')=='recency_weighted_mean':
+            story.append(Paragraph(escape(f"Bulk estimate gives recent complete weeks greater weight (half-life {bulk.get('half_life_periods')} periods); extrema use the same historical periods."),disclaimer_style))
+        comparisons=data.get('baselines',{});benchmark_rows=[]
+        for component,methods in comparisons.items():
+            for name,comparison in methods.items():
+                model=comparison['model'];baseline=comparison['baseline']
+                benchmark_rows.append([f'{component}: {name.replace("_"," ")}',comparison['shared_rows'],
+                    comparison['unavailable_rows'],displayed(model['wape_percent']),displayed(baseline['wape_percent']),comparison['status'].replace('_',' ')])
+        if benchmark_rows:
+            append_section('Benchmarks on Matching Dates',breakdown_table(
+                ['Benchmark','Shared','Unavailable','Model WAPE %','Baseline WAPE %','Conclusion'],
+                benchmark_rows,(0.32,0.1,0.1,0.14,0.14,0.2)),first=False)
+        period_metrics=data.get('metrics',{})
+        if period_metrics:
+            risk_rows=[[name,displayed(values.get('mae_pesos')),displayed(values.get('wape_percent')),displayed(values.get('coverage_percent'))]
+                for name,values in period_metrics.items() if name in ('regular','bulk','combined')]
+            append_section('Historical Period Accuracy',breakdown_table(
+                ['Component','Mean absolute error','WAPE %','Range coverage %'],risk_rows,(0.25,0.25,0.25,0.25)),first=False)
+        for warning in data.get('warnings',[]):story.append(Paragraph(escape(warning),disclaimer_style))
 
     elif report_type == 'customer':
         story.append(summary_table([

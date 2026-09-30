@@ -52,6 +52,8 @@ def request_password_reset(username, email):
         # Locking the user serializes first-time requests even before a
         # PasswordResetChallenge row exists.
         locked_user = User.objects.select_for_update().get(pk=user.pk)
+        if not locked_user.is_active or locked_user.email.casefold() != email.casefold():
+            return
         challenge = PasswordResetChallenge.objects.filter(user=locked_user).first()
         if challenge and challenge.last_sent_at + cooldown > now:
             return
@@ -105,8 +107,13 @@ def reset_password_with_otp(username, email, otp, new_password):
     if user is None:
         return False
 
-    identity = _identity(user.username, user.email)
     with transaction.atomic():
+        # Always lock user before challenge, matching OTP issuance and password
+        # updates. Recheck eligibility after acquiring the lock.
+        user = User.objects.select_for_update().filter(pk=user.pk, is_active=True).first()
+        if user is None or user.email.casefold() != email.casefold():
+            return False
+        identity = _identity(user.username, user.email)
         challenge = (
             PasswordResetChallenge.objects.select_for_update()
             .filter(user=user)

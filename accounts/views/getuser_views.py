@@ -1,3 +1,4 @@
+from config.api_inputs import object_body
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -18,6 +19,7 @@ class GetUserView(APIView):
     except User.DoesNotExist:
       return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
+  @object_body
   def patch(self, request):
     try:
       user = user_service.update_own_profile(request.user, request.data)

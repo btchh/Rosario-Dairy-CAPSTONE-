@@ -1,3 +1,4 @@
+from config.api_inputs import object_body
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -17,6 +18,7 @@ class UserDetailView(APIView):
       return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
     return Response(UserDetailSerializer(user).data)
 
+  @object_body
   def patch(self, request, pk):
     try:
       user_service.update_user(pk, request.data, request.user)
@@ -26,6 +28,7 @@ class UserDetailView(APIView):
       return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     return Response({'message': 'User updated successfully.'})
 
+  @object_body
   def delete(self, request, pk):
     reason = request.data.get('reason', 'suspended')
     try:

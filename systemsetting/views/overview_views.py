@@ -7,17 +7,20 @@ from ..serializers import NotificationSettingsSerializer, SystemSettingsSerializ
 
 
 class SettingsOverviewView(APIView):
-    """One-call settings bootstrap for admin and staff clients."""
+    """Settings bootstrap with business settings visible only to admins."""
 
     permission_classes = [IsAdmin | IsStaff]
 
     def get(self, request):
-        return Response({
-            'system': SystemSettingsSerializer(SystemSettings.get_config()).data,
+        is_admin = request.user.role == 'admin'
+        data = {
             'notifications': NotificationSettingsSerializer(
                 NotificationSettings.get_config()
             ).data,
             'permissions': {
-                'can_manage_settings': request.user.role == 'admin',
+                'can_manage_settings': is_admin,
             },
-        })
+        }
+        if is_admin:
+            data['system'] = SystemSettingsSerializer(SystemSettings.get_config()).data
+        return Response(data)

@@ -37,7 +37,7 @@ class ReportPreviewView(ReportTypeMixin, APIView):
             'generated_at': timezone.now(),
             'data': self.serialized_data(
                 report_type,
-                get_report(report_type, visible_to_staff=self.staff_scope(request)),
+                get_report(report_type, visible_to_staff=self.staff_scope(request),period=request.query_params.get('period','monthly')),
             ),
         }
         return Response(ReportPreviewSerializer(payload).data)
@@ -50,7 +50,7 @@ class ReportPDFExportView(ReportTypeMixin, APIView):
         report_type = self.get_report_type(request)
         data = self.serialized_data(
             report_type,
-            get_report(report_type, visible_to_staff=self.staff_scope(request)),
+            get_report(report_type, visible_to_staff=self.staff_scope(request),period=request.query_params.get('period','monthly')),
         )
         filename = f'rosario-dairy-{report_type}-{timezone.localdate():%Y%m%d}.pdf'
         return FileResponse(

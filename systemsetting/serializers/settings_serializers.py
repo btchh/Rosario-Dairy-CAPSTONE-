@@ -30,7 +30,7 @@ class SystemSettingsSerializer(serializers.ModelSerializer):
   def validate_timezone(self, value):
     try:
       ZoneInfo(value)
-    except ZoneInfoNotFoundError as exc:
+    except (ZoneInfoNotFoundError, ValueError) as exc:
       raise serializers.ValidationError('Enter a valid IANA timezone, such as Asia/Manila.') from exc
     return value
 

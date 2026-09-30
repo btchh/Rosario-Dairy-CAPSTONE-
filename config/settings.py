@@ -39,6 +39,8 @@ load_dotenv(BASE_DIR / '.env')
 DJANGO_ENV = os.getenv('DJANGO_ENV', 'development').strip().lower()
 IS_PRODUCTION = DJANGO_ENV == 'production'
 DEBUG = env_bool('DJANGO_DEBUG', not IS_PRODUCTION)
+if IS_PRODUCTION and DEBUG:
+    raise ImproperlyConfigured('DJANGO_DEBUG must be false in production.')
 
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', '')
 if not SECRET_KEY:
@@ -71,6 +73,7 @@ INSTALLED_APPS = [
     'sales',
     'systemsetting',
     'reporting',
+    'forecasting',
 ]
 
 MIDDLEWARE = [
@@ -257,3 +260,29 @@ if IS_PRODUCTION and not DEFAULT_FROM_EMAIL:
 PASSWORD_RESET_OTP_TIMEOUT = 10 * 60
 PASSWORD_RESET_OTP_RESEND_COOLDOWN = 60
 PASSWORD_RESET_OTP_MAX_ATTEMPTS = 5
+
+# Bulk rules and sample counts are frozen before offline evaluation.
+FORECAST_OPTIONS = {
+    "windows": (60, 90),
+    "multiplier": 3.0,
+    "min_positive_days": 30,
+    "fixed_cutoff": 100_000.0,
+    "weekly_lookback": 12,
+    "monthly_lookback": 6,
+    "min_bulk_periods": 5,
+}
+
+# Real-only profile selected on June--September 2025 chronological folds.
+# October--December evidence remains archived; simulated data keeps its own defaults.
+FORECAST_SCOPE_OPTIONS = {
+    "real": {
+        "regular_training_days": 180,
+        "regular_point_kind": "central",
+        "regular_candidate_names": ("sarima_sqrt_weekly_difference",),
+        "weekly_lookback": 5,
+        "weekly_bulk_half_life": 0.5,
+        "weekly_regular_candidate": "sarima_level_weekly_difference",
+        "weekly_regular_training_days": 180,
+        "profile_trained_through": "2025-09-30",
+    },
+}

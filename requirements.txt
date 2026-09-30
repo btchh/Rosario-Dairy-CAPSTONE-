@@ -7,3 +7,7 @@ reportlab==5.0.1
 gunicorn==23.0.0
 redis==8.1.0
 python-dotenv==1.2.3
+statsmodels==0.14.6
+numpy==2.5.3
+pandas==3.0.6
+threadpoolctl==3.7.0

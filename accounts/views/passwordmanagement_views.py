@@ -1,3 +1,4 @@
+from config.api_inputs import object_body
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -10,6 +11,7 @@ User = get_user_model()
 class ChangePasswordView(APIView):
   permission_classes = [IsAdmin | IsStaff]
 
+  @object_body
   def post(self, request):
     old_password = request.data.get('old_password')
     new_password = request.data.get('new_password')
@@ -29,6 +31,7 @@ class ChangePasswordView(APIView):
 class AdminResetPasswordView(APIView):
   permission_classes = [IsAdmin]
 
+  @object_body
   def post(self, request):
     username = request.data.get('username')
     new_password = request.data.get('new_password')

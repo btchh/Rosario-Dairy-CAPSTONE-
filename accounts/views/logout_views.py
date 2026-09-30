@@ -1,3 +1,4 @@
+from config.api_inputs import object_body
 from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
 from rest_framework import status
@@ -44,6 +45,7 @@ class LogoutView(APIView):
   authentication_classes = [LogoutJWTAuthentication]
   permission_classes = [IsAuthenticated]
   
+  @object_body
   def post(self, request):
     refresh_token = request.data.get('refresh_token')
     try:

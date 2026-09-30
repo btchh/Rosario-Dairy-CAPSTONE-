@@ -35,18 +35,41 @@ class SystemSettingsViewTests(TestCase):
       self.assertEqual(response.data['currency'], 'PHP')
       self.assertEqual(response.data['timezone'], 'Asia/Manila')
 
-    def test_staff_can_read_but_cannot_update(self):
+    def test_staff_cannot_access_system_settings(self):
+        config = SystemSettings.get_config()
+        config.business_name = 'Private business'
+        config.tin = 'private-tax-id'
+        config.save()
         self.client.force_authenticate(user=self.staff)
-        get_response = self.client.get('/settings/system/')
-        patch_response = self.client.patch(
-            '/settings/system/', {'currency': 'USD'}, format='json'
-        )
-        self.assertEqual(get_response.status_code, 200)
-        self.assertEqual(patch_response.status_code, 403)
+        for url in ('/settings/system/', '/settings/system/1/'):
+            for method in ('get', 'head', 'options', 'put', 'patch'):
+                with self.subTest(url=url, method=method):
+                    response = getattr(self.client, method)(
+                        url, {'currency': 'USD'}, format='json'
+                    )
+                    self.assertEqual(response.status_code, 403)
+                    self.assertNotIn('Private business', str(response.data))
+                    self.assertNotIn('private-tax-id', str(response.data))
+        config.refresh_from_db()
+        self.assertEqual(config.currency, 'PHP')
 
     def test_unauthenticated_cannot_access(self):
-        response = self.client.get('/settings/system/')
-        self.assertEqual(response.status_code, 401)
+        for url in ('/settings/', '/settings/system/', '/settings/system/1/'):
+            for method in ('get', 'head', 'options', 'put', 'patch'):
+                with self.subTest(url=url, method=method):
+                    response = getattr(self.client, method)(url)
+                    self.assertEqual(response.status_code, 401)
+
+    def test_admin_can_access_both_system_settings_urls(self):
+        self.client.force_authenticate(user=self.admin)
+        for url in ('/settings/system/', '/settings/system/1/'):
+            payload = self.client.get(url).data
+            payload['currency'] = 'USD'
+            payload['system_name'] = 'Private business system'
+            for method in ('get', 'head', 'options', 'put', 'patch'):
+                with self.subTest(url=url, method=method):
+                    response = getattr(self.client, method)(url, payload, format='json')
+                    self.assertEqual(response.status_code, 200, response.data)
 
     def test_patch_updates_single_field(self):
         self.client.force_authenticate(user=self.admin)
@@ -103,13 +126,32 @@ class SystemSettingsViewTests(TestCase):
             response = middleware(RequestFactory().get('/'))
         self.assertEqual(response.status_code, 200)
 
-    def test_overview_bootstraps_both_setting_groups_for_staff(self):
+    def test_overview_hides_system_settings_from_staff(self):
+        config = SystemSettings.get_config()
+        config.business_name = 'Private business'
+        config.tin = 'private-tax-id'
+        config.save()
         self.client.force_authenticate(user=self.staff)
         response = self.client.get('/settings/')
         self.assertEqual(response.status_code, 200)
-        self.assertIn('system', response.data)
+        self.assertNotIn('system', response.data)
+        self.assertNotIn('Private business', str(response.data))
+        self.assertNotIn('private-tax-id', str(response.data))
         self.assertIn('notifications', response.data)
         self.assertFalse(response.data['permissions']['can_manage_settings'])
+
+    def test_overview_bootstraps_both_setting_groups_for_admin(self):
+        config = SystemSettings.get_config()
+        config.business_name = 'Private business'
+        config.tin = 'private-tax-id'
+        config.save()
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get('/settings/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['system']['business_name'], 'Private business')
+        self.assertEqual(response.data['system']['tin'], 'private-tax-id')
+        self.assertIn('notifications', response.data)
+        self.assertTrue(response.data['permissions']['can_manage_settings'])
 
     def test_singleton_never_duplicates(self):
         SystemSettings.get_config()

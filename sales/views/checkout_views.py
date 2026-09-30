@@ -1,3 +1,4 @@
+from config.api_inputs import object_body
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from accounts.permissions import IsAdmin, IsStaff
@@ -11,6 +12,7 @@ from config.api_inputs import parse_decimal, require_item_list
 class CheckoutView(viewsets.ViewSet):
     permission_classes = [IsAdmin | IsStaff]
 
+    @object_body
     def create(self, request):
         raw_items = request.data.get('items', [])
         payment_method = request.data.get('payment_method', 'cash')

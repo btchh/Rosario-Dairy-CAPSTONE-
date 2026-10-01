@@ -231,31 +231,40 @@ SECURE_HSTS_PRELOAD = env_bool('DJANGO_SECURE_HSTS_PRELOAD', False)
 if env_bool('DJANGO_BEHIND_HTTPS_PROXY', IS_PRODUCTION):
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-# Transactional email. Without SMTP credentials, development prints emails
-# to the console instead of attempting delivery.
-BREVO_SMTP_LOGIN = os.getenv('BREVO_SMTP_LOGIN', '')
-BREVO_SMTP_KEY = os.getenv('BREVO_SMTP_KEY', '')
-if BREVO_SMTP_LOGIN and BREVO_SMTP_KEY:
+# Django sends OTP messages through any configured SMTP provider. Development
+# keeps the console backend until a complete SMTP configuration is supplied.
+SMTP_HOST = os.getenv('SMTP_HOST', '').strip()
+SMTP_USER = os.getenv('SMTP_USER', '').strip()
+SMTP_PASSWORD = os.getenv('SMTP_PASSWORD', '')
+smtp_values = (SMTP_HOST, SMTP_USER, SMTP_PASSWORD)
+if any(smtp_values) and not all(smtp_values):
+    raise ImproperlyConfigured('SMTP_HOST, SMTP_USER, and SMTP_PASSWORD must be set together.')
+
+EMAIL_HOST = SMTP_HOST
+EMAIL_HOST_USER = SMTP_USER
+EMAIL_HOST_PASSWORD = SMTP_PASSWORD
+
+if EMAIL_HOST:
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 elif IS_PRODUCTION:
-    raise ImproperlyConfigured(
-        'BREVO_SMTP_LOGIN and BREVO_SMTP_KEY are required in production.'
-    )
+    raise ImproperlyConfigured('SMTP_HOST, SMTP_USER, and SMTP_PASSWORD are required in production.')
 else:
-    EMAIL_BACKEND = os.getenv(
-        'DJANGO_EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend'
-    )
-EMAIL_HOST = 'smtp-relay.brevo.com'
-EMAIL_PORT = 587
-EMAIL_HOST_USER = BREVO_SMTP_LOGIN
-EMAIL_HOST_PASSWORD = BREVO_SMTP_KEY
-EMAIL_USE_TLS = True
+    EMAIL_BACKEND = os.getenv('DJANGO_EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
+
+try:
+    EMAIL_PORT = int(os.getenv('SMTP_PORT', '587'))
+except ValueError as exc:
+    raise ImproperlyConfigured('SMTP_PORT must be a number.') from exc
+EMAIL_USE_TLS = env_bool('SMTP_USE_TLS', True)
+EMAIL_USE_SSL = env_bool('SMTP_USE_SSL', False)
+if EMAIL_USE_TLS and EMAIL_USE_SSL:
+    raise ImproperlyConfigured('Use either SMTP_USE_TLS or SMTP_USE_SSL, not both.')
 EMAIL_TIMEOUT = 10
 DEFAULT_FROM_EMAIL = os.getenv(
-    'DEFAULT_FROM_EMAIL', '' if IS_PRODUCTION else 'Rosario Dairy <noreply@localhost>'
+    'DEFAULT_FROM_EMAIL', '' if IS_PRODUCTION or EMAIL_HOST else 'Rosario Dairy <noreply@localhost>'
 )
-if IS_PRODUCTION and not DEFAULT_FROM_EMAIL:
-    raise ImproperlyConfigured('DEFAULT_FROM_EMAIL is required in production.')
+if (IS_PRODUCTION or EMAIL_HOST) and not DEFAULT_FROM_EMAIL:
+    raise ImproperlyConfigured('DEFAULT_FROM_EMAIL is required when SMTP is configured.')
 
 PASSWORD_RESET_OTP_TIMEOUT = 10 * 60
 PASSWORD_RESET_OTP_RESEND_COOLDOWN = 60
@@ -272,8 +281,8 @@ FORECAST_OPTIONS = {
     "min_bulk_periods": 5,
 }
 
-# Real-only profile selected on June--September 2025 chronological folds.
-# October--December evidence remains archived; simulated data keeps its own defaults.
+# Real-sales profile selected on June--September 2025 chronological folds.
+# October--December evidence remains archived.
 FORECAST_SCOPE_OPTIONS = {
     "real": {
         "regular_training_days": 180,

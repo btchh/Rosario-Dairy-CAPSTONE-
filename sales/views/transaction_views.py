@@ -46,9 +46,14 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
             queryset=available_batches,
             to_attr='available_batches_for_total',
         ))
-        return super().get_queryset().select_related(
+        queryset = super().get_queryset().select_related(
             'handled_by', 'customer'
         ).prefetch_related(Prefetch('items', queryset=items)).order_by('-created_at')
+        if self.request.user.role == 'staff':
+            queryset = queryset.exclude(
+                items__product_batch__product__category__is_visible_to_staff=False
+            )
+        return queryset
 
     @staticmethod
     def _parse_date_param(value, field_name):

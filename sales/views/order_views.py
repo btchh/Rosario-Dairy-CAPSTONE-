@@ -45,6 +45,12 @@ class OrderViewSet(viewsets.ModelViewSet):
             Prefetch('items', queryset=order_items),
             Prefetch('transaction__items', queryset=transaction_items),
         )
+        if self.request.user.role == 'staff':
+            queryset = queryset.exclude(
+                items__product__category__is_visible_to_staff=False
+            ).exclude(
+                transaction__items__product_batch__product__category__is_visible_to_staff=False
+            )
         customer_id = self.request.query_params.get('customer_id')
         if customer_id:
             try:

@@ -61,10 +61,8 @@ class Options:
 
 
 def options(scope='real'):
+    if scope!='real':raise ValueError('Only real sales are supported')
     values=dict(getattr(settings,'FORECAST_OPTIONS',{}))
-    # Mixed scenarios use the frozen real profile for a comparable experiment.
-    if scope.startswith('mixed:'):
-        values.update(getattr(settings,'FORECAST_SCOPE_OPTIONS',{}).get('real',{}))
     values.update(getattr(settings,'FORECAST_SCOPE_OPTIONS',{}).get(scope,{}))
     if 'windows' in values:values['windows']=tuple(values['windows'])
     if 'regular_candidate_names' in values:values['regular_candidate_names']=tuple(values['regular_candidate_names'])

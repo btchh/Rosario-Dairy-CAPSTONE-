@@ -1,25 +1,15 @@
 from datetime import timedelta
 from decimal import Decimal
-from functools import partial
-from io import BytesIO
 import logging
-from xml.sax.saxutils import escape
 
 from django.core.cache import cache
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Min, Q, Sum
 from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
-from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
-from reportlab.lib.pagesizes import A4, landscape
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import inch, mm
-from reportlab.pdfgen import canvas
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from inventory.models import Ingredient, IngredientBatch, Product, ProductBatch
 from sales.models import Customer, Transaction, TransactionItem
-from systemsetting.runtime import get_brand_name, get_runtime_settings
+from systemsetting.runtime import get_runtime_settings
 
 
 REPORT_TYPES = (
@@ -28,58 +18,7 @@ REPORT_TYPES = (
 )
 CACHE_PREFIX = 'reporting:preview:v2:'
 CACHE_TIMEOUT = 300
-PDF_PRIMARY = colors.HexColor('#1E3A8A')
-PDF_PRIMARY_DARK = colors.HexColor('#172554')
-PDF_ROW_ALT = colors.HexColor('#F3F4F6')
-PDF_BORDER = colors.HexColor('#CBD5E1')
-PDF_TEXT = colors.HexColor('#111827')
 logger = logging.getLogger(__name__)
-STATUS_COLORS = {
-    'expired': '#DC2626',
-    'expiring_soon': '#D97706',
-    'no_stock': '#9CA3AF',
-    'healthy': '#111827',
-}
-summary_value_style = ParagraphStyle(
-    'SummaryValue', textColor=PDF_PRIMARY_DARK,
-    fontName='Helvetica-Bold', fontSize=15, leading=18,
-)
-
-
-class NumberedCanvas(canvas.Canvas):
-    """Defers page drawing so the footer can display Page X of Y."""
-
-    def __init__(self, *args, **kwargs):
-        self.footer_label = kwargs.pop('footer_label', 'Rosario Dairy System - Confidential')
-        super().__init__(*args, **kwargs)
-        self._saved_page_states = []
-
-    def showPage(self):
-        self._saved_page_states.append(dict(self.__dict__))
-        self._startPage()
-
-    def save(self):
-        page_count = len(self._saved_page_states)
-        for state in self._saved_page_states:
-            self.__dict__.update(state)
-            self._draw_footer(page_count)
-            super().showPage()
-        super().save()
-
-    def _draw_footer(self, page_count):
-        page_width, _ = landscape(A4)
-        self.saveState()
-        self.setStrokeColor(PDF_BORDER)
-        self.setLineWidth(0.5)
-        self.line(0.6 * inch, 0.48 * inch, page_width - 0.6 * inch, 0.48 * inch)
-        self.setFillColor(colors.HexColor('#64748B'))
-        self.setFont('Helvetica', 8)
-        self.drawString(0.6 * inch, 0.3 * inch, self.footer_label)
-        self.drawRightString(
-            page_width - 0.6 * inch, 0.3 * inch,
-            f'Page {self._pageNumber} of {page_count}',
-        )
-        self.restoreState()
 
 
 def _money(value):
@@ -102,6 +41,47 @@ def _sales_summary(start_date, end_date):
     return _money(values['revenue']), values['transaction_count']
 
 
+def _product_label(name, variant):
+    return f'{name} · {variant}' if variant else name
+
+
+def _sales_drivers(start_date, end_date):
+    transactions = Transaction.objects.filter(
+        is_voided=False, created_at__date__gte=start_date,
+        created_at__date__lte=end_date,
+    )
+    totals = transactions.aggregate(
+        gross_sales=Sum('subtotal'), discounts=Sum('discount_amount'),
+        net_sales=Sum('total_amount'), transaction_count=Count('id'),
+    )
+    payment_mix = list(transactions.values('payment_method').annotate(
+        transaction_count=Count('id'), revenue=Sum('total_amount'),
+    ).order_by('-revenue'))
+    category_mix = list(_period_items(start_date, end_date).annotate(
+        category=Coalesce('category_name_snapshot', 'product_batch__product__category__name'),
+    ).values('category').annotate(
+        gross_sales=Sum(_line_revenue()), quantity=Sum('quantity'),
+    ).order_by('-gross_sales')[:8])
+    # The source sales workbooks put pack sizes beneath each product heading.
+    # Roll up the transaction snapshots by product name so renamed catalog
+    # entries do not rewrite the history shown in exported reports.
+    family_mix = list(_period_items(start_date, end_date).annotate(
+        product_name=Coalesce('product_name_snapshot', 'product_batch__product__name'),
+    ).values('product_name').annotate(
+        gross_sales=Sum(_line_revenue()), quantity=Sum('quantity'),
+    ).order_by('-gross_sales', 'product_name')[:10])
+    net = _money(totals['net_sales'])
+    count = totals['transaction_count']
+    return {
+        'gross_sales': _money(totals['gross_sales']),
+        'discounts': _money(totals['discounts']),
+        'average_ticket': net / count if count else Decimal('0.00'),
+        'payment_mix': payment_mix,
+        'category_mix': category_mix,
+        'family_mix': family_mix,
+    }
+
+
 def daily_sales():
     today = timezone.localdate()
     revenue, count = _sales_summary(today, today)
@@ -115,27 +95,34 @@ def daily_sales():
             transaction__created_at__date=today,
         )
         .annotate(sale_product_name=Coalesce('product_name_snapshot', 'product_batch__product__name'))
-        .values(product_name=F('sale_product_name'))
+        .annotate(sale_variant=Coalesce('product_variant_snapshot', 'product_batch__product__variant'))
+        .values('sale_product_name', 'sale_variant')
         .annotate(
             sold_quantity=Sum('quantity'),
             total_revenue=Sum(line_total),
         )
-        .order_by('-total_revenue', 'product_name')
+        .order_by('-total_revenue', 'sale_product_name')
     )
     items = [
         {
-            'product_name': row['product_name'],
+            'product_name': _product_label(row['sale_product_name'], row['sale_variant']),
             'quantity': _money(row['sold_quantity']),
             'total_revenue': _money(row['total_revenue']),
         }
         for row in item_rows
     ]
+    yesterday = today - timedelta(days=1)
+    previous_revenue, previous_count = _sales_summary(yesterday, yesterday)
     return {
         'date': today,
         'product_revenue_basis': 'gross_before_discounts',
         'total_revenue': revenue,
         'transaction_count': count,
+        'previous_revenue': previous_revenue,
+        'previous_transaction_count': previous_count,
+        'growth_rate': _growth_rate(revenue, previous_revenue),
         'items': items,
+        **_sales_drivers(today, today),
     }
 
 
@@ -184,12 +171,13 @@ def _top_products(start_date, end_date):
     product_rows = (
         _period_items(start_date, end_date)
         .annotate(sale_product_name=Coalesce('product_name_snapshot', 'product_batch__product__name'))
-        .values(product_name=F('sale_product_name'))
+        .annotate(sale_variant=Coalesce('product_variant_snapshot', 'product_batch__product__variant'))
+        .values('sale_product_name', 'sale_variant')
         .annotate(revenue=Sum(_line_revenue()), quantity=Sum('quantity'))
         .order_by('-revenue')[:10]
     )
     return [{
-        'product_name': row['product_name'],
+        'product_name': _product_label(row['sale_product_name'], row['sale_variant']),
         'quantity': _money(row['quantity']),
         'revenue': _money(row['revenue']),
     } for row in product_rows]
@@ -201,15 +189,17 @@ def weekly_sales():
     previous_end = start_date - timedelta(days=1)
     previous_start = previous_end - timedelta(days=6)
     revenue, count = _sales_summary(start_date, end_date)
-    previous_revenue, _ = _sales_summary(previous_start, previous_end)
+    previous_revenue, previous_count = _sales_summary(previous_start, previous_end)
     daily_breakdown = _daily_sales_breakdown(start_date, end_date)
     top_products = _top_products(start_date, end_date)
     return {
         'start_date': start_date, 'end_date': end_date, 'revenue': revenue,
         'product_revenue_basis': 'gross_before_discounts',
         'transaction_count': count, 'previous_revenue': previous_revenue,
+        'previous_transaction_count': previous_count,
         'growth_rate': _growth_rate(revenue, previous_revenue),
         'daily_breakdown': daily_breakdown, 'top_products': top_products,
+        **_sales_drivers(start_date, end_date),
     }
 
 
@@ -217,10 +207,11 @@ def monthly_sales():
     today = timezone.localdate()
     start_date = today.replace(day=1)
     end_date = today
-    previous_end = start_date - timedelta(days=1)
-    previous_start = previous_end.replace(day=1)
+    previous_month_end = start_date - timedelta(days=1)
+    previous_start = previous_month_end.replace(day=1)
+    previous_end = min(previous_month_end, previous_start + timedelta(days=today.day - 1))
     revenue, count = _sales_summary(start_date, end_date)
-    previous_revenue, _ = _sales_summary(previous_start, previous_end)
+    previous_revenue, previous_count = _sales_summary(previous_start, previous_end)
     week_starts = []
     cursor = start_date
     while cursor <= end_date:
@@ -244,8 +235,11 @@ def monthly_sales():
         'start_date': start_date, 'end_date': end_date, 'revenue': revenue,
         'product_revenue_basis': 'gross_before_discounts',
         'transaction_count': count, 'previous_revenue': previous_revenue,
+        'previous_transaction_count': previous_count,
+        'previous_period_start': previous_start, 'previous_period_end': previous_end,
         'growth_rate': _growth_rate(revenue, previous_revenue),
         'weekly_breakdown': weekly_breakdown, 'top_products': top_products,
+        **_sales_drivers(start_date, end_date),
     }
 
 
@@ -278,7 +272,8 @@ def _inventory_rows(model, relation_name, item_type, visible_to_staff=False):
         else:
             fefo_status = 'healthy'
         result.append({
-            'item_type': item_type, 'id': item.pk, 'name': item.name,
+            'item_type': item_type, 'id': item.pk,
+            'name': _product_label(item.name, getattr(item, 'variant', None)),
             'unit': item.unit, 'quantity': quantity,
             'low_stock_threshold': Decimal(str(item.low_stock_threshold)),
             'is_low_stock': quantity <= item.low_stock_threshold,
@@ -314,6 +309,10 @@ def inventory_status(visible_to_staff=False):
         'expired_batch_count': expired,
         'expiring_soon_batch_count': expiring,
         'items': sorted(items, key=lambda item: (item['fefo_status'], item['name'].lower())),
+        'status_counts': {
+            status: sum(item['fefo_status'] == status for item in items)
+            for status in ('no_stock', 'expired', 'expiring_soon', 'healthy')
+        },
     }
 
 
@@ -340,6 +339,11 @@ def customer_report():
     )
     purchased = values['customers_with_purchases']
     total_ltv = _money(values['total_ltv'])
+    purchase_counts = transactions.values('customer_id').annotate(n=Count('id'))
+    repeat_customers = purchase_counts.filter(n__gte=2).count()
+    unassigned = Transaction.objects.filter(is_voided=False, customer__isnull=True).aggregate(
+        transaction_count=Count('id'), revenue=Sum('total_amount'),
+    )
     top_customers = list(
         transactions
         .values(customer_name=F('customer__name'))
@@ -356,6 +360,9 @@ def customer_report():
         'average_lifetime_value': (total_ltv / purchased if purchased else Decimal('0.00')),
         'total_lifetime_value': total_ltv,
         'top_customers': top_customers,
+        'repeat_customer_count': repeat_customers,
+        'unassigned_transaction_count': unassigned['transaction_count'],
+        'unassigned_revenue': _money(unassigned['revenue']),
     }
 
 
@@ -405,468 +412,6 @@ def refresh_reports(visible_to_staff=False):
     return generated_at, refreshed
 
 
-def _report_metadata(report_type, data):
-    title = report_type.replace('_', ' ').title()
-    if report_type == 'daily_sales':
-        period = str(data.get('date', '-'))
-    elif report_type in ('weekly_sales', 'monthly_sales'):
-        period = f"{data.get('start_date', '-')} to {data.get('end_date', '-')}"
-    elif report_type == 'sarima_forecast':
-        points = data.get('forecast', [])
-        period = (f"{points[0]['date']} to {points[0].get('end_date', points[0]['date'])}"
-                  if points else f"{data.get('period', 'monthly').title()} forecast unavailable")
-    else:
-        as_of = data.get('as_of', timezone.localdate())
-        if hasattr(as_of, 'date'):
-            as_of = as_of.date()
-        elif isinstance(as_of, str):
-            as_of = as_of.split('T', 1)[0].split(' ', 1)[0]
-        period = f'As of {as_of}'
-    return title, period
-
-
-def _as_table_paragraph(value, style):
-    return Paragraph(str(value), style)
-
-
-def _summary_card_cell(label, value, label_size=8):
-    """Return a consistently formatted summary-card cell."""
-    return Paragraph(
-        f'<font size="{label_size}">{label}</font><br/><b>{value}</b>',
-        summary_value_style,
-    )
-
-
-def _format_growth_rate(value):
-    if value is None:
-        return 'N/A'
-    prefix = '+' if value > 0 else ''
-    return f'{prefix}{value}%'
-
-
 def generate_pdf(report_type, data):
-    runtime_settings = get_runtime_settings()
-    brand_name = get_brand_name()
-    currency = runtime_settings['currency']
-    system_label = runtime_settings['system_name'] or f'{brand_name} System'
-    business_details = [
-        runtime_settings['business_address'],
-        runtime_settings['business_contact'],
-        runtime_settings['business_email'],
-        f"TIN: {runtime_settings['tin']}" if runtime_settings['tin'] else '',
-        runtime_settings['business_type'],
-    ]
-    business_details = [escape(str(value)) for value in business_details if value]
-    date_patterns = {
-        'MM/DD/YYYY': '%m/%d/%Y',
-        'DD/MM/YYYY': '%d/%m/%Y',
-        'YYYY-MM-DD': '%Y-%m-%d',
-    }
-    brand_markup = escape(brand_name)
-    if system_label != brand_name:
-        brand_markup += f'<br/><font size="8">{escape(system_label)}</font>'
-    if business_details:
-        brand_markup += f'<br/><font size="7">{" | ".join(business_details)}</font>'
-    buffer = BytesIO()
-    page_size = landscape(A4)
-    margin = 0.6 * inch
-    printable_width = page_size[0] - (2 * margin)
-    document = SimpleDocTemplate(
-        buffer, pagesize=page_size,
-        rightMargin=margin, leftMargin=margin,
-        topMargin=margin, bottomMargin=0.65 * inch,
-        title=f'{brand_name} - {report_type.replace("_", " ").title()}',
-        author=brand_name,
-        subject='Operational report export',
-    )
-    styles = getSampleStyleSheet()
-    brand_style = ParagraphStyle(
-        'Brand', parent=styles['Heading1'], alignment=TA_LEFT,
-        textColor=colors.white, fontName='Helvetica-Bold', fontSize=18,
-        leading=21, spaceAfter=0,
-    )
-    banner_meta_style = ParagraphStyle(
-        'BannerMeta', parent=styles['Normal'], alignment=TA_RIGHT,
-        textColor=colors.white, fontName='Helvetica', fontSize=8.5, leading=12,
-    )
-    mark_style = ParagraphStyle(
-        'BrandMark', parent=styles['Heading1'], alignment=TA_CENTER,
-        textColor=PDF_PRIMARY, fontName='Helvetica-Bold', fontSize=19, leading=21,
-    )
-    report_title_style = ParagraphStyle(
-        'ReportTitle', parent=styles['Heading2'], alignment=TA_LEFT,
-        textColor=PDF_PRIMARY_DARK, fontName='Helvetica-Bold', fontSize=15,
-        leading=18, spaceAfter=0,
-    )
-    report_meta_style = ParagraphStyle(
-        'ReportMeta', parent=styles['Normal'], alignment=TA_RIGHT,
-        textColor=colors.HexColor('#475569'), fontSize=9, leading=12,
-    )
-    header_cell_style = ParagraphStyle(
-        'HeaderCell', parent=styles['Normal'], textColor=colors.white,
-        fontName='Helvetica-Bold', fontSize=9, leading=11,
-    )
-    body_cell_style = ParagraphStyle(
-        'BodyCell', parent=styles['Normal'], textColor=PDF_TEXT,
-        fontName='Helvetica', fontSize=9, leading=11,
-    )
-    body_cell_right_style = ParagraphStyle(
-        'BodyCellRight', parent=body_cell_style, alignment=TA_RIGHT,
-    )
-    header_cell_right_style = ParagraphStyle(
-        'HeaderCellRight', parent=header_cell_style, alignment=TA_RIGHT,
-    )
-    section_title_style = ParagraphStyle(
-        'SectionTitle', parent=styles['Heading3'], textColor=PDF_PRIMARY_DARK,
-        fontName='Helvetica-Bold', fontSize=11, leading=14, spaceAfter=0,
-    )
-    generated = timezone.localtime()
-    generated_label = generated.strftime(
-        f"{date_patterns[runtime_settings['date_format']]} at %I:%M %p"
-    )
-    report_title, report_period = _report_metadata(report_type, data)
-    banner = Table([
-        [
-            _as_table_paragraph(''.join(word[0] for word in brand_name.split())[:3].upper(), mark_style),
-            _as_table_paragraph(brand_markup, brand_style),
-            _as_table_paragraph(
-                f'<b>REPORT EXPORT - {currency}</b><br/>'
-                f'Generated {generated_label}',
-                banner_meta_style,
-            ),
-        ]
-    ], colWidths=[0.65 * inch, printable_width * 0.57, printable_width * 0.43 - 0.65 * inch])
-    banner.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), PDF_PRIMARY),
-        ('BACKGROUND', (0, 0), (0, 0), colors.white),
-        ('BOX', (0, 0), (-1, -1), 0.8, PDF_PRIMARY),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 12),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 12),
-        ('TOPPADDING', (0, 0), (-1, -1), 11),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 11),
-        ('LEFTPADDING', (0, 0), (0, 0), 5),
-        ('RIGHTPADDING', (0, 0), (0, 0), 5),
-    ]))
-    metadata = Table([
-        [
-            _as_table_paragraph(report_title, report_title_style),
-            _as_table_paragraph(
-                f'<b>Reporting period:</b> {report_period}<br/>'
-                f'<b>Report type:</b> {report_type}',
-                report_meta_style,
-            ),
-        ]
-    ], colWidths=[printable_width * 0.55, printable_width * 0.45])
-    metadata.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#EFF6FF')),
-        ('BOX', (0, 0), (-1, -1), 0.6, colors.HexColor('#BFDBFE')),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 12),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 12),
-        ('TOPPADDING', (0, 0), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 9),
-    ]))
-    story = [
-        banner,
-        Spacer(1, 5 * mm),
-        metadata,
-        Spacer(1, 6 * mm),
-    ]
-
-    def summary_table(cells):
-        table = Table([cells], colWidths=[printable_width / len(cells)] * len(cells))
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#EFF6FF')),
-            ('BOX', (0, 0), (-1, -1), 0.7, colors.HexColor('#BFDBFE')),
-            ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#BFDBFE')),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 12),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 12),
-            ('TOPPADDING', (0, 0), (-1, -1), 10),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
-        ]))
-        return table
-
-    def breakdown_table(
-        headers, rows, width_ratios, body_right_columns=(),
-        header_right_columns=(), spans=(),
-    ):
-        table_data = [[
-            _as_table_paragraph(
-                header,
-                header_cell_right_style if index in header_right_columns else header_cell_style,
-            )
-            for index, header in enumerate(headers)
-        ]]
-        table_data.extend([
-            [
-                cell if isinstance(cell, Paragraph) else _as_table_paragraph(
-                    escape(str(cell)),
-                    body_cell_right_style if index in body_right_columns else body_cell_style,
-                )
-                for index, cell in enumerate(row)
-            ]
-            for row in rows
-        ])
-        style_commands = [
-            ('BACKGROUND', (0, 0), (-1, 0), PDF_PRIMARY),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('GRID', (0, 0), (-1, -1), 0.45, PDF_BORDER),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, PDF_ROW_ALT]),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 8),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
-            ('TOPPADDING', (0, 0), (-1, -1), 7),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
-        ]
-        style_commands.extend(('SPAN', start, end) for start, end in spans)
-        table = Table(
-            table_data,
-            colWidths=[printable_width * ratio for ratio in width_ratios],
-            repeatRows=1,
-            hAlign='LEFT',
-        )
-        table.setStyle(TableStyle(style_commands))
-        return table
-
-    def append_section(title, table, first=False):
-        story.extend([
-            Spacer(1, 6 * mm if first else 8 * mm),
-            Paragraph(title, section_title_style),
-            Spacer(1, 3 * mm),
-            table,
-        ])
-
-    if report_type == 'daily_sales':
-        story.append(summary_table([
-            _summary_card_cell('REPORT DATE', data['date']),
-            _summary_card_cell('TOTAL REVENUE', data['total_revenue']),
-            _summary_card_cell('TRANSACTIONS', data['transaction_count']),
-        ]))
-        rows = [[
-            item['product_name'], item['quantity'], item['total_revenue'],
-        ] for item in data['items']]
-        spans = []
-        if not rows:
-            rows = [['No products sold today', '', '']]
-            spans = [((0, 1), (-1, 1))]
-        table = breakdown_table(
-            ['Product Name', 'Quantity Sold', 'Gross Sales (Before Discounts)'], rows,
-            (0.55, 0.22, 0.23), body_right_columns=(1, 2),
-            header_right_columns=(1, 2), spans=spans,
-        )
-        append_section('Products Sold Breakdown', table, first=True)
-
-    elif report_type == 'weekly_sales':
-        story.append(summary_table([
-            _summary_card_cell(
-                'REPORT PERIOD', f"{data['start_date']} – {data['end_date']}"
-            ),
-            _summary_card_cell('TOTAL REVENUE', data['revenue']),
-            _summary_card_cell(
-                'GROWTH VS PREV WEEK', _format_growth_rate(data['growth_rate'])
-            ),
-            _summary_card_cell('TRANSACTIONS', data['transaction_count']),
-        ]))
-        daily_rows = [[
-            item['date'], item['transaction_count'], item['revenue'],
-        ] for item in data['daily_breakdown']]
-        append_section(
-            'Daily Breakdown',
-            breakdown_table(
-                ['Date', 'Transactions', 'Revenue'], daily_rows,
-                (0.30, 0.30, 0.40), body_right_columns=(2,),
-                header_right_columns=(2,),
-            ),
-            first=True,
-        )
-        product_rows = [[
-            item['product_name'], item['quantity'], item['revenue'],
-        ] for item in data['top_products']]
-        product_spans = []
-        if not product_rows:
-            product_rows = [['No sales in this period', '', '']]
-            product_spans = [((0, 1), (-1, 1))]
-        append_section(
-            'Top Products',
-            breakdown_table(
-                ['Product', 'Qty Sold', 'Gross Sales (Before Discounts)'], product_rows,
-                (0.50, 0.25, 0.25), body_right_columns=(1, 2),
-                header_right_columns=(1, 2), spans=product_spans,
-            ),
-        )
-
-    elif report_type == 'monthly_sales':
-        story.append(summary_table([
-            _summary_card_cell(
-                'REPORT PERIOD', f"{data['start_date']} – {data['end_date']}"
-            ),
-            _summary_card_cell('TOTAL REVENUE', data['revenue']),
-            _summary_card_cell(
-                'GROWTH VS PREV MONTH', _format_growth_rate(data['growth_rate'])
-            ),
-            _summary_card_cell('TRANSACTIONS', data['transaction_count']),
-        ]))
-        weekly_rows = [[
-            f"{item['week_start']} – {item['week_end']}",
-            item['transaction_count'], item['revenue'],
-        ] for item in data['weekly_breakdown']]
-        append_section(
-            'Weekly Breakdown',
-            breakdown_table(
-                ['Week', 'Transactions', 'Revenue'], weekly_rows,
-                (0.40, 0.25, 0.35), body_right_columns=(2,),
-                header_right_columns=(2,),
-            ),
-            first=True,
-        )
-        product_rows = [[
-            item['product_name'], item['quantity'], item['revenue'],
-        ] for item in data['top_products']]
-        product_spans = []
-        if not product_rows:
-            product_rows = [['No sales in this period', '', '']]
-            product_spans = [((0, 1), (-1, 1))]
-        append_section(
-            'Top Products',
-            breakdown_table(
-                ['Product', 'Qty Sold', 'Gross Sales (Before Discounts)'], product_rows,
-                (0.50, 0.25, 0.25), body_right_columns=(1, 2),
-                header_right_columns=(1, 2), spans=product_spans,
-            ),
-        )
-
-    elif report_type == 'inventory':
-        story.append(summary_table([
-            _summary_card_cell('TOTAL PRODUCTS', data['total_products']),
-            _summary_card_cell('TOTAL INGREDIENTS', data['total_ingredients']),
-            _summary_card_cell('LOW STOCK ITEMS', data['low_stock_count']),
-            _summary_card_cell('EXPIRING SOON', data['expiring_soon_batch_count']),
-        ]))
-        inventory_rows = []
-        for item in data['items']:
-            status = item['fefo_status']
-            status_label = status.replace('_', ' ').title()
-            status_cell = Paragraph(
-                f'<font color="{STATUS_COLORS[status]}">{status_label}</font>',
-                body_cell_style,
-            )
-            inventory_rows.append([
-                item['item_type'].title(), item['name'], str(item['quantity']), item['unit'],
-                str(item['next_expiration_date'] or '-'), status_cell,
-            ])
-        append_section(
-            'Stock Status',
-            breakdown_table(
-                ['Type', 'Item', 'Stock', 'Unit', 'Next Expiry', 'FEFO Status'],
-                inventory_rows, (0.11, 0.29, 0.12, 0.10, 0.19, 0.19),
-                body_right_columns=(2,), header_right_columns=(2,),
-            ),
-            first=True,
-        )
-
-    elif report_type == 'sarima_forecast':
-        story.append(summary_table([
-            _summary_card_cell('PERIOD', data.get('period', 'monthly').title()),
-            _summary_card_cell('METHOD', 'SARIMA + Bulk Risk'),
-            _summary_card_cell('STATUS', data.get('status', 'pending_update').replace('_', ' ').title()),
-        ]))
-        disclaimer_style = ParagraphStyle('ForecastDisclaimer', parent=body_cell_style,
-            fontName='Helvetica-Oblique', textColor=colors.HexColor('#64748B'))
-        story.extend([Spacer(1, 3 * mm),Paragraph(
-            escape(data.get('limitations', 'Forecast evaluation is pending.')), disclaimer_style)])
-        provenance=data.get('data_provenance',{})
-        if provenance:
-            story.append(Paragraph(escape(
-                f"MIXED SCENARIO ONLY: {provenance.get('real_days')} real days and "
-                f"{provenance.get('simulated_days')} simulated days. Real records replace overlapping dummy records. "
-                "Results are not independent evidence of real-business accuracy."),disclaimer_style))
-            years=provenance.get('complete_calendar_years',[])
-            story.append(Paragraph(escape(f"Complete calendar years available: {len(years)}. "
-                "Yearly bulk estimation still requires five complete prior years; annual accuracy remains unverified."),disclaimer_style))
-            if data.get('period')=='yearly' and years:
-                append_section('Observed Calendar Years (Mixed Scenario)',breakdown_table(
-                    ['Year','Scenario revenue','Real days','Simulated days'],
-                    [[y['year'],y['revenue'],y['real_days'],y['simulated_days']] for y in years],
-                    (0.15,0.35,0.25,0.25)),first=True)
-        def displayed(value):
-            if value is None:
-                return 'N/A'
-            if isinstance(value, (float, Decimal)):
-                return f'{value:,.2f}'
-            return value
-
-        regular=data.get('regular', {});bulk=data.get('bulk', {});combined=data.get('combined', {})
-        model_details=regular.get('model',{})
-        if model_details:
-            days=model_details.get('training_days')
-            history=f'last {days} calendar days' if days else 'all available prior history'
-            story.append(Paragraph(escape(f'Training history: {history}. Period planning uses mean revenue.'),disclaimer_style))
-        withheld='Withheld'
-        rows=[['Regular SARIMA',regular.get('predicted_revenue',withheld),
-            regular.get('lower_bound',withheld),regular.get('upper_bound',withheld)],
-            ['Bulk risk (historical only)' if bulk.get('status')=='historical_only' else 'Bulk risk',bulk.get('expected_revenue') if bulk.get('expected_revenue') is not None else 'Insufficient history',
-             displayed(bulk.get('min_revenue')),displayed(bulk.get('max_revenue'))],
-            ['Combined planning',combined.get('predicted_revenue',withheld),
-             combined.get('lower_bound',withheld),combined.get('upper_bound',withheld)]]
-        append_section('Regular Sales and Bulk Risk',breakdown_table(
-            ['Component','Expected revenue','Low case','High case'],
-            [[displayed(value) for value in row] for row in rows],(0.28,0.24,0.24,0.24)),first=True)
-        if bulk:
-            story.append(Paragraph(escape(f"Bulk count: expected {displayed(bulk.get('expected_count'))}, historical min {displayed(bulk.get('min_count'))}, max {displayed(bulk.get('max_count'))}; {bulk.get('observed_periods',0)} complete past periods."),disclaimer_style))
-        score=data.get('metrics',{}).get('combined',{})
-        story.append(Paragraph(escape(f"Combined {data.get('period','monthly')} MAPE (%): {displayed(score.get('mape_percent'))}; WAPE (%): {displayed(score.get('wape_percent'))}. Acceptance target: WAPE at most {data.get('accuracy_target_percent',30)}% on at least five evaluated periods."),disclaimer_style))
-        if bulk.get('weighting')=='recency_weighted_mean':
-            story.append(Paragraph(escape(f"Bulk estimate gives recent complete weeks greater weight (half-life {bulk.get('half_life_periods')} periods); extrema use the same historical periods."),disclaimer_style))
-        comparisons=data.get('baselines',{});benchmark_rows=[]
-        for component,methods in comparisons.items():
-            for name,comparison in methods.items():
-                model=comparison['model'];baseline=comparison['baseline']
-                benchmark_rows.append([f'{component}: {name.replace("_"," ")}',comparison['shared_rows'],
-                    comparison['unavailable_rows'],displayed(model['wape_percent']),displayed(baseline['wape_percent']),comparison['status'].replace('_',' ')])
-        if benchmark_rows:
-            append_section('Benchmarks on Matching Dates',breakdown_table(
-                ['Benchmark','Shared','Unavailable','Model WAPE %','Baseline WAPE %','Conclusion'],
-                benchmark_rows,(0.32,0.1,0.1,0.14,0.14,0.2)),first=False)
-        period_metrics=data.get('metrics',{})
-        if period_metrics:
-            risk_rows=[[name,displayed(values.get('mae_pesos')),displayed(values.get('wape_percent')),displayed(values.get('coverage_percent'))]
-                for name,values in period_metrics.items() if name in ('regular','bulk','combined')]
-            append_section('Historical Period Accuracy',breakdown_table(
-                ['Component','Mean absolute error','WAPE %','Range coverage %'],risk_rows,(0.25,0.25,0.25,0.25)),first=False)
-        for warning in data.get('warnings',[]):story.append(Paragraph(escape(warning),disclaimer_style))
-
-    elif report_type == 'customer':
-        story.append(summary_table([
-            _summary_card_cell('TOTAL CUSTOMERS', data['total_customers']),
-            _summary_card_cell('ACTIVE (90 DAYS)', data['active_customer_count']),
-            _summary_card_cell('AVG LIFETIME VALUE', data['average_lifetime_value']),
-        ]))
-        customer_rows = [[
-            item['customer_name'], item['transaction_count'], item['total_spent'],
-        ] for item in data['top_customers']]
-        customer_spans = []
-        if not customer_rows:
-            customer_rows = [['No customer transactions yet', '', '']]
-            customer_spans = [((0, 1), (-1, 1))]
-        append_section(
-            'Top Customers by Spend',
-            breakdown_table(
-                ['Customer', 'Transactions', 'Total Spent'], customer_rows,
-                (0.50, 0.20, 0.30), body_right_columns=(1, 2),
-                header_right_columns=(1, 2), spans=customer_spans,
-            ),
-            first=True,
-        )
-
-    document.build(
-        story,
-        canvasmaker=partial(
-            NumberedCanvas, footer_label=f'{brand_name} - Confidential'
-        ),
-    )
-    buffer.seek(0)
-    return buffer
+    from .pdf import generate_pdf as render_pdf
+    return render_pdf(report_type, data)

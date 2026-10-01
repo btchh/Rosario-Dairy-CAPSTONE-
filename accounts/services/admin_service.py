@@ -57,13 +57,6 @@ def update_user(pk, data, requesting_user):
                 raise ValueError(f"Invalid reason. Must be one of {valid_reasons}.")
             data['deactivation_reason'] = reason
         elif data.get('is_active') is True:
-            if not user.is_active and user.deactivation_reason in ('terminated', 'resigned'):
-                reason_label = dict(Users.DEACTIVATION_REASONS).get(
-                    user.deactivation_reason, user.deactivation_reason
-                )
-                raise ValueError(
-                    f"This user was {reason_label} and cannot be reactivated directly."
-                )
             data['deactivation_reason'] = 'none'
         elif 'deactivation_reason' in data:
             raise ValueError("'deactivation_reason' requires an active-status change.")

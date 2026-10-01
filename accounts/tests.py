@@ -149,15 +149,19 @@ class UserDetailPatchGuardTests(TestCase):
         # sanity: reactivating is fine, this just re-establishes two admins
         self.assertEqual(response.status_code, 200)
 
-    def test_terminated_user_cannot_be_reactivated_directly(self):
-        self.staff.is_active = False
-        self.staff.deactivation_reason = 'terminated'
-        self.staff.save()
+    def test_resigned_and_terminated_users_can_be_reactivated(self):
         self.client.force_authenticate(user=self.admin) # pyright: ignore[reportAttributeAccessIssue]
-        response = self.client.patch(
-            f'/accounts/users/{self.staff.pk}/', {'is_active': True}, format='json',
-        )
-        self.assertEqual(response.status_code, 400)
+        for reason in ('resigned', 'terminated'):
+            self.staff.is_active = False
+            self.staff.deactivation_reason = reason
+            self.staff.save()
+            response = self.client.patch(
+                f'/accounts/users/{self.staff.pk}/', {'is_active': True}, format='json',
+            )
+            self.assertEqual(response.status_code, 200)
+            self.staff.refresh_from_db()
+            self.assertTrue(self.staff.is_active)
+            self.assertEqual(self.staff.deactivation_reason, 'none')
 
     def test_staff_cannot_patch_other_users(self):
         self.client.force_authenticate(user=self.staff) # pyright: ignore[reportAttributeAccessIssue]
@@ -880,4 +884,3 @@ class AdminResetPasswordCooldownExemptionTests(TestCase):
         }, format='json')
         self.staff.refresh_from_db()
         self.assertIsNone(self.staff.last_password_change_at)
-

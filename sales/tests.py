@@ -71,6 +71,30 @@ class HiddenCategorySalesAPITests(TestCase):
         }, format='json')
         self.assertEqual(response.status_code, 201)
 
+    def test_staff_sales_history_does_not_expose_hidden_products(self):
+        self.client.force_authenticate(user=self.admin)
+        checkout = self.client.post('/sales/checkout/', {
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'payment_method': 'cash', 'amount_tendered': '20.00',
+        }, format='json')
+        self.assertEqual(checkout.status_code, 201)
+        order = self.client.post('/sales/orders/', {
+            'customer_id': self.customer.pk,
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'payment_method': 'cash', 'amount_tendered': '20.00',
+        }, format='json')
+        self.assertEqual(order.status_code, 201)
+
+        self.client.force_authenticate(user=self.staff)
+        self.assertEqual(self.client.get('/sales/transactions/').data['count'], 0)
+        self.assertEqual(self.client.get(f"/sales/transactions/{checkout.data['id']}/").status_code, 404)
+        self.assertEqual(len(self.client.get('/sales/orders/').data), 0)
+        self.assertEqual(self.client.get(f"/sales/orders/{order.data['id']}/").status_code, 404)
+
+        self.client.force_authenticate(user=self.admin)
+        self.assertEqual(self.client.get('/sales/transactions/').data['count'], 2)
+        self.assertEqual(len(self.client.get('/sales/orders/').data), 1)
+
 
 class TransactionCustomerHistoryTests(TestCase):
     def setUp(self):

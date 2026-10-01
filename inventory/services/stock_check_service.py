@@ -1,7 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal
 from django.utils import timezone
-from django.db.models import Case, CharField, DecimalField, Q, Sum, Value, When
+from django.db.models import Case, CharField, DecimalField, Prefetch, Q, Sum, Value, When
 from django.db.models.functions import Coalesce
 from ..models import Product, Ingredient, ProductBatch, IngredientBatch, FEFOConf
 
@@ -68,7 +68,11 @@ def check_product_expiration(visible_to_staff=False):
   critical_expiry_threshold = now + timedelta(days=config.critical_expiry_threshold)
   batches = ProductBatch.objects.filter(
     status='available', expiration_date__range=(now, near_expiry_threshold)
-  ).annotate(expiry_status=_expiry_status(critical_expiry_threshold))
+  ).annotate(expiry_status=_expiry_status(critical_expiry_threshold)).prefetch_related(Prefetch(
+    'product', queryset=Product.objects.select_related('category').annotate(
+      available_stock=_available_stock('batches', now)
+    ),
+  ))
   if visible_to_staff:
     batches = batches.filter(product__category__is_visible_to_staff=True)
   return batches.order_by('expiration_date')

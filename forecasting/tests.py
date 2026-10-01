@@ -53,11 +53,11 @@ class MonetaryExpectationTests(SimpleTestCase):
         with self.assertRaises(ValueError):a.path(1,point_kind='invalid')
 
     @override_settings(FORECAST_SCOPE_OPTIONS={'real':{'regular_training_days':90,'regular_point_kind':'mean'}})
-    def test_real_profile_is_separate_from_simulation_and_changes_snapshot_identity(self):
-        real=options('real');simulation=options('simulation:1')
+    def test_real_profile_changes_snapshot_identity(self):
+        real=options('real')
         self.assertEqual(real.regular_training_days,90);self.assertEqual(real.regular_point_kind,'mean')
-        self.assertIsNone(simulation.regular_training_days);self.assertEqual(simulation.regular_point_kind,'central')
-        self.assertNotEqual(real.signature(),simulation.signature())
+        self.assertNotEqual(real.signature(),Options().signature())
+        with self.assertRaises(ValueError):options('simulation:1')
         for kwargs in ({'regular_training_days':0},{'regular_point_kind':'unknown'}):
             with self.assertRaises(ValueError):Options(**kwargs)
 
@@ -317,6 +317,7 @@ class ServingTests(TestCase):
         with patch('forecasting.serving.source',return_value=(self.daily,'a'*64,[])):
             payload=report(period='monthly')
         self.assertEqual(payload['status'],'rejected');self.assertEqual(payload['forecast'],[])
+        self.assertNotIn('experimental_forecast',payload)
 
     def test_accepted_snapshot_uses_original_issued_point_without_fitting(self):
         from copy import deepcopy
@@ -343,10 +344,10 @@ class ServingTests(TestCase):
         with patch('forecasting.serving.source',return_value=(self.daily,'a'*64,[])):
             self.assertEqual(report(period='monthly')['status'],'stale_data')
 
-    def test_authentication_simulation_privacy_and_query_validation(self):
+    def test_authentication_and_real_only_query_validation(self):
         self.assertEqual(self.client.get('/api/forecasting/forecast/').status_code,401)
         self.client.force_authenticate(self.staff)
-        self.assertEqual(self.client.get('/api/forecasting/forecast/?scope=simulation:1').status_code,403)
+        self.assertEqual(self.client.get('/api/forecasting/forecast/?scope=simulation:1').status_code,400)
         self.assertEqual(self.client.get('/api/forecasting/forecast/?period=daily').status_code,400)
         self.assertEqual(self.client.get('/api/forecasting/forecast/?scope=simulation:0').status_code,400)
 
@@ -419,28 +420,6 @@ class ServingTests(TestCase):
         self.run.result=self.result;self.run.save()
         return point
 
-    def test_mixed_scope_is_admin_only_and_provenance_survives_api_and_pdf(self):
-        from copy import deepcopy
-        result=deepcopy(self.result)
-        result['data_provenance']={'kind':'mixed_scenario_not_real_sales','real_days':333,
-            'simulated_days':397,'complete_calendar_years':[],'independent_accuracy_evidence':False}
-        ForecastRun.objects.create(scope='mixed:1',version=VERSION,
-            configuration_signature=options('mixed:1').signature(),source_signature='a'*64,
-            data_end=self.end,result=result)
-        self.client.force_authenticate(self.staff)
-        self.assertEqual(self.client.get('/api/forecasting/forecast/?scope=mixed:1').status_code,403)
-        self.client.force_authenticate(self.admin)
-        with patch('forecasting.serving.source',return_value=(self.daily,'a'*64,['MIXED SCENARIO'])):
-            response=self.client.get('/api/forecasting/forecast/?scope=mixed:1')
-            self.assertEqual(response.status_code,200)
-            self.assertFalse(response.data['data_provenance']['independent_accuracy_evidence'])
-            from reporting.serializers import ForecastReportSerializer
-            from reporting.services import generate_pdf
-            serializer=ForecastReportSerializer(data=response.data)
-            self.assertTrue(serializer.is_valid(),serializer.errors)
-            pdf=generate_pdf('sarima_forecast',serializer.validated_data)
-            self.assertTrue(pdf.getvalue().startswith(b'%PDF'))
-
     def test_rejected_monthly_report_keeps_risk_but_withholds_combined_and_exports_pdf(self):
         self.monthly_fixture();self.client.force_authenticate(self.staff)
         with patch('forecasting.serving.source',return_value=(self.daily,'a'*64,[])):
@@ -478,57 +457,3 @@ class ServingTests(TestCase):
         issued.refresh_from_db()
         self.assertEqual(issued.payload['combined']['predicted_revenue'],original['combined']['predicted_revenue'])
         self.assertEqual(run.result['setups']['dynamic_60']['periods']['monthly']['next_period']['combined']['predicted_revenue'],original['combined']['predicted_revenue'])
-
-
-class MixedScenarioTests(SimpleTestCase):
-    def test_mixed_fingerprint_tracks_both_sources_and_is_explicitly_retrospective(self):
-        from datetime import date
-        from decimal import Decimal
-        from .data import mixed_source
-        real={date(2025,1,1):Decimal('10')};dummy={date(2024,12,31):Decimal('20')}
-        def load(signature):
-            with patch('forecasting.data.source',side_effect=[(real,'real-hash',[]),(dummy,signature,[])]):
-                return mixed_source('mixed:1')
-        daily,signature,warnings,p=load('dummy-hash')
-        self.assertEqual(daily,{**dummy,**real})
-        self.assertNotEqual(signature,load('changed-dummy-hash')[1])
-        self.assertEqual(p['real_source_signature'],'real-hash')
-        self.assertTrue(any('not an independent' in w for w in warnings))
-        with self.assertRaises(ValueError):mixed_source('mixed:0')
-
-    def test_real_priority_preserves_zero_and_originals_without_double_counting(self):
-        from datetime import date
-        from decimal import Decimal
-        from .data import combine_scenario
-        real={date(2025,1,1):Decimal('0.00'),date(2025,1,3):Decimal('25.50')}
-        dummy={date(2024,12,31):Decimal('10.00'),date(2025,1,1):Decimal('999.00'),
-            date(2025,1,2):Decimal('20.00'),date(2025,1,3):Decimal('999.00')}
-        original_real=real.copy();original_dummy=dummy.copy()
-        merged,p=combine_scenario(real,dummy)
-        self.assertEqual(sum(merged.values()),Decimal('55.50'))
-        self.assertEqual(merged[date(2025,1,1)],0)
-        self.assertEqual((p['real_days'],p['simulated_days'],p['overlap_days_replaced'],p['simulated_gap_days']),(2,2,2,1))
-        self.assertFalse(p['independent_accuracy_evidence'])
-        self.assertEqual(real,original_real);self.assertEqual(dummy,original_dummy)
-
-    def test_overlap_does_not_create_an_extra_year_and_future_changes_leave_prefix_unchanged(self):
-        from decimal import Decimal
-        from .data import combine_scenario
-        dates=pd.date_range('2024-09-28',periods=730)
-        dummy={d.date():Decimal('10') for d in dates}
-        real={d.date():Decimal('20') for d in pd.date_range('2025-01-01','2025-12-31')}
-        merged,p=combine_scenario(real,dummy)
-        self.assertEqual(len(merged),730)
-        self.assertEqual([y['year'] for y in p['complete_calendar_years']],[2025])
-        self.assertEqual(p['complete_calendar_years'][0]['revenue'],'7300.00')
-        altered=dummy.copy()
-        for d in altered:
-            if d.year==2026:altered[d]*=100
-        changed,_=combine_scenario(real,altered)
-        self.assertEqual({d:v for d,v in merged.items() if d.year<2026},{d:v for d,v in changed.items() if d.year<2026})
-        from .data import as_series
-        series=as_series(merged)
-        labels,_=classify(series,90,Options())
-        annual=bulk_estimate(series,labels,'yearly',pd.Timestamp('2027-01-01'),Options())
-        self.assertEqual(annual['status'],'insufficient_history')
-        self.assertEqual(annual['observed_periods'],1)

@@ -5,7 +5,7 @@ from django.db import connection,transaction
 from django.utils import timezone
 from systemsetting.runtime import get_runtime_settings
 from .contract import VERSION,options as configured_options,period_acceptance
-from .data import source,as_series,mixed_source
+from .data import source,as_series
 from .models import ForecastRun,IssuedForecast
 
 
@@ -23,12 +23,10 @@ def refresh(scope='real',options=None,progress=None):
             if previous:return previous,False
             result=evaluate(as_series(daily),options,progress)
             result['warnings']=warnings
-            if scope.startswith('mixed:'):
-                result['data_provenance']=mixed_source(scope)[3]
             if source(scope)[1]!=signature:raise ValueError('Source sales changed during evaluation; retry')
             with transaction.atomic():
                 selected=result['setups'].get(result['selected_setup'])
-                current=scope!='real' or date.fromisoformat(result['data_end'])==timezone.localdate()-timedelta(days=1)
+                current=date.fromisoformat(result['data_end'])==timezone.localdate()-timedelta(days=1)
                 if selected and current:
                     for period,evaluation in selected['periods'].items():
                         point=evaluation['next_period']

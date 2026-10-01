@@ -2,7 +2,6 @@ import csv,json
 from dataclasses import replace
 from pathlib import Path
 from django.core.management.base import BaseCommand,CommandError
-from django.db import connection
 from forecasting.contract import options as configured_options,LIMITATIONS
 from forecasting.jobs import refresh
 
@@ -10,8 +9,7 @@ from forecasting.jobs import refresh
 class Command(BaseCommand):
     help='Compare fixed 100k and dynamic cutoff SARIMA + rolling bulk risk, offline.'
     def add_arguments(self,parser):
-        parser.add_argument('--scope',default='real')
-        parser.add_argument('--all',action='store_true')
+        parser.add_argument('--scope',choices=['real'],default='real')
         parser.add_argument('--output', type=Path, help='Optional private directory for evaluation exports; no files are exported by default.')
         parser.add_argument('--windows',type=int,nargs='+')
         parser.add_argument('--multiplier',type=float)
@@ -23,10 +21,6 @@ class Command(BaseCommand):
         try:options=replace(configured_options(),**changes)
         except ValueError as exc:raise CommandError(str(exc)) from exc
         scopes=[values['scope']]
-        if values['all']:
-            with connection.cursor() as cursor:
-                cursor.execute('SELECT id FROM reporting_simulationdataset ORDER BY id')
-                scopes=['real']+[f'simulation:{row[0]}' for row in cursor.fetchall()]
         folder=values['output']
         if folder is not None:
             folder.mkdir(parents=True,exist_ok=True)

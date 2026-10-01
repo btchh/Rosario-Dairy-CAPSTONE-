@@ -10,9 +10,32 @@ from rest_framework.test import APIClient
 
 from inventory.models import Category, Ingredient, IngredientBatch, Product, ProductBatch
 from sales.models import Customer, Transaction, TransactionItem
+from systemsetting.models import SystemSettings
 
 
 User = get_user_model()
+
+
+class ReportBrandingTests(TestCase):
+    def test_pdf_header_includes_saved_business_profile(self):
+        from reporting.pdf import Report
+
+        config = SystemSettings.get_config()
+        config.business_name = 'Sample Dairy'
+        config.business_address = '123 Test Street'
+        config.business_contact = '09123456789'
+        config.business_email = 'hello@example.test'
+        config.tin = '123-456-789'
+        config.business_type = 'Dairy retailer'
+        config.save()
+        cache.clear()
+
+        report = Report('inventory', {'as_of': '2026-10-01'})
+        report.header()
+        content = ' '.join(part.text for part in report.story if hasattr(part, 'text'))
+        for value in ('SAMPLE DAIRY', 'Dairy retailer', '123 Test Street',
+                      '09123456789', 'hello@example.test', '123-456-789'):
+            self.assertIn(value, content)
 
 
 class ReportAPITests(TestCase):
@@ -100,6 +123,12 @@ class ReportAPITests(TestCase):
         self.assertEqual(data['items'][0]['quantity'], '3.00')
         self.assertEqual(data['items'][0]['total_revenue'], '150.00')
         self.assertNotIn('date', data['items'][0])
+        self.assertEqual(data['gross_sales'], '100.00')
+        self.assertEqual(data['average_ticket'], '100.00')
+        self.assertEqual(data['payment_mix'][0]['transaction_count'], 1)
+        self.assertEqual(data['category_mix'][0]['category'], 'Reports')
+        self.assertEqual(data['family_mix'][0]['product_name'], 'Milk')
+        self.assertEqual(data['family_mix'][0]['quantity'], '3.00')
 
     def test_daily_sales_pdf_contains_product_breakdown(self):
         self.client.force_authenticate(user=self.staff)
@@ -108,6 +137,30 @@ class ReportAPITests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(content.startswith(b'%PDF'))
         self.assertGreater(len(content), 2000)
+
+    def test_product_family_rolls_up_variants_and_uses_sale_name_snapshot(self):
+        smaller = Product.objects.create(
+            category=self.category, name='Milk', variant='500ml', unit='piece',
+            unit_price=Decimal('25.00'), shelf_life=7,
+        )
+        smaller_batch = ProductBatch.objects.create(
+            product=smaller, batch_number='PRD-REPORT-500ML',
+            unit_price=Decimal('25.00'), initial_quantity=Decimal('5.00'),
+            remaining_quantity=Decimal('5.00'),
+            expiration_date=timezone.localdate() + timedelta(days=3),
+        )
+        TransactionItem.objects.create(
+            transaction=self.transaction, product_batch=smaller_batch,
+            quantity=Decimal('2.00'), unit_price=Decimal('25.00'),
+            product_name_snapshot='Milk', product_variant_snapshot='500ml',
+        )
+        self.client.force_authenticate(user=self.staff)
+        data = self.client.get('/api/reports/preview/?type=daily_sales').data['data']
+
+        self.assertEqual(len(data['items']), 2)
+        self.assertEqual(data['family_mix'][0], {
+            'product_name': 'Milk', 'quantity': '4.00', 'gross_sales': '150.00',
+        })
 
     def test_weekly_sales_includes_complete_daily_breakdown_and_top_products(self):
         self.client.force_authenticate(user=self.staff)
@@ -149,6 +202,7 @@ class ReportAPITests(TestCase):
         response = self.client.get('/api/reports/preview/?type=inventory')
         names = [item['name'] for item in response.data['data']['items']]
         self.assertNotIn('Admin Product', names)
+        self.assertEqual(response.data['data']['status_counts']['expiring_soon'], 1)
 
     def test_pdf_export_streams_a_pdf_attachment(self):
         self.client.force_authenticate(user=self.staff)

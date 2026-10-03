@@ -38,7 +38,7 @@ def check_product_stock(visible_to_staff=False):
     available_stock=_available_stock('batches', today)
   )
   if visible_to_staff:
-    products = products.filter(category__is_visible_to_staff=True)
+    products = products.filter(category__is_active=True, category__is_visible_to_staff=True)
   config = FEFOConf.get_config()
   for product in products:
     low_stock_threshold = product.low_stock_threshold if product.low_stock_threshold is not None else config.low_stock_threshold
@@ -74,7 +74,8 @@ def check_product_expiration(visible_to_staff=False):
     ),
   ))
   if visible_to_staff:
-    batches = batches.filter(product__category__is_visible_to_staff=True)
+    batches = batches.filter(product__is_active=True, product__category__is_active=True,
+                             product__category__is_visible_to_staff=True)
   return batches.order_by('expiration_date')
 
 def check_ingredient_expiration():

@@ -5,6 +5,8 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from accounts.models import Users
 from inventory.models import Category, Product, ProductBatch
+from sales.models import Customer
+from sales.services import SalesService
 from systemsetting.models import NotificationSettings, NotificationState
 
 
@@ -89,6 +91,23 @@ class NotificationInboxTests(TestCase):
         settings=NotificationSettings.get_config()
         settings.low_stock_alerts=False;settings.near_expiry_alerts=False;settings.new_order_alerts=False;settings.save()
         self.assertEqual(self.feed(),[])
+
+    def test_inactive_category_does_not_raise_staff_stock_alerts(self):
+        self.category.is_active = False
+        self.category.save(update_fields=['is_active'])
+        self.client.force_authenticate(self.staff)
+        self.assertEqual(self.feed(), [])
+
+    def test_staff_does_not_receive_order_alert_for_inactive_category(self):
+        customer = Customer.objects.create(name='Alert Customer', created_by=self.admin)
+        order = SalesService.place_order(
+            customer, [(self.product, Decimal('1.00'))], self.admin,
+            amount_tendered=Decimal('50.00'),
+        )
+        self.category.is_active = False
+        self.category.save(update_fields=['is_active'])
+        self.client.force_authenticate(self.staff)
+        self.assertNotIn(f'fulfilled-{order.pk}', [item['id'] for item in self.feed()])
 
     def test_unauthenticated_requests_are_rejected(self):
         self.client.force_authenticate(None)

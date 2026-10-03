@@ -323,46 +323,35 @@ class Report:
     def forecast(self):
         d = self.data
         status = d.get('status', 'unavailable')
-        regular, bulk, combined = (d.get(key) or {} for key in ('regular', 'bulk', 'combined'))
+        combined = d.get('combined') or {}
         ready = status == 'ready' and combined.get('predicted_revenue') is not None
         self.cards([
             ('Forecast status', label(status)),
             ('Horizon', f"{d.get('horizon_days', 0)} days"),
-            ('Planning estimate', money(combined['predicted_revenue'], self.currency) if ready else 'Withheld'),
+            ('Forecast', money(combined['predicted_revenue'], self.currency) if ready else 'Withheld'),
         ])
         lines = [
-            'A planning figure is shown only when the evaluated model meets its quality gate.' if ready
-            else 'No validated combined planning figure is available for this period; do not treat a withheld amount as zero sales.',
+            'A forecast is shown only when the SARIMA holdout meets its quality gate and sales are current.' if ready
+            else 'No validated current forecast is available for this period; a withheld amount is not zero sales.',
         ]
         score = (d.get('metrics') or {}).get('combined') or {}
         if score.get('wape_percent') is not None:
-            lines.append(f"Historical combined WAPE is {number(score['wape_percent'])}% across {score.get('rows', 0)} evaluated periods; the acceptance target is {d.get('accuracy_target_percent', 30)}% or lower.")
+            lines.append(f"2025 retrospective WAPE is {number(score['wape_percent'])}% across {score.get('rows', 0)} evaluated periods; the acceptance target is {d.get('accuracy_target_percent', 30)}% or lower.")
         self.insights(lines)
-        self.section('Planning components')
-        rows = [
-            ['Regular sales', money(regular['predicted_revenue'], self.currency) if regular.get('predicted_revenue') is not None else 'Withheld',
-             money(regular['lower_bound'], self.currency) if regular.get('lower_bound') is not None else '—',
-             money(regular['upper_bound'], self.currency) if regular.get('upper_bound') is not None else '—'],
-            ['Bulk-sale risk', money(bulk['expected_revenue'], self.currency) if bulk.get('expected_revenue') is not None else 'Insufficient history',
-             money(bulk['min_revenue'], self.currency) if bulk.get('min_revenue') is not None else '—',
-             money(bulk['max_revenue'], self.currency) if bulk.get('max_revenue') is not None else '—'],
-            ['Combined', money(combined['predicted_revenue'], self.currency) if ready else 'Withheld',
-             money(combined['lower_bound'], self.currency) if ready and combined.get('lower_bound') is not None else '—',
-             money(combined['upper_bound'], self.currency) if ready and combined.get('upper_bound') is not None else '—'],
-        ]
-        self.table(['Component', 'Expected', 'Low case', 'High case'], rows,
-                   [.28, .24, .24, .24], numeric=(1, 2, 3))
-        metrics = d.get('metrics') or {}
-        metric_rows = [
-            [label(name), values.get('rows', 0),
-             f"{number(values['wape_percent'])}%" if values.get('wape_percent') is not None else 'N/A',
-             f"{number(values['coverage_percent'])}%" if values.get('coverage_percent') is not None else 'N/A']
-            for name, values in metrics.items() if name in ('regular', 'bulk', 'combined')
-        ]
-        if metric_rows:
-            self.section('Historical evaluation')
-            self.table(['Component', 'Periods', 'WAPE', 'Range coverage'], metric_rows,
-                       [.32, .16, .22, .30], numeric=(1, 2, 3))
+        self.section('2025 retrospective evaluation')
+        self.table(['Periods', 'WAPE', 'MAE', 'Range coverage'], [[
+            score.get('rows', 0),
+            f"{number(score['wape_percent'])}%" if score.get('wape_percent') is not None else 'N/A',
+            money(score['mae_pesos'], self.currency) if score.get('mae_pesos') is not None else 'N/A',
+            f"{number(score['coverage_percent'])}%" if score.get('coverage_percent') is not None else 'N/A',
+        ]], [.18, .22, .30, .30], numeric=(0, 1, 2, 3))
+        if d.get('baselines'):
+            self.section('Total-sales benchmarks')
+            self.table(['Method', 'Periods', 'WAPE'], [
+                [label(name), entry['metrics'].get('rows', 0),
+                 f"{number(entry['metrics']['wape_percent'])}%" if entry['metrics'].get('wape_percent') is not None else 'N/A']
+                for name, entry in d['baselines'].items()
+            ], [.50, .20, .30], numeric=(1, 2))
         if d.get('forecast'):
             self.section('Forecast period')
             self.table(['From', 'To', 'Expected', 'Low–high'], [

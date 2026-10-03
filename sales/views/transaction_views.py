@@ -52,6 +52,8 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
         if self.request.user.role == 'staff':
             queryset = queryset.exclude(
                 items__product_batch__product__category__is_visible_to_staff=False
+            ).exclude(
+                items__product_batch__product__category__is_active=False
             )
         return queryset
 

@@ -1,46 +1,44 @@
-"""Read verified historical sales and completed live sales for forecasting."""
+"""Read completed, non-voided transaction revenue for forecasting."""
 from datetime import datetime, time
-from decimal import Decimal
 from hashlib import sha256
 import json
 
-from django.db import connection
-from django.db.models import Q, Sum, Count
+from decimal import Decimal
+
+from django.db.models import Case, CharField, Q, Sum, Value, When
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from sales.models import Transaction
 
 
-def source(scope='real'):
+def source(scope='real', include_components=False):
     if scope != 'real':
         raise ValueError('Only real sales are supported')
-    with connection.cursor() as cursor:
-        tables = set(connection.introspection.table_names(cursor))
-        today = timezone.localdate()
-        daily = {}
-        if 'reporting_historicalsalesday' in tables:
-            cursor.execute(
-                'SELECT date,revenue FROM reporting_historicalsalesday WHERE date<%s ORDER BY date',
-                [today],
-            )
-            daily = dict(cursor.fetchall())
-        cutoff = timezone.make_aware(datetime.combine(today, time.min))
-        live = Transaction.objects.filter(created_at__lt=cutoff).annotate(
-            day=TruncDate('created_at', tzinfo=timezone.get_current_timezone()),
-        ).values('day').annotate(
-            revenue=Sum('total_amount', filter=Q(is_voided=False), default=Decimal('0.00')),
-            count=Count('pk'),
-        ).order_by('day')
-        for row in live:
-            if row['day'] in daily:
-                raise ValueError('Imported and live revenue overlap; resolve before training')
-            daily[row['day']] = row['revenue']
-        warnings = ['Imported raw/dairy coverage must match live product/accounting coverage.'] if 'reporting_historicalsalesday' in tables else []
+    cutoff = timezone.make_aware(datetime.combine(timezone.localdate(), time.min))
+    # Imported labels are sale-time evidence. Live sales use their linked
+    # customer name only when there is no imported label.
+    feeding = Q(source_customer_label__icontains='feeding') | (
+        Q(source_customer_label='') & Q(customer__name__icontains='feeding'))
+    rows = Transaction.objects.filter(is_voided=False, created_at__lt=cutoff).annotate(
+        day=TruncDate('created_at', tzinfo=timezone.get_current_timezone()),
+        segment=Case(When(feeding, then=Value('feeding')), default=Value('other_sales'), output_field=CharField()),
+    ).values('day', 'segment').annotate(revenue=Sum('total_amount')).order_by('day', 'segment')
+    daily = {}
+    components = {'feeding': {}, 'other_sales': {}}
+    for row in rows:
+        day, revenue = row['day'], row['revenue']
+        daily[day] = daily.get(day, Decimal('0.00')) + revenue
+        components[row['segment']][day] = revenue
+    warnings = []
     signature = sha256(json.dumps({
         'scope': scope,
         'timezone': timezone.get_current_timezone_name(),
         'daily': [(str(day), str(revenue)) for day, revenue in sorted(daily.items())],
+        'components': {key: [(str(day), str(value)) for day, value in sorted(values.items())]
+                       for key, values in components.items()},
     }, sort_keys=True, default=str).encode()).hexdigest()
+    if include_components:
+        return daily, signature, warnings, components
     return daily, signature, warnings
 
 

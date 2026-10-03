@@ -24,5 +24,6 @@ class ProductViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
             ).only('product_id', 'remaining_quantity'), to_attr='available_batches_for_total',
         ))
         if self.request.user.role == 'staff':
-            qs = qs.filter(category__is_visible_to_staff=True)
+            qs = qs.filter(is_active=True, category__is_active=True,
+                           category__is_visible_to_staff=True)
         return qs

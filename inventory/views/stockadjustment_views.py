@@ -20,7 +20,9 @@ class StockAdjustmentViewSet(viewsets.ModelViewSet):
         if self.request.user.role == 'staff':
             qs = qs.filter(
                 Q(product_batch__isnull=True) |
-                Q(product_batch__product__category__is_visible_to_staff=True)
+                Q(product_batch__product__is_active=True,
+                  product_batch__product__category__is_active=True,
+                  product_batch__product__category__is_visible_to_staff=True)
             )
         return qs
     
@@ -51,13 +53,15 @@ class StockAdjustmentViewSet(viewsets.ModelViewSet):
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            product_batch = ProductBatch.objects.get(id=product_batch_id) if product_batch_id else None
+            product_batch = ProductBatch.objects.select_related('product__category').get(id=product_batch_id) if product_batch_id else None
             ingredient_batch = IngredientBatch.objects.get(id=ingredient_batch_id) if ingredient_batch_id else None
         except (ProductBatch.DoesNotExist, IngredientBatch.DoesNotExist, ValueError, TypeError):
             return Response({'error': 'product_batch_id or ingredient_batch_id does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
 
         if (request.user.role == 'staff' and product_batch and
-                not product_batch.product.category.is_visible_to_staff):
+                (not product_batch.product.is_active or
+                 not product_batch.product.category.is_active or
+                 not product_batch.product.category.is_visible_to_staff)):
             return Response({'error': 'product_batch_id or ingredient_batch_id does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:

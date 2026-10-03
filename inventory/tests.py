@@ -35,6 +35,93 @@ from rest_framework.test import APIClient
 User = get_user_model()
 
 
+class ConditionalDeleteAPITests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = make_user('deleteadmin', role='admin')
+        self.client.force_authenticate(user=self.admin)
+
+    def test_unused_category_is_permanently_deleted(self):
+        category = Category.objects.create(name='Unused')
+        response = self.client.delete(f'/inventory/categories/{category.pk}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['deletion_type'], 'permanent')
+        self.assertFalse(Category.objects.filter(pk=category.pk).exists())
+
+    def test_category_with_product_is_deactivated_and_can_be_reactivated(self):
+        category = Category.objects.create(name='Linked')
+        product = Product.objects.create(
+            category=category, name='Linked Product', unit='piece',
+            unit_price=Decimal('10.00'), shelf_life=7,
+        )
+        response = self.client.delete(f'/inventory/categories/{category.pk}/')
+        self.assertEqual(response.data['deletion_type'], 'deactivated')
+        category.refresh_from_db()
+        self.assertFalse(category.is_active)
+        self.assertEqual(Product.objects.get(pk=product.pk).category_id, category.pk)
+        self.assertNotIn(category.pk, [row['id'] for row in self.client.get('/inventory/categories/').data])
+        self.assertEqual(self.client.post(f'/inventory/categories/{category.pk}/reactivate/').status_code, 200)
+        category.refresh_from_db()
+        self.assertTrue(category.is_active)
+
+    def test_explicit_deactivation_does_not_delete_unused_category(self):
+        category = Category.objects.create(name='Keep for later')
+        response = self.client.post(f'/inventory/categories/{category.pk}/deactivate/')
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Category.objects.get(pk=category.pk).is_active)
+
+    def test_product_ingredient_and_supplier_follow_same_protection_rule(self):
+        category = Category.objects.create(name='Products')
+        unused = Product.objects.create(
+            category=category, name='Unused', unit='piece',
+            unit_price=Decimal('10.00'), shelf_life=7,
+        )
+        linked = Product.objects.create(
+            category=category, name='Linked', unit='piece',
+            unit_price=Decimal('10.00'), shelf_life=7,
+        )
+        ProductBatch.objects.create(
+            product=linked, batch_number='DELETE-LINKED-PRODUCT',
+            initial_quantity=Decimal('1.00'), remaining_quantity=Decimal('1.00'),
+            expiration_date='2026-12-31',
+        )
+        self.assertEqual(self.client.delete(f'/inventory/products/{unused.pk}/').data['deletion_type'], 'permanent')
+        self.assertFalse(Product.objects.filter(pk=unused.pk).exists())
+        self.assertEqual(self.client.delete(f'/inventory/products/{linked.pk}/').data['deletion_type'], 'deactivated')
+        self.assertFalse(Product.objects.get(pk=linked.pk).is_active)
+
+        unused_ingredient = Ingredient.objects.create(
+            name='Unused Ingredient', unit='piece', unit_price=Decimal('1.00'), shelf_life=7,
+        )
+        linked_ingredient = Ingredient.objects.create(
+            name='Linked Ingredient', unit='piece', unit_price=Decimal('1.00'), shelf_life=7,
+        )
+        unused_supplier = Supplier.objects.create(name='Unused Supplier')
+        linked_supplier = Supplier.objects.create(name='Linked Supplier')
+        IngredientBatch.objects.create(
+            ingredient=linked_ingredient, supplier=linked_supplier,
+            batch_number='DELETE-LINKED-INGREDIENT',
+            initial_quantity=Decimal('1.00'), remaining_quantity=Decimal('1.00'),
+            expiration_date='2026-12-31',
+        )
+        self.assertEqual(self.client.delete(f'/inventory/ingredients/{unused_ingredient.pk}/').data['deletion_type'], 'permanent')
+        self.assertEqual(self.client.delete(f'/inventory/ingredients/{linked_ingredient.pk}/').data['deletion_type'], 'deactivated')
+        self.assertFalse(Ingredient.objects.get(pk=linked_ingredient.pk).is_active)
+        self.assertEqual(self.client.delete(f'/inventory/suppliers/{unused_supplier.pk}/').data['deletion_type'], 'permanent')
+        self.assertEqual(self.client.delete(f'/inventory/suppliers/{linked_supplier.pk}/').data['deletion_type'], 'deactivated')
+        self.assertFalse(Supplier.objects.get(pk=linked_supplier.pk).is_active)
+
+    def test_staff_can_deactivate_but_cannot_permanently_delete_ingredient(self):
+        ingredient = Ingredient.objects.create(
+            name='Staff Ingredient', unit='piece', unit_price=Decimal('1.00'), shelf_life=7,
+        )
+        self.client.force_authenticate(user=make_user('deletestaff'))
+        self.assertEqual(self.client.delete(f'/inventory/ingredients/{ingredient.pk}/').status_code, 403)
+        self.assertTrue(Ingredient.objects.get(pk=ingredient.pk).is_active)
+        self.assertEqual(self.client.post(f'/inventory/ingredients/{ingredient.pk}/deactivate/').status_code, 200)
+        self.assertFalse(Ingredient.objects.get(pk=ingredient.pk).is_active)
+
+
 class StaffCategoryVisibilityAPITests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -110,6 +197,86 @@ class StaffCategoryVisibilityAPITests(TestCase):
         }, format='json')
         self.assertEqual(response.status_code, 400)
         self.assertIn('product_id', response.data)
+
+    def test_inactive_category_hides_products_and_batches_from_staff(self):
+        self.visible_category.is_active = False
+        self.visible_category.save(update_fields=['is_active'])
+        batch = ProductBatch.objects.create(
+            product=self.visible_product, batch_number='PRD-INACTIVE-CATEGORY',
+            unit_price=Decimal('10.00'), initial_quantity=Decimal('5.00'),
+            remaining_quantity=Decimal('5.00'), expiration_date='2026-12-31',
+        )
+        self.client.force_authenticate(user=self.staff)
+        self.assertEqual(self.client.get('/inventory/categories/').data, [])
+        self.assertEqual(self.client.get(f'/inventory/categories/{self.visible_category.pk}/').status_code, 404)
+        self.assertEqual(self.client.get('/inventory/products/').data, [])
+        self.assertEqual(self.client.get(f'/inventory/products/{self.visible_product.pk}/').status_code, 404)
+        self.assertEqual(self.client.get(f'/inventory/product-batches/{batch.pk}/').status_code, 404)
+        create = self.client.post('/inventory/product-batches/', {
+            'product_id': self.visible_product.pk,
+            'quantity': '2.00', 'expiration_date': '2026-12-31',
+        }, format='json')
+        self.assertEqual(create.status_code, 400)
+        self.assertIn('product_id', create.data)
+
+    def test_inactive_product_batch_is_not_available_to_staff(self):
+        batch = ProductBatch.objects.create(
+            product=self.visible_product, batch_number='PRD-INACTIVE-PRODUCT',
+            unit_price=Decimal('10.00'), initial_quantity=Decimal('5.00'),
+            remaining_quantity=Decimal('5.00'), expiration_date='2026-12-31',
+        )
+        self.visible_product.is_active = False
+        self.visible_product.save(update_fields=['is_active'])
+        self.client.force_authenticate(user=self.staff)
+        self.assertEqual(self.client.get(f'/inventory/product-batches/{batch.pk}/').status_code, 404)
+        create = self.client.post('/inventory/product-batches/', {
+            'product_id': self.visible_product.pk,
+            'quantity': '2.00', 'expiration_date': '2026-12-31',
+        }, format='json')
+        self.assertEqual(create.status_code, 400)
+
+    def test_admin_cannot_create_product_in_inactive_category(self):
+        self.visible_category.is_active = False
+        self.visible_category.save(update_fields=['is_active'])
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/inventory/products/', {
+            'name': 'New Product', 'unit': 'piece', 'unit_price': '10.00',
+            'shelf_life': 7, 'category_id': self.visible_category.pk,
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('category_id', response.data)
+
+    def test_admin_cannot_restock_inactive_product(self):
+        self.visible_product.is_active = False
+        self.visible_product.save(update_fields=['is_active'])
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/inventory/product-batches/', {
+            'product_id': self.visible_product.pk,
+            'quantity': '2.00', 'expiration_date': '2026-12-31',
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('product_id', response.data)
+
+    def test_staff_cannot_adjust_or_count_stock_in_inactive_category(self):
+        batch = ProductBatch.objects.create(
+            product=self.visible_product, batch_number='PRD-INACTIVE-ADJUST',
+            unit_price=Decimal('10.00'), initial_quantity=Decimal('5.00'),
+            remaining_quantity=Decimal('5.00'), expiration_date='2026-12-31',
+        )
+        self.visible_category.is_active = False
+        self.visible_category.save(update_fields=['is_active'])
+        self.client.force_authenticate(user=self.staff)
+        adjustment = self.client.post('/inventory/stock-adjustments/', {
+            'product_batch_id': batch.pk, 'adjustment_type': 'spoilage',
+            'quantity': '1.00', 'unit_cost': '10.00',
+        }, format='json')
+        self.assertEqual(adjustment.status_code, 400)
+        count = self.client.post('/inventory/stock-counts/', {
+            'product_batch_id': batch.pk, 'counted_quantity': '4.00',
+        }, format='json')
+        self.assertEqual(count.status_code, 400)
+        batch.refresh_from_db()
+        self.assertEqual(batch.remaining_quantity, Decimal('5.00'))
 
 
 def make_user(username='staffuser', role='staff'):

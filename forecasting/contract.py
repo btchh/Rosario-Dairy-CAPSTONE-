@@ -1,69 +1,57 @@
-"""Configuration is included in snapshot identity; it cannot silently reuse fits."""
-from dataclasses import dataclass,asdict
+"""Versioned forecasting contract and publication threshold."""
+from dataclasses import asdict, dataclass
+from datetime import date
 from hashlib import sha256
-import json,math
-from django.conf import settings
+import json
+import math
 
-VERSION='period-hybrid-v3'
-TARGET_PERCENT=30.0
-LIMITATIONS=('Dynamic bulk classification is a statistical rule, not verified bulk orders. '
-    'History is limited and this is a retrospective backtest on previously inspected data. '
-    'Bulk dates cannot be predicted. Historical extrema and summed daily SARIMA bounds '
-    'form a planning risk range, not a calibrated combined prediction interval.')
+VERSION = 'sarima-v9'
+TARGET_PERCENT = 30.0
+LIMITATIONS = (
+    '2025 has already been inspected during development; these are retrospective backtests, '
+    'not independent evidence of future accuracy. Candidate selection uses only periods ending before 2025. '
+    'Only isolated 2022 tickets exist, so model training starts with the complete 2023 workbooks. '
+    'Days without a recorded ticket count as zero recorded revenue within those workbooks. '
+    'Milk-feeding labels identify recorded customers, not future delivery commitments. '
+    'Yearly error is based on one test year and is insufficient for a 30% acceptance claim. '
+    'Summed marginal SARIMA bounds are a planning range, not a calibrated period interval.'
+)
+
 
 def period_acceptance(metrics):
-    error=metrics.get('wape_percent')
-    if metrics.get('rows',0)<5 or error is None or not math.isfinite(error):return 'insufficient_evaluation'
-    return 'accepted' if error<=TARGET_PERCENT else 'rejected'
+    if metrics.get('failed_rows', 0):
+        return 'model_unavailable'
+    error = metrics.get('wape_percent')
+    if metrics.get('rows', 0) < 5 or error is None or not math.isfinite(error):
+        return 'insufficient_evaluation'
+    return 'accepted' if error <= TARGET_PERCENT else 'rejected'
+
 
 @dataclass(frozen=True)
 class Options:
-    windows: tuple=(60,90)
-    multiplier: float=3.0
-    min_positive_days: int=30
-    fixed_cutoff: float=100_000.0
-    weekly_lookback: int=12
-    monthly_lookback: int=6
-    yearly_lookback: int=5
-    min_bulk_periods: int=5
-    weekly_bulk_half_life: float | None=None
-    weekly_regular_candidate: str | None=None
-    weekly_regular_training_days: int | None=None
-    profile_trained_through: str | None=None
-    regular_training_days: int | None=None
-    regular_point_kind: str='central'
-    regular_candidate_names: tuple=()
+    model: str = 'sarima'
+    training_start: str = '2023-01-01'
+    validation_start: str = '2024-07-01'
+    test_start: str = '2025-01-01'
+    test_end: str = '2025-12-31'
+    weekly_validation_stride: int = 2
 
     def __post_init__(self):
-        if not self.windows or len(set(self.windows))!=len(self.windows) or any(not isinstance(n,int) or n<1 for n in self.windows):
-            raise ValueError('Cutoff windows must be distinct positive calendar-day counts')
-        if not math.isfinite(self.multiplier) or self.multiplier<0:raise ValueError('Invalid MAD multiplier')
-        if not math.isfinite(self.fixed_cutoff) or self.fixed_cutoff<=0:raise ValueError('Invalid fallback cutoff')
-        if self.min_positive_days<1 or self.min_bulk_periods<1:raise ValueError('Minimum sample counts must be positive')
-        if min(self.weekly_lookback,self.monthly_lookback,self.yearly_lookback)<self.min_bulk_periods:
-            raise ValueError('Bulk lookbacks must cover the minimum number of periods')
-        if self.weekly_bulk_half_life is not None and (not math.isfinite(self.weekly_bulk_half_life) or self.weekly_bulk_half_life<=0):
-            raise ValueError('Bulk recency half-life must be positive and finite')
-        if self.weekly_regular_candidate is not None and (not isinstance(self.weekly_regular_candidate,str) or not self.weekly_regular_candidate):
-            raise ValueError('Invalid weekly SARIMA candidate')
-        if self.profile_trained_through is not None:
-            from datetime import date
-            date.fromisoformat(self.profile_trained_through)
-        if self.regular_training_days is not None and (not isinstance(self.regular_training_days,int) or self.regular_training_days<30):
-            raise ValueError('Regular training window must cover at least 30 calendar days')
-        if self.weekly_regular_training_days is not None and (not isinstance(self.weekly_regular_training_days,int) or self.weekly_regular_training_days<30):
-            raise ValueError('Weekly regular training window must cover at least 30 days')
-        if self.regular_point_kind not in ('central','mean'):raise ValueError('Invalid regular point kind')
-        if any(not isinstance(name,str) or not name for name in self.regular_candidate_names):raise ValueError('Invalid candidate names')
+        start, validation, test, end = (date.fromisoformat(value) for value in (
+            self.training_start, self.validation_start, self.test_start, self.test_end))
+        if not start < validation < test <= end:
+            raise ValueError('Expected ordered training, validation, and test dates')
+        if self.weekly_validation_stride < 1:
+            raise ValueError('Weekly validation stride must be positive')
 
-    def values(self):return asdict(self)
-    def signature(self):return sha256(json.dumps(self.values(),sort_keys=True).encode()).hexdigest()
+    def values(self):
+        return asdict(self)
+
+    def signature(self):
+        return sha256(json.dumps({'version':VERSION, **self.values()}, sort_keys=True).encode()).hexdigest()
 
 
 def options(scope='real'):
-    if scope!='real':raise ValueError('Only real sales are supported')
-    values=dict(getattr(settings,'FORECAST_OPTIONS',{}))
-    values.update(getattr(settings,'FORECAST_SCOPE_OPTIONS',{}).get(scope,{}))
-    if 'windows' in values:values['windows']=tuple(values['windows'])
-    if 'regular_candidate_names' in values:values['regular_candidate_names']=tuple(values['regular_candidate_names'])
-    return Options(**values)
+    if scope != 'real':
+        raise ValueError('Only real sales are supported')
+    return Options()

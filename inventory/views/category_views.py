@@ -17,5 +17,5 @@ class CategoryViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         if self.request.user.role == 'staff':
-            qs = qs.filter(is_visible_to_staff=True)
+            qs = qs.filter(is_active=True, is_visible_to_staff=True)
         return qs

@@ -63,6 +63,39 @@ class HiddenCategorySalesAPITests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('not found', response.data['error'])
 
+    def test_staff_cannot_sell_product_in_inactive_category(self):
+        self.category.is_visible_to_staff = True
+        self.category.is_active = False
+        self.category.save(update_fields=['is_visible_to_staff', 'is_active'])
+        self.client.force_authenticate(user=self.staff)
+        checkout = self.client.post('/sales/checkout/', {
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'payment_method': 'cash', 'amount_tendered': '20.00',
+        }, format='json')
+        self.assertEqual(checkout.status_code, 400)
+        order = self.client.post('/sales/orders/', {
+            'customer_id': self.customer.pk,
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'payment_method': 'cash', 'amount_tendered': '20.00',
+        }, format='json')
+        self.assertEqual(order.status_code, 400)
+
+    def test_staff_history_hides_sale_after_category_is_deactivated(self):
+        self.category.is_visible_to_staff = True
+        self.category.save(update_fields=['is_visible_to_staff'])
+        self.client.force_authenticate(user=self.admin)
+        order = self.client.post('/sales/orders/', {
+            'customer_id': self.customer.pk,
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'payment_method': 'cash', 'amount_tendered': '20.00',
+        }, format='json')
+        self.assertEqual(order.status_code, 201)
+        self.category.is_active = False
+        self.category.save(update_fields=['is_active'])
+        self.client.force_authenticate(user=self.staff)
+        self.assertEqual(self.client.get('/sales/transactions/').data['count'], 0)
+        self.assertEqual(self.client.get('/sales/orders/').data['results'], [])
+
     def test_admin_can_checkout_hidden_product(self):
         self.client.force_authenticate(user=self.admin)
         response = self.client.post('/sales/checkout/', {
@@ -88,12 +121,12 @@ class HiddenCategorySalesAPITests(TestCase):
         self.client.force_authenticate(user=self.staff)
         self.assertEqual(self.client.get('/sales/transactions/').data['count'], 0)
         self.assertEqual(self.client.get(f"/sales/transactions/{checkout.data['id']}/").status_code, 404)
-        self.assertEqual(len(self.client.get('/sales/orders/').data), 0)
+        self.assertEqual(len(self.client.get('/sales/orders/').data['results']), 0)
         self.assertEqual(self.client.get(f"/sales/orders/{order.data['id']}/").status_code, 404)
 
         self.client.force_authenticate(user=self.admin)
         self.assertEqual(self.client.get('/sales/transactions/').data['count'], 2)
-        self.assertEqual(len(self.client.get('/sales/orders/').data), 1)
+        self.assertEqual(len(self.client.get('/sales/orders/').data['results']), 1)
 
 
 class TransactionCustomerHistoryTests(TestCase):
@@ -145,6 +178,105 @@ class TransactionCustomerHistoryTests(TestCase):
         }, format='json')
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data['transaction']['customer']['name'], 'Juan Dela Cruz')
+
+    def test_customer_summary_counts_direct_checkout_and_order_once_each(self):
+        checkout = self.client.post('/sales/checkout/', {
+            'customer_id': self.customer.pk,
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'payment_method': 'cash', 'amount_tendered': '20.00',
+        }, format='json')
+        self.assertEqual(checkout.status_code, 201)
+        order = self.client.post('/sales/orders/', {
+            'customer_id': self.customer.pk,
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'payment_method': 'cash', 'amount_tendered': '20.00',
+        }, format='json')
+        self.assertEqual(order.status_code, 201)
+
+        response = self.client.get('/sales/customers/')
+        self.assertEqual(response.status_code, 200)
+        summary = next(row for row in response.data if row['id'] == self.customer.pk)
+        self.assertEqual(summary['transaction_count'], 2)
+        self.assertIsNotNone(summary['last_sale'])
+
+        Transaction.objects.filter(pk=checkout.data['id']).update(is_voided=True)
+        response = self.client.get(f'/sales/customers/{self.customer.pk}/')
+        self.assertEqual(response.data['transaction_count'], 1)
+
+    def test_customer_with_no_sale_has_empty_summary(self):
+        response = self.client.get(f'/sales/customers/{self.customer.pk}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['transaction_count'], 0)
+        self.assertIsNone(response.data['last_sale'])
+
+    def test_new_customer_response_has_same_summary_contract(self):
+        response = self.client.post('/sales/customers/', {
+            'name': 'New Customer', 'contact_number': '09170000000',
+        }, format='json')
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['transaction_count'], 0)
+        self.assertIsNone(response.data['last_sale'])
+
+    def test_transaction_history_exposes_sale_time_product_details(self):
+        checkout = self.client.post('/sales/checkout/', {
+            'customer_id': self.customer.pk,
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'payment_method': 'cash', 'amount_tendered': '20.00',
+        }, format='json')
+        self.assertEqual(checkout.status_code, 201)
+        self.product.name = 'Renamed Product'
+        self.product.save(update_fields=['name'])
+        self.category.name = 'Renamed Category'
+        self.category.save(update_fields=['name'])
+
+        history = self.client.get(f"/sales/transactions/{checkout.data['id']}/")
+        self.assertEqual(history.status_code, 200)
+        item = history.data['items'][0]
+        self.assertEqual(item['product_name_snapshot'], 'History Product')
+        self.assertEqual(item['category_name_snapshot'], 'Customer History')
+
+    def test_customer_with_direct_checkout_is_deactivated_without_losing_history(self):
+        checkout = self.client.post('/sales/checkout/', {
+            'customer_id': self.customer.pk,
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'payment_method': 'cash', 'amount_tendered': '20.00',
+        }, format='json')
+        self.assertEqual(checkout.status_code, 201)
+        admin = make_user('customerdeleteadmin', role='admin')
+        self.client.force_authenticate(user=admin)
+        response = self.client.delete(f'/sales/customers/{self.customer.pk}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['deletion_type'], 'deactivated')
+        self.assertFalse(Customer.objects.get(pk=self.customer.pk).is_active)
+        self.assertEqual(self.client.get('/sales/customers/').data, [])
+        history = self.client.get(f"/sales/transactions/{checkout.data['id']}/")
+        self.assertEqual(history.status_code, 200)
+        self.assertEqual(history.data['customer']['name'], self.customer.name)
+        self.assertEqual(self.client.post(f'/sales/customers/{self.customer.pk}/reactivate/').status_code, 200)
+        self.assertTrue(Customer.objects.get(pk=self.customer.pk).is_active)
+
+    def test_unused_customer_is_permanently_deleted(self):
+        admin = make_user('unusedcustomeradmin', role='admin')
+        self.client.force_authenticate(user=admin)
+        response = self.client.delete(f'/sales/customers/{self.customer.pk}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['deletion_type'], 'permanent')
+        self.assertFalse(Customer.objects.filter(pk=self.customer.pk).exists())
+
+    def test_deactivated_customer_cannot_be_used_for_new_sales(self):
+        self.customer.is_active = False
+        self.customer.save(update_fields=['is_active'])
+        checkout = self.client.post('/sales/checkout/', {
+            'customer_id': self.customer.pk,
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'payment_method': 'cash', 'amount_tendered': '20.00',
+        }, format='json')
+        self.assertEqual(checkout.status_code, 400)
+        order = self.client.post('/sales/orders/', {
+            'customer_id': self.customer.pk,
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+        }, format='json')
+        self.assertEqual(order.status_code, 400)
 
 
 def make_user(username='staffuser', role='staff'):
@@ -682,7 +814,7 @@ class PlaceOrderTests(TestCase):
         response = self.client.get(f'/sales/orders/?customer_id={self.customer.pk}')
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual([item['id'] for item in response.data], [matching.pk])
+        self.assertEqual([item['id'] for item in response.data['results']], [matching.pk])
 
     def test_order_customer_id_filter_rejects_non_numeric_value(self):
         response = self.client.get('/sales/orders/?customer_id=notanumber')

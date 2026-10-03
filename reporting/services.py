@@ -248,15 +248,22 @@ def _inventory_rows(model, relation_name, item_type, visible_to_staff=False):
     soon = today + timedelta(days=7)
     rows = model.objects.filter(is_active=True)
     if visible_to_staff and model is Product:
-        rows = rows.filter(category__is_visible_to_staff=True)
+        rows = rows.filter(category__is_active=True, category__is_visible_to_staff=True)
     rows = rows.annotate(
         stock=Sum(
             f'{relation_name}__remaining_quantity',
-            filter=Q(**{f'{relation_name}__status': 'available'}),
+            filter=Q(**{
+                f'{relation_name}__status': 'available',
+                f'{relation_name}__expiration_date__gte': today,
+            }),
         ),
         next_expiration=Min(
             f'{relation_name}__expiration_date',
-            filter=Q(**{f'{relation_name}__status': 'available'}),
+            filter=Q(**{
+                f'{relation_name}__status': 'available',
+                f'{relation_name}__expiration_date__gte': today,
+                f'{relation_name}__remaining_quantity__gt': 0,
+            }),
         ),
     )
     result = []
@@ -291,8 +298,9 @@ def inventory_status(visible_to_staff=False):
     product_batches = ProductBatch.objects.all()
     products = Product.objects.filter(is_active=True)
     if visible_to_staff:
-        product_batches = product_batches.filter(product__category__is_visible_to_staff=True)
-        products = products.filter(category__is_visible_to_staff=True)
+        product_batches = product_batches.filter(product__is_active=True,
+            product__category__is_active=True, product__category__is_visible_to_staff=True)
+        products = products.filter(category__is_active=True, category__is_visible_to_staff=True)
     expired = (
         product_batches.filter(available_batches, expiration_date__lt=today).count()
         + IngredientBatch.objects.filter(available_batches, expiration_date__lt=today).count()
@@ -317,7 +325,7 @@ def inventory_status(visible_to_staff=False):
 
 
 def sarima_forecast(period='monthly'):
-    """Read an evaluated hybrid snapshot; no model fitting during requests."""
+    """Read an evaluated SARIMA snapshot; no model fitting during requests."""
     from forecasting.serving import report
     try:return report(period=period)
     except ValueError as exc:
@@ -354,7 +362,7 @@ def customer_report():
         .order_by('-total_spent', 'customer_name')[:10]
     )
     return {
-        'as_of': today, 'total_customers': Customer.objects.count(),
+        'as_of': today, 'total_customers': Customer.objects.filter(is_active=True).count(),
         'active_customer_count': values['active'],
         'customers_with_purchases': purchased,
         'average_lifetime_value': (total_ltv / purchased if purchased else Decimal('0.00')),

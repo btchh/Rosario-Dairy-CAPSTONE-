@@ -10,18 +10,19 @@ from .models import ForecastRun,IssuedForecast
 
 
 def refresh(scope='real',options=None,progress=None):
-    from .evaluation import evaluate
+    from .rebuilt import evaluate
     options=options or configured_options(scope);fingerprint=options.signature()
     with connection.cursor() as cursor:
         cursor.execute('SELECT pg_try_advisory_lock(%s)',[82197033])
         if not cursor.fetchone()[0]:raise ValueError('A forecast evaluation is already running')
     try:
         with timezone.override(ZoneInfo(get_runtime_settings()['timezone'])):
-            daily,signature,warnings=source(scope)
+            daily,signature,warnings,components=source(scope,include_components=True)
             previous=ForecastRun.objects.filter(scope=scope,version=VERSION,
                 configuration_signature=fingerprint,source_signature=signature).first()
             if previous:return previous,False
-            result=evaluate(as_series(daily),options,progress)
+            result=evaluate(as_series(daily),options,progress,
+                            components={name:as_series(values) for name,values in components.items()})
             result['warnings']=warnings
             if source(scope)[1]!=signature:raise ValueError('Source sales changed during evaluation; retry')
             with transaction.atomic():

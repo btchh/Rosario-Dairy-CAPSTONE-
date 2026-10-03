@@ -3,7 +3,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import ProtectedError
-from accounts.permissions import IsAdmin
+from accounts.permissions import IsAdmin, IsStaff
 
 if TYPE_CHECKING:
     from rest_framework.viewsets import GenericViewSet
@@ -15,8 +15,8 @@ else:
 class SoftDeleteMixin(_Base):
     """
     For ViewSets whose queryset is filtered to is_active=True and whose model
-    has an `is_active` boolean field. Provides destroy() (soft delete) and a
-    `reactivate` action. Set `model_label` on the ViewSet for the messages,
+    has an `is_active` boolean field. Deletes unused rows permanently and
+    deactivates rows protected by related records. Set `model_label` for messages,
     e.g. model_label = "Product".
 
     list() is active-only by default; pass ?include_inactive=true to see
@@ -25,6 +25,11 @@ class SoftDeleteMixin(_Base):
     so a deactivated object is still reachable by id.
     """
     model_label = "Item"
+
+    def get_permissions(self):
+        if self.action == 'destroy':
+            return [IsAdmin()]
+        return super().get_permissions()
 
     def get_queryset(self):
         model = self.queryset.model  # type: ignore[attr-defined]
@@ -37,12 +42,28 @@ class SoftDeleteMixin(_Base):
 
     def destroy(self, request, *args, **kwargs):
         obj = self.get_object()
-        obj.is_active = False
-        obj.save()
+        try:
+            obj.delete()
+        except ProtectedError:
+            obj.is_active = False
+            obj.save(update_fields=['is_active', 'updated_at'])
+            return Response(
+                {'message': f'{self.model_label} deactivated because it has linked records.',
+                 'deletion_type': 'deactivated'},
+                status=status.HTTP_200_OK,
+            )
         return Response(
-            {'message': f'{self.model_label} deactivated successfully.'},
-            status=status.HTTP_200_OK
+            {'message': f'{self.model_label} permanently deleted.',
+             'deletion_type': 'permanent'},
+            status=status.HTTP_200_OK,
         )
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin | IsStaff])
+    def deactivate(self, request, pk=None):
+        obj = self.get_object()
+        obj.is_active = False
+        obj.save(update_fields=['is_active', 'updated_at'])
+        return Response({'message': f'{self.model_label} deactivated successfully.'})
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def reactivate(self, request, pk=None):

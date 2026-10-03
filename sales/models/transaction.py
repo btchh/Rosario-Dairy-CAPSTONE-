@@ -11,6 +11,7 @@ class Transaction(models.Model):
   PAYMENT_CHOICES = [
     ('cash', 'Cash'),
     ('online', 'Online'),
+    ('unknown', 'Not recorded'),
   ]
   DISCOUNT_CHOICES = [
     ('none', 'None'),
@@ -33,6 +34,10 @@ class Transaction(models.Model):
   payment_method = models.CharField(max_length=20, choices=PAYMENT_CHOICES, default='cash')
   delivery_status = models.CharField(max_length=50, blank=True, null=True)
   is_voided = models.BooleanField(default=False)
+  source_reference = models.CharField(max_length=100, unique=True, null=True, blank=True)
+  source_invoice_number = models.CharField(max_length=50, blank=True)
+  source_customer_label = models.CharField(max_length=255, blank=True)
+  source_note = models.TextField(blank=True)
   created_at = models.DateTimeField(auto_now_add=True)
 
   if TYPE_CHECKING:

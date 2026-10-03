@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from decimal import Decimal
-from ..models import Customer, Order, OrderItem
+from ..models import Customer, Order, OrderItem, Transaction
+from inventory.models import Product
 from inventory.serializers import ProductSerializer
 from accounts.serializers import UserSerializer
 from .customer_serializer import CustomerSerializer
@@ -21,7 +22,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
 class OrderSerializer(serializers.ModelSerializer):
     customer = CustomerSerializer(read_only=True)
     customer_id = serializers.PrimaryKeyRelatedField(
-        queryset=Customer.objects.all(), source='customer', write_only=True
+        queryset=Customer.objects.filter(is_active=True), source='customer', write_only=True
     )
     handled_by = UserSerializer(read_only=True)
     items = OrderItemSerializer(many=True, read_only=True)
@@ -42,3 +43,31 @@ class OrderSerializer(serializers.ModelSerializer):
         if discount_type == 'none' and discount_value != Decimal('0.00'):
             raise serializers.ValidationError("Discount value must be zero when discount type is none.")
         return attrs
+
+
+class OrderListProductSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Product
+        fields = ['id', 'name']
+
+
+class OrderListItemSerializer(serializers.ModelSerializer):
+    product = OrderListProductSerializer(read_only=True)
+
+    class Meta:
+        model = OrderItem
+        fields = ['id', 'product', 'quantity', 'unit_price', 'subtotal']
+
+
+class OrderListTransactionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Transaction
+        fields = [
+            'id', 'subtotal', 'discount_amount', 'total_amount', 'payment_method',
+            'amount_tendered', 'change_due', 'source_reference', 'source_invoice_number',
+        ]
+
+
+class OrderListSerializer(OrderSerializer):
+    items = OrderListItemSerializer(many=True, read_only=True)
+    transaction = OrderListTransactionSerializer(read_only=True)

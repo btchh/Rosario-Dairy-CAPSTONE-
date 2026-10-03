@@ -5,6 +5,8 @@ class TransactionItem(models.Model):
   product_batch = models.ForeignKey('inventory.ProductBatch', on_delete=models.PROTECT, related_name='+')
   quantity = models.DecimalField(max_digits=10, decimal_places=2)
   unit_price = models.DecimalField(max_digits=10, decimal_places=2)  # snapshot
+  source_product_label = models.CharField(max_length=100, blank=True)
+  source_line_total = models.DecimalField(max_digits=20, decimal_places=2, null=True, blank=True)
   product_id_snapshot = models.PositiveBigIntegerField(null=True, editable=False)
   product_name_snapshot = models.CharField(max_length=100, null=True, editable=False)
   product_variant_snapshot = models.CharField(max_length=100, blank=True, null=True, editable=False)

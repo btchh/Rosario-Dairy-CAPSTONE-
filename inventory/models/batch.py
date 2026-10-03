@@ -54,6 +54,7 @@ class ProductBatch(models.Model):
   expiration_date = models.DateField()
   date_received = models.DateField(default=timezone.localdate)
   status = models.CharField(max_length=20, choices=STATUS_TYPES, default='available')
+  is_historical_reference = models.BooleanField(default=False)
   notes = models.TextField(blank=True, null=True)
   created_at = models.DateTimeField(auto_now_add=True)
   updated_at = models.DateTimeField(auto_now=True)

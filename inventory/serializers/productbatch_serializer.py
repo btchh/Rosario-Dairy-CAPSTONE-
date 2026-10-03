@@ -11,7 +11,7 @@ from .product_serializer import ProductSerializer
 class ProdBatchSerializer(serializers.ModelSerializer):
   product = ProductSerializer(read_only=True)
   product_id = serializers.PrimaryKeyRelatedField(
-    queryset=Product.objects.all(),
+    queryset=Product.objects.filter(is_active=True),
     source='product',
     write_only=True
   )
@@ -41,7 +41,8 @@ class ProdBatchSerializer(serializers.ModelSerializer):
     request = self.context.get('request')
     if request and request.user.role == 'staff':
       fields['product_id'].queryset = Product.objects.filter(
-        category__is_visible_to_staff=True
+        is_active=True, category__is_active=True,
+        category__is_visible_to_staff=True,
       )
     return fields
 

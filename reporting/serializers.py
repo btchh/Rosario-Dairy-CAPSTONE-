@@ -131,6 +131,7 @@ class ForecastPointSerializer(serializers.Serializer):
 
 class ForecastReportSerializer(serializers.Serializer):
     generated_at = serializers.DateTimeField()
+    data_end = serializers.DateField(required=False)
     horizon_days = serializers.IntegerField()
     method = serializers.CharField()
     is_placeholder = serializers.BooleanField()
@@ -149,6 +150,12 @@ class ForecastReportSerializer(serializers.Serializer):
     metrics = serializers.DictField(required=False)
     baselines = serializers.DictField(required=False)
     historical_comparison = serializers.ListField(child=serializers.DictField(),required=False)
+    fixed_origin_comparison = serializers.ListField(child=serializers.DictField(),required=False)
+    fixed_origin_metrics = serializers.DictField(required=False,allow_null=True)
+    component_metrics = serializers.DictField(required=False)
+    component_comparison = serializers.DictField(required=False)
+    evaluation_details = serializers.DictField(required=False)
+    data_provenance = serializers.DictField(required=False)
     limitations = serializers.CharField(required=False)
     warnings = serializers.ListField(child=serializers.CharField(),required=False)
 

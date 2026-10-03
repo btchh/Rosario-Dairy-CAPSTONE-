@@ -36,7 +36,12 @@ def live_notifications(user):
                     f'{item.name} (batch {batch.batch_number}) expires on {batch.expiration_date}',
                     [batch.pk, batch.expiration_date, batch.expiry_status])
     if settings.new_order_alerts:
-        for order in Order.objects.filter(status='fulfilled').select_related('transaction').order_by('-created_at', '-pk')[:2]:
+        orders = Order.objects.filter(status='fulfilled').select_related('transaction')
+        if visible:
+            orders = orders.exclude(items__product__category__is_visible_to_staff=False).exclude(
+                items__product__category__is_active=False
+            )
+        for order in orders.order_by('-created_at', '-pk')[:2]:
             elapsed = (timezone.localdate() - timezone.localdate(order.created_at)).days
             label = 'Today' if elapsed <= 0 else 'Yesterday' if elapsed == 1 else f'{elapsed} days ago'
             total = order.transaction.total_amount if order.transaction else 0

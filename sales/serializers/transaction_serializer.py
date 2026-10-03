@@ -10,7 +10,13 @@ class TransactionItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TransactionItem
-        fields = ['id', 'product_batch', 'quantity', 'unit_price']
+        fields = [
+            'id', 'product_batch', 'quantity', 'unit_price',
+            'source_product_label', 'source_line_total',
+            'product_id_snapshot', 'product_name_snapshot',
+            'product_variant_snapshot', 'category_id_snapshot',
+            'category_name_snapshot',
+        ]
         read_only_fields = fields  # every field here is system-generated at checkout, never client-supplied
 
 
@@ -21,5 +27,5 @@ class TransactionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Transaction
-        fields = ['id', 'handled_by', 'customer', 'subtotal', 'discount_type', 'discount_value', 'discount_amount', 'total_amount', 'amount_tendered', 'change_due', 'payment_method', 'delivery_status', 'is_voided', 'items', 'created_at']
+        fields = ['id', 'handled_by', 'customer', 'subtotal', 'discount_type', 'discount_value', 'discount_amount', 'total_amount', 'amount_tendered', 'change_due', 'payment_method', 'delivery_status', 'is_voided', 'items', 'created_at', 'source_reference', 'source_invoice_number', 'source_customer_label', 'source_note']
         read_only_fields = ['id', 'handled_by', 'subtotal', 'discount_amount', 'total_amount', 'change_due', 'delivery_status', 'is_voided', 'items', 'created_at']

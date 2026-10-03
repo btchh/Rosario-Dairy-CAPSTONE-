@@ -9,6 +9,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from inventory.models import Category, Ingredient, IngredientBatch, Product, ProductBatch
+from reporting.services import inventory_status
 from sales.models import Customer, Transaction, TransactionItem
 from systemsetting.models import SystemSettings
 
@@ -80,6 +81,22 @@ class ReportAPITests(TestCase):
     def test_authentication_is_required(self):
         response = self.client.get('/api/reports/preview/?type=daily_sales')
         self.assertEqual(response.status_code, 401)
+
+    def test_inventory_report_excludes_expired_stock_from_available_quantity(self):
+        self.product_batch.expiration_date = timezone.localdate() - timedelta(days=1)
+        self.product_batch.save(update_fields=['expiration_date'])
+        result = inventory_status()
+        product = next(item for item in result['items'] if item['item_type'] == 'product')
+        self.assertEqual(product['quantity'], Decimal('0.00'))
+        self.assertIsNone(product['next_expiration_date'])
+        self.assertTrue(product['is_low_stock'])
+
+    def test_staff_inventory_report_excludes_inactive_category(self):
+        self.category.is_active = False
+        self.category.save(update_fields=['is_active'])
+        result = inventory_status(visible_to_staff=True)
+        self.assertEqual(result['total_products'], 0)
+        self.assertFalse(any(item['item_type'] == 'product' for item in result['items']))
 
     def test_all_preview_types_return_valid_payloads(self):
         self.client.force_authenticate(user=self.staff)

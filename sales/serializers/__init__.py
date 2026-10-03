@@ -1,3 +1,3 @@
-from .customer_serializer import CustomerSerializer
+from .customer_serializer import CustomerSerializer, CustomerSummarySerializer
 from .order_serializer import OrderItemSerializer, OrderSerializer
 from .transaction_serializer import TransactionItemSerializer, TransactionSerializer

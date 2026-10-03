@@ -10,7 +10,7 @@ from .category_serializer import CategorySerializer
 class ProductSerializer(serializers.ModelSerializer):
   category = CategorySerializer(read_only=True)
   category_id = serializers.PrimaryKeyRelatedField(
-    queryset=Category.objects.all(),
+    queryset=Category.objects.filter(is_active=True),
     source='category',
     write_only=True
   )

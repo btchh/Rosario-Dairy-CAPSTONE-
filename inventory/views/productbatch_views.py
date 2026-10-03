@@ -17,6 +17,9 @@ class ProductBatchViewSet(BatchCreateDestroyMixin, viewsets.ModelViewSet):
                 status='available', expiration_date__gte=timezone.localdate()
             ).only('product_id', 'remaining_quantity'), to_attr='available_batches_for_total',
         ))
+        if self.action == 'list' and self.request.query_params.get('include_historical') != 'true':
+            qs = qs.filter(is_historical_reference=False)
         if self.request.user.role == 'staff':
-            qs = qs.filter(product__category__is_visible_to_staff=True)
+            qs = qs.filter(product__is_active=True, product__category__is_active=True,
+                           product__category__is_visible_to_staff=True)
         return qs

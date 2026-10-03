@@ -22,7 +22,7 @@ class CheckoutView(viewsets.ViewSet):
         customer = None
         if customer_id not in (None, ''):
             try:
-                customer = Customer.objects.get(pk=customer_id)
+                customer = Customer.objects.get(pk=customer_id, is_active=True)
             except (Customer.DoesNotExist, ValueError, TypeError):
                 return Response({'error': 'Customer not found.'}, status=400)
 
@@ -66,7 +66,8 @@ class CheckoutView(viewsets.ViewSet):
             try:
                 products = Product.objects.filter(is_active=True)
                 if request.user.role == 'staff':
-                    products = products.filter(category__is_visible_to_staff=True)
+                    products = products.filter(category__is_active=True,
+                                               category__is_visible_to_staff=True)
                 product = products.get(pk=product_id)
             except (Product.DoesNotExist, ValueError, TypeError):
                 return Response({'error': f"Product {product_id} not found or is inactive."}, status=400)

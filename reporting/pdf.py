@@ -334,6 +334,8 @@ class Report:
             'A forecast is shown only when the SARIMA holdout meets its quality gate and sales are current.' if ready
             else 'No validated current forecast is available for this period; a withheld amount is not zero sales.',
         ]
+        if d.get('status_message'):
+            lines.append(d['status_message'])
         score = (d.get('metrics') or {}).get('combined') or {}
         if score.get('wape_percent') is not None:
             lines.append(f"2025 retrospective WAPE is {number(score['wape_percent'])}% across {score.get('rows', 0)} evaluated periods; the acceptance target is {d.get('accuracy_target_percent', 30)}% or lower.")

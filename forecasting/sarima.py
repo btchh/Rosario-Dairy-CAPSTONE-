@@ -28,14 +28,16 @@ def diagnostics(history, period):
     x = np.arange(len(values))
     slope, intercept = np.polyfit(x, values, 1)
     residual = values - (intercept + slope * x)
-    seasonal = (3, 6, 12) if period == 'monthly' else (4, 13, 26, 52)
+    # SARIMA seasonality is a calendar cycle. Short arbitrary lags can fit a
+    # handful of validation points while extrapolating a cycle that is not real.
+    seasonal = (12,) if period == 'monthly' else (52,)
     correlations = acf(residual, nlags=min(max(seasonal), len(values) - 1), fft=False) if residual.std() > 1e-8 else np.zeros(len(values))
     assessed = [{'periods': lag, 'complete_cycles': len(values) // lag,
                  'detrended_log_acf': round(float(correlations[lag]), 4) if lag < len(correlations) else None,
                  'eligible': len(values) >= 2 * lag + 4} for lag in seasonal]
     return {'training_observations': len(values), 'zero_periods': int((history == 0).sum()),
             'log_trend_per_period': round(float(slope), 6), 'seasonal_hypotheses': assessed,
-            'rule': 'Calendar seasonal hypotheses require two complete cycles plus four observations; validation determines whether they help.'}
+            'rule': 'Annual calendar seasonality requires two complete cycles plus four observations; validation determines whether it helps.'}
 
 
 def candidates(history, period):

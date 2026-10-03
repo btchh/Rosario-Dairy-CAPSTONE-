@@ -127,6 +127,7 @@ class ForecastPointSerializer(serializers.Serializer):
     interval_nominal_percent = serializers.IntegerField(required=False)
     range_kind = serializers.CharField(required=False)
     point_kind = serializers.CharField(required=False)
+    sample_count = serializers.IntegerField(required=False)
 
 
 class ForecastReportSerializer(serializers.Serializer):
@@ -137,6 +138,8 @@ class ForecastReportSerializer(serializers.Serializer):
     is_placeholder = serializers.BooleanField()
     forecast = ForecastPointSerializer(many=True)
     status = serializers.CharField(required=False)
+    status_message = serializers.CharField(required=False)
+    planning_projection = ForecastPointSerializer(required=False, allow_null=True)
     period = serializers.CharField(required=False)
     scope = serializers.CharField(required=False)
     accuracy_target_percent = serializers.FloatField(required=False)

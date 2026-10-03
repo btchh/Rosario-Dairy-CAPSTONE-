@@ -1,5 +1,5 @@
 from copy import deepcopy
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -98,8 +98,15 @@ class SarimaEvaluationTests(SimpleTestCase):
         self.assertTrue(any(spec.order[1] == 1 for spec in specs))
         self.assertTrue(any(spec.order[2] == 1 for spec in specs))
         self.assertTrue(any(spec.window == 12 for spec in specs))
-        self.assertFalse(any(spec.seasonal_order[-1] == 12 for spec in specs))
+        self.assertFalse(any(spec.seasonal_order[-1] for spec in specs))
+        self.assertEqual([item['periods'] for item in evidence['seasonal_hypotheses']], [12])
         self.assertEqual(evidence['training_observations'], 18)
+
+    def test_weekly_grid_does_not_invent_short_calendar_seasons(self):
+        weeks = aggregate(self.daily(), 'weekly').loc[:'2024-06-24']
+        specs, evidence = candidates(weeks, 'weekly')
+        self.assertFalse(any(spec.seasonal_order[-1] for spec in specs))
+        self.assertEqual([item['periods'] for item in evidence['seasonal_hypotheses']], [52])
 
     def test_components_keep_all_revenue_in_total_error_and_baselines(self):
         total = self.daily()
@@ -179,6 +186,9 @@ class ForecastServingTests(TestCase):
         self.assertEqual(monthly['status'], 'rejected')
         self.assertEqual(yearly['status'], 'insufficient_evaluation')
         self.assertEqual(monthly['forecast'], [])
+        self.assertIn('40.00%', monthly['status_message'])
+        self.assertIn('large sales swings', monthly['status_message'])
+        self.assertIn('too few evaluated periods', yearly['status_message'])
         self.assertEqual(monthly['historical_comparison'][0]['actual'], 100)
 
     def test_only_original_issued_forecast_is_served_and_never_fitted_on_get(self):
@@ -204,7 +214,17 @@ class ForecastServingTests(TestCase):
         self.run.data_end = self.end - timedelta(days=2)
         self.run.save()
         with patch('forecasting.serving.source', return_value=({self.end:Decimal('100')}, 'a' * 64, [])):
-            self.assertEqual(report()['status'], 'stale_data')
+            stale = report()
+        self.assertEqual(stale['status'], 'stale_data')
+        self.assertIn(str(self.end - timedelta(days=2)), stale['status_message'])
+        self.assertIn('historical backtest', stale['status_message'])
+        self.result['setups']['sarima']['periods']['monthly'] = self.period(40, 12)
+        self.run.result = self.result
+        self.run.save()
+        with patch('forecasting.serving.source', return_value=({self.end:Decimal('100')}, 'a' * 64, [])):
+            rejected_and_stale = report()
+        self.assertEqual(rejected_and_stale['status'], 'stale_data')
+        self.assertEqual(rejected_and_stale['quality_status'], 'rejected')
 
     def test_api_pdf_and_scope_validation(self):
         with patch('forecasting.serving.source', return_value=({self.end:Decimal('100')}, 'a' * 64, [])):
@@ -214,8 +234,42 @@ class ForecastServingTests(TestCase):
             pdf = self.client.get('/api/reports/export-pdf/?type=sarima_forecast')
             self.assertEqual(pdf.status_code, 200)
             self.assertTrue(b''.join(pdf.streaming_content).startswith(b'%PDF'))
+            self.assertEqual(self.client.get('/api/reports/preview/?type=sarima_forecast&period=daily').status_code, 400)
             self.assertEqual(self.client.get('/api/forecasting/forecast/?period=daily').status_code, 400)
+            self.assertEqual(self.client.get('/api/forecasting/forecast/?period=hourly').status_code, 400)
             self.assertEqual(self.client.get('/api/forecasting/forecast/?scope=simulation').status_code, 400)
+
+    def test_current_period_estimates_are_separate_from_stale_sarima_forecast(self):
+        today = date(2026, 10, 3)
+        daily = {date(year, 1, 1) + timedelta(days=offset): Decimal('100')
+                 for year in (2023, 2024, 2025)
+                 for offset in range((date(year + 1, 1, 1) - date(year, 1, 1)).days)}
+        self.result['setups']['sarima']['periods']['weekly'] = self.period(40, 51)
+        self.run.result = self.result
+        self.run.data_end = date(2025, 12, 31)
+        self.run.save()
+        with patch('forecasting.serving.timezone.localdate', return_value=today), \
+             patch('forecasting.serving.source', return_value=(daily, 'a' * 64, [])):
+            results = {period: self.client.get(
+                f'/api/reports/preview/?type=sarima_forecast&period={period}').data['data']
+                for period in ('weekly', 'monthly', 'yearly')}
+        for period, result in results.items():
+            self.assertEqual(result['status'], 'stale_data')
+            self.assertEqual(result['forecast'], [])
+            self.assertEqual(result['historical_comparison'], [])
+            self.assertEqual(result['planning_projection']['point_kind'], 'historical_median')
+            self.assertEqual(result['planning_projection']['sample_count'], 3)
+        self.assertEqual(results['weekly']['planning_projection']['date'], '2026-09-28')
+        self.assertEqual(results['weekly']['planning_projection']['predicted_revenue'], '700.00')
+        self.assertEqual(results['monthly']['planning_projection']['date'], '2026-10-01')
+        self.assertEqual(results['monthly']['planning_projection']['predicted_revenue'], '3100.00')
+        self.assertEqual(results['yearly']['planning_projection']['date'], '2026-01-01')
+        self.assertEqual(results['yearly']['planning_projection']['predicted_revenue'], '36500.00')
+
+    def test_uncovered_years_do_not_become_zero_sales_estimates(self):
+        from .historical import period_projection
+        self.assertIsNone(period_projection(
+            {date(2025, 12, 31): Decimal('90')}, 'monthly', date(2026, 10, 3)))
 
     def test_completed_non_voided_transactions_are_the_only_sales_source(self):
         stamp = timezone.make_aware(datetime.combine(self.end, time(12)))
@@ -238,6 +292,14 @@ class ForecastServingTests(TestCase):
         self.assertEqual(daily, unchanged)
         self.assertNotEqual(first_signature, second_signature)
         self.assertEqual(parts['other_sales'][self.end], daily[self.end])
+
+    def test_misspelled_feeding_label_stays_in_feeding_component(self):
+        sale = Transaction.objects.create(handled_by=self.user, total_amount=100,
+                                          source_customer_label='MILK FEEDIN-DSWD')
+        Transaction.objects.filter(pk=sale.pk).update(
+            created_at=timezone.make_aware(datetime.combine(self.end, time(12))))
+        daily, _, _, parts = source(include_components=True)
+        self.assertEqual(parts['feeding'][self.end], daily[self.end])
 
     def test_issue_cannot_be_trained_on_target_day(self):
         with self.assertRaises(IntegrityError), transaction.atomic():

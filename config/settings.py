@@ -209,7 +209,7 @@ AUTH_USER_MODEL = 'accounts.Users'
 
 CORS_ALLOWED_ORIGINS = env_list(
     'CORS_ALLOWED_ORIGINS',
-    'http://localhost:5173,https://localhost' if not IS_PRODUCTION else '',
+    'http://localhost:5173,http://127.0.0.1:5173,https://localhost' if not IS_PRODUCTION else '',
 )
 
 CORS_ALLOWED_ORIGIN_REGEXES = [

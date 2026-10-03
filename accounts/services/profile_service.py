@@ -6,9 +6,9 @@ from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 
-_SELF_EDIT_BLOCKED_FIELDS = ('role', 'is_active', 'is_superuser', 'is_staff', 'username', 'deactivation_reason')
+_SELF_EDIT_BLOCKED_FIELDS = ('role', 'is_active', 'is_superuser', 'is_staff', 'deactivation_reason')
 
-_SELF_EDIT_ALLOWED_FIELDS = ('first_name', 'last_name', 'phone_number', 'address', 'email')
+_SELF_EDIT_ALLOWED_FIELDS = ('username', 'first_name', 'last_name', 'phone_number', 'address', 'email')
 
 PROFILE_EDIT_COOLDOWN_MINUTES = 5
 
@@ -21,8 +21,8 @@ def get_user_detail(pk):
 def update_own_profile(user, data):
     """
     Self-service profile update for the currently authenticated user
-    (admin or staff — both call this the same way). Only first_name,
-    last_name, phone_number, address, and email may be changed here.
+    (admin or staff — both call this the same way). Username, name,
+    phone number, address, and email may be changed here.
     """
     data = {key: data.get(key) for key in data}
     blocked = [f for f in _SELF_EDIT_BLOCKED_FIELDS if f in data]
@@ -36,6 +36,11 @@ def update_own_profile(user, data):
         raise ValueError(f"Unsupported field(s): {', '.join(unknown)}.")
     if not data:
         raise ValueError('At least one profile field is required.')
+
+    if 'username' in data:
+        if not isinstance(data['username'], str) or not data['username'].strip():
+            raise ValueError('Username is required.')
+        data['username'] = data['username'].strip()
 
     if 'email' in data:
         try:
@@ -65,6 +70,11 @@ def update_own_profile(user, data):
             ).exclude(pk=locked_user.pk).exists():
                 raise ValueError("Email already in use.")
 
+            if 'username' in data and Users.objects.filter(
+                username__iexact=data['username']
+            ).exclude(pk=locked_user.pk).exists():
+                raise ValueError('Username already exists.')
+
             changed = False
             for field in _SELF_EDIT_ALLOWED_FIELDS:
                 if field in data and getattr(locked_user, field) != data[field]:
@@ -81,4 +91,4 @@ def update_own_profile(user, data):
             locked_user.save()
             return locked_user
     except IntegrityError as exc:
-        raise ValueError("Email already in use.") from exc
+        raise ValueError('Username or email already exists.') from exc

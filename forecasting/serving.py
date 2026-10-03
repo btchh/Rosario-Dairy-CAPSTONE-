@@ -10,18 +10,34 @@ from .models import ForecastRun, IssuedForecast
 PERIODS = ('weekly', 'monthly', 'yearly')
 
 
+def quality_message(status, metrics):
+    if status == 'rejected':
+        return (f'Total-sales SARIMA forecast withheld: 2025 retrospective WAPE is '
+                f'{metrics["wape_percent"]:.2f}%, above the {TARGET_PERCENT:g}% target. '
+                'The available sales history has not supported reliable prediction of large sales swings.')
+    if status == 'insufficient_evaluation':
+        return 'Total-sales SARIMA forecast withheld: too few evaluated periods to establish accuracy.'
+    if status == 'model_unavailable':
+        return 'Total-sales SARIMA forecast withheld: some backtest predictions could not be fitted.'
+    return ''
+
+
 def report(scope='real', period='monthly'):
     if period not in PERIODS:
         raise ValueError('Invalid forecast period')
     daily, signature, warnings = source(scope)
+    from .historical import period_projection
+    planning = period_projection(daily, period, timezone.localdate()) if daily else None
     payload = {
         'generated_at': timezone.now(), 'horizon_days': {'weekly':7, 'monthly':30, 'yearly':365}[period],
         'method':'unavailable', 'is_placeholder':False, 'forecast':[], 'status':'pending_update',
         'period':period, 'available_periods':list(PERIODS), 'scope':scope,
+        'status_message':'Forecast evaluation is pending.',
         'accuracy_target_percent':TARGET_PERCENT, 'accuracy_metric':'2025_retrospective_wape',
         'regular':{}, 'bulk':{'status':'not_used'}, 'combined':{}, 'cutoff':{},
         'metrics':{}, 'baselines':{}, 'historical_comparison':[],
         'limitations':LIMITATIONS, 'warnings':warnings,
+        'planning_projection': planning,
     }
     fingerprint = options(scope).signature()
     run = ForecastRun.objects.filter(scope=scope, version=VERSION,
@@ -35,12 +51,14 @@ def report(scope='real', period='monthly'):
     evaluation = setup.get('periods', {}).get(period)
     if not evaluation:
         payload['status'] = 'insufficient_history'
+        payload['status_message'] = 'Not enough sales history is available to evaluate this period.'
         return payload
     metrics = evaluation['metrics']
     quality = period_acceptance(metrics['combined'])
     point = evaluation['next_period']
     payload.update(
         generated_at=run.created_at, data_end=run.data_end, method=evaluation['method'], status=quality,
+        status_message=quality_message(quality, metrics['combined']),
         quality_status=quality, metrics=metrics, historical_comparison=evaluation['rows'],
         fixed_origin_comparison=evaluation.get('fixed_origin_rows', []),
         fixed_origin_metrics=evaluation.get('fixed_origin_metrics'),
@@ -60,19 +78,30 @@ def report(scope='real', period='monthly'):
     )
     if run.data_end != timezone.localdate() - timedelta(days=1):
         payload['warnings'] = [*warnings, 'Sales have not been recorded through yesterday; current projections are withheld.']
-        if quality == 'accepted':
-            payload['status'] = 'stale_data'
+        payload['status'] = 'stale_data'
+        # Keep the 2025 evaluation stored, but do not present its points as a
+        # current forecast in the dashboard.
+        payload['historical_comparison'] = []
+        payload['fixed_origin_comparison'] = []
+        payload['baselines'] = {}
+        payload['component_metrics'] = {}
+        payload['status_message'] = (
+            f'No current forecast is available. The latest recorded sale is {run.data_end:%Y-%m-%d}; '
+            'the 2025 WAPE is a historical backtest, not a forecast for today.'
+        )
         return payload
     if quality != 'accepted':
         return payload
     if point['status'] != 'ready':
         payload['status'] = point['status']
+        payload['status_message'] = 'The current period is incomplete; a validated next-period forecast is not available.'
         return payload
     issued = IssuedForecast.objects.filter(scope=scope, version=VERSION,
         configuration_signature=fingerprint, setup=setup['setup'],
         period=period, date=point['date']).first()
     if not issued:
         payload['status'] = 'pending_update'
+        payload['status_message'] = 'The validated forecast has not been issued yet.'
         return payload
     point = issued.payload
     payload['combined'] = point['combined']
@@ -81,4 +110,5 @@ def report(scope='real', period='monthly'):
     payload['forecast'] = [{'date':point['date'], 'end_date':point['end_date'],
                             'trained_through':point['trained_through'], **point['combined']}]
     payload['status'] = 'ready'
+    payload['status_message'] = 'The total-sales SARIMA forecast passed the retrospective quality gate.'
     return payload

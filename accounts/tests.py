@@ -91,6 +91,40 @@ class UserDetailPatchValidationTests(TestCase):
         self.assertEqual(self.staff.first_name, 'Updated')
         self.assertEqual(self.staff.phone_number, '09171234567')
 
+    def test_admin_can_update_username_and_profile_fields_together(self):
+        response = self.client.patch(
+            f'/accounts/users/{self.staff.pk}/',
+            {'username': '  new.staff  ', 'first_name': 'New', 'last_name': 'Name'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.staff.refresh_from_db()
+        self.assertEqual(self.staff.username, 'new.staff')
+        self.assertEqual(self.staff.first_name, 'New')
+        self.assertEqual(response.data['user']['username'], 'new.staff')
+
+    def test_duplicate_username_is_rejected_without_changing_profile(self):
+        response = self.client.patch(
+            f'/accounts/users/{self.staff.pk}/',
+            {'username': self.other_admin.username.upper(), 'first_name': 'Changed'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.staff.refresh_from_db()
+        self.assertEqual(self.staff.username, 'staffer1')
+        self.assertEqual(self.staff.first_name, 'Test')
+
+    def test_invalid_username_is_rejected(self):
+        for username in ('  ', 'bad name!', None):
+            with self.subTest(username=username):
+                response = self.client.patch(
+                    f'/accounts/users/{self.staff.pk}/',
+                    {'username': username}, format='json',
+                )
+                self.assertEqual(response.status_code, 400)
+        self.staff.refresh_from_db()
+        self.assertEqual(self.staff.username, 'staffer1')
+
     def test_non_boolean_active_status_returns_400_not_500(self):
         response = self.client.patch(
             f'/accounts/users/{self.staff.pk}/',
@@ -773,6 +807,55 @@ class ProfileEditCooldownTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.user.refresh_from_db()
         self.assertIsNotNone(self.user.last_profile_update_at)
+
+    def test_staff_can_change_own_username_and_name(self):
+        response = self.client.patch('/accounts/user/', {
+            'username': '  newstaff  ', 'first_name': 'Alex', 'last_name': 'Reyes',
+        }, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['username'], 'newstaff')
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.username, 'newstaff')
+        self.assertEqual(self.user.first_name, 'Alex')
+        self.assertEqual(self.user.last_name, 'Reyes')
+        login = APIClient().post('/accounts/login/', {
+            'username': 'newstaff', 'password': 'testpass123!',
+        }, format='json')
+        self.assertEqual(login.status_code, 200)
+
+    def test_admin_can_change_own_username(self):
+        self.user.role = 'admin'
+        self.user.save(update_fields=['role'])
+        response = self.client.patch('/accounts/user/', {
+            'username': 'newadmin',
+        }, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.username, 'newadmin')
+
+    def test_duplicate_or_invalid_username_does_not_start_cooldown(self):
+        other = make_user('occupied')
+        for username in (other.username.upper(), '  ', 'bad name!'):
+            with self.subTest(username=username):
+                response = self.client.patch('/accounts/user/', {
+                    'username': username,
+                }, format='json')
+                self.assertEqual(response.status_code, 400)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.username, 'cooldownprofile')
+        self.assertIsNone(self.user.last_profile_update_at)
+
+    def test_username_edit_obeys_cooldown_and_cannot_change_role(self):
+        first = self.client.patch('/accounts/user/', {'username': 'changed'}, format='json')
+        self.assertEqual(first.status_code, 200)
+        second = self.client.patch('/accounts/user/', {'username': 'again'}, format='json')
+        self.assertEqual(second.status_code, 400)
+        self.assertIn('minute', second.data['error'].lower())
+        blocked = self.client.patch('/accounts/user/', {'role': 'admin'}, format='json')
+        self.assertEqual(blocked.status_code, 400)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.username, 'changed')
+        self.assertEqual(self.user.role, 'staff')
 
     def test_second_edit_within_window_returns_400_with_cooldown_message(self):
         self.client.patch('/accounts/user/', {'first_name': 'First'}, format='json')

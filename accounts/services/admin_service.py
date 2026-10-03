@@ -6,7 +6,7 @@ from accounts.models import Users
 
 
 _ADMIN_EDITABLE_FIELDS = {
-    'role', 'is_active', 'deactivation_reason', 'email', 'first_name',
+    'username', 'role', 'is_active', 'deactivation_reason', 'email', 'first_name',
     'last_name', 'phone_number', 'address',
 }
 
@@ -40,6 +40,13 @@ def update_user(pk, data, requesting_user):
         if 'role' in data and data['role'] not in [c[0] for c in Users.ROLE_CHOICES]:
             valid_roles = [c[0] for c in Users.ROLE_CHOICES]
             raise ValueError(f"Invalid role. Must be one of {valid_roles}.")
+
+        if 'username' in data:
+            if not isinstance(data['username'], str) or not data['username'].strip():
+                raise ValueError('Username is required.')
+            data['username'] = data['username'].strip()
+            if Users.objects.filter(username__iexact=data['username']).exclude(pk=user.pk).exists():
+                raise ValueError('Username already exists.')
 
         if 'email' in data:
             try:

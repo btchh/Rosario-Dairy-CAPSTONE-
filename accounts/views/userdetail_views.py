@@ -21,12 +21,12 @@ class UserDetailView(APIView):
   @object_body
   def patch(self, request, pk):
     try:
-      user_service.update_user(pk, request.data, request.user)
+      user = user_service.update_user(pk, request.data, request.user)
     except Users.DoesNotExist:
       return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
     except ValueError as e:
       return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    return Response({'message': 'User updated successfully.'})
+    return Response({'message': 'User updated successfully.', 'user': UserDetailSerializer(user).data})
 
   @object_body
   def delete(self, request, pk):

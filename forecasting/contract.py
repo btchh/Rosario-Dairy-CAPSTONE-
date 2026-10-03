@@ -5,7 +5,7 @@ from hashlib import sha256
 import json
 import math
 
-VERSION = 'sarima-v9'
+VERSION = 'sarima-v11'
 TARGET_PERCENT = 30.0
 LIMITATIONS = (
     '2025 has already been inspected during development; these are retrospective backtests, '

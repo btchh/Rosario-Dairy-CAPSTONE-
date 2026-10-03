@@ -1635,3 +1635,59 @@ class FEFOTransactionBoundaryTests(TransactionTestCase):
         self.assertEqual(consumed[0][1], Decimal('2.00'))
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.remaining_quantity, Decimal('8.00'))
+
+
+class CategoryIconAPITests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = make_user('iconadmin', role='admin')
+        self.staff = make_user('iconstaff')
+        self.client.force_authenticate(user=self.admin)
+
+    def test_admin_can_set_edit_and_clear_icon(self):
+        created = self.client.post('/inventory/categories/', {
+            'name': 'Soft Cheese', 'icon': 'cheese',
+        }, format='json')
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.data['icon'], 'cheese')
+        category_id = created.data['id']
+
+        updated = self.client.patch(f'/inventory/categories/{category_id}/', {
+            'icon': 'milk',
+        }, format='json')
+        self.assertEqual(updated.status_code, 200)
+        self.assertEqual(updated.data['icon'], 'milk')
+        self.assertEqual(Category.objects.get(pk=category_id).icon, 'milk')
+
+        cleared = self.client.patch(f'/inventory/categories/{category_id}/', {
+            'icon': '',
+        }, format='json')
+        self.assertEqual(cleared.status_code, 200)
+        self.assertEqual(cleared.data['icon'], '')
+
+    def test_invalid_icon_is_rejected_and_previous_icon_is_preserved(self):
+        category = Category.objects.create(name='Butter', icon='butter')
+        response = self.client.patch(f'/inventory/categories/{category.pk}/', {
+            'icon': 'not-an-icon',
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('icon', response.data)
+        category.refresh_from_db()
+        self.assertEqual(category.icon, 'butter')
+
+    def test_staff_can_read_icons_but_cannot_change_them(self):
+        category = Category.objects.create(name='Yogurt', icon='yogurt')
+        self.client.force_authenticate(user=self.staff)
+        listed = self.client.get('/inventory/categories/')
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual(listed.data[0]['icon'], 'yogurt')
+        denied = self.client.patch(f'/inventory/categories/{category.pk}/', {
+            'icon': 'cream',
+        }, format='json')
+        self.assertEqual(denied.status_code, 403)
+
+    def test_icon_options_match_the_values_accepted_by_the_api(self):
+        response = self.client.get('/inventory/categories/icon-options/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([item['value'] for item in response.data],
+                         ['', *[value for value, _ in Category.ICON_CHOICES]])

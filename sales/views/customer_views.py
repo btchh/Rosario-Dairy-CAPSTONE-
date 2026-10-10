@@ -1,3 +1,4 @@
+from config.data_cache import CachedListMixin
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from django.db.models import ProtectedError
@@ -8,7 +9,7 @@ from ..serializers import CustomerSummarySerializer
 from accounts.permissions import IsAdmin, IsStaff
 
 
-class CustomerViewSet(viewsets.ModelViewSet):
+class CustomerViewSet(CachedListMixin, viewsets.ModelViewSet):
     queryset = Customer.objects.all()
     serializer_class = CustomerSummarySerializer
 

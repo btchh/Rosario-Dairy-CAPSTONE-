@@ -1,3 +1,4 @@
+from config.data_cache import CachedListMixin
 from config.api_inputs import object_body
 from rest_framework import viewsets, status
 from rest_framework.response import Response
@@ -9,7 +10,7 @@ from decimal import Decimal
 from django.db.models import Q
 from config.api_inputs import parse_decimal
 
-class StockAdjustmentViewSet(viewsets.ModelViewSet):
+class StockAdjustmentViewSet(CachedListMixin, viewsets.ModelViewSet):
     queryset = StockAdjustment.objects.all()
     serializer_class = StockAdjustmentSerializer
     permission_classes = [IsAdmin | IsStaff]

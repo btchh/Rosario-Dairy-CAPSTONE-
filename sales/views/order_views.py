@@ -1,12 +1,16 @@
+from config.data_cache import CachedListMixin
+from config.renderers import CachedJSONRenderer
 from typing import cast
 from decimal import Decimal
 from django.db.models import Prefetch
+from django.conf import settings
 from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
+from rest_framework.renderers import BrowsableAPIRenderer
 from accounts.permissions import IsAdmin, IsStaff
 from inventory.models import Product, ProductBatch
 from ..models import Order, OrderItem, TransactionItem
@@ -22,11 +26,13 @@ class OrderPagination(PageNumberPagination):
     max_page_size = 500
 
 
-class OrderViewSet(viewsets.ModelViewSet):
+class OrderViewSet(CachedListMixin, viewsets.ModelViewSet):
     queryset = Order.objects.all()
     serializer_class = OrderSerializer
     pagination_class = OrderPagination
     permission_classes = [IsAdmin | IsStaff]
+    renderer_classes = [CachedJSONRenderer, BrowsableAPIRenderer]
+    data_cache_timeout = settings.HISTORY_CACHE_TIMEOUT
     http_method_names = ['get', 'post', 'head', 'options']
 
     def get_serializer_class(self):
@@ -37,7 +43,9 @@ class OrderViewSet(viewsets.ModelViewSet):
             queryset = super().get_queryset().select_related(
                 'customer', 'handled_by', 'transaction'
             ).prefetch_related(Prefetch(
-                'items', queryset=OrderItem.objects.select_related('product')
+                'items', queryset=OrderItem.objects.prefetch_related(Prefetch(
+                    'product', queryset=Product.objects.only('id', 'name')
+                ))
             )).order_by('-created_at', '-id')
         else:
             available_batches = ProductBatch.objects.filter(

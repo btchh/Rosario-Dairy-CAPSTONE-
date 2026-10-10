@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 import os
+from hashlib import sha256
 from pathlib import Path
 from datetime import timedelta
 from django.core.exceptions import ImproperlyConfigured
@@ -58,6 +59,7 @@ if IS_PRODUCTION and not ALLOWED_HOSTS:
 # Application definition
 
 INSTALLED_APPS = [
+    'config.apps.BackendConfig',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -79,6 +81,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'django.middleware.gzip.GZipMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'systemsetting.middleware.RuntimeSettingsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -127,6 +130,8 @@ if IS_PRODUCTION and not DATABASES['default']['PASSWORD']:
     raise ImproperlyConfigured('DB_PASSWORD is required in production.')
 
 REDIS_URL = os.getenv('REDIS_URL', '')
+API_DATA_CACHE_TIMEOUT = int(os.getenv('API_DATA_CACHE_TIMEOUT', '300'))
+HISTORY_CACHE_TIMEOUT = int(os.getenv('HISTORY_CACHE_TIMEOUT', '3600'))
 if REDIS_URL:
     CACHES = {
         'default': {
@@ -139,8 +144,12 @@ elif IS_PRODUCTION:
 else:
     CACHES = {
         'default': {
-            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-            'LOCATION': 'rosario-dairy-development',
+            'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+            'LOCATION': str(BASE_DIR / '.cache' / 'django'),
+            'KEY_PREFIX': 'rosario:' + sha256(':'.join(
+                str(DATABASES['default'][field]) for field in ('HOST', 'PORT', 'NAME')
+            ).encode()).hexdigest()[:16],
+            'OPTIONS': {'MAX_ENTRIES': 2000},
         }
     }
 

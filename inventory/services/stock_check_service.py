@@ -87,4 +87,8 @@ def check_ingredient_expiration():
     status='available', expiration_date__range=(now, near_expiry_threshold)
   ).annotate(
     expiry_status=_expiry_status(critical_expiry_threshold)
-  ).order_by('expiration_date')
+  ).prefetch_related(Prefetch(
+    'ingredient', queryset=Ingredient.objects.annotate(
+      available_stock=_available_stock('batches', now)
+    ),
+  )).order_by('expiration_date')

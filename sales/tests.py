@@ -131,6 +131,8 @@ class HiddenCategorySalesAPITests(TestCase):
 
 class TransactionCustomerHistoryTests(TestCase):
     def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
         self.client = APIClient()
         self.staff = make_user('customerhistorystaff')
         self.category = Category.objects.create(name='Customer History')
@@ -538,6 +540,8 @@ class TransactionHistoryTests(TestCase):
     """Covers: new GET /sales/transactions/ and /sales/transactions/<id>/ endpoints."""
 
     def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
         self.client: APIClient = APIClient()
         self.staff = make_user(username='staffuser')
         self.other_staff = make_user(username='otherstaff')

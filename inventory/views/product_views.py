@@ -1,3 +1,4 @@
+from config.data_cache import CachedListMixin
 from rest_framework import viewsets
 from ..models import Product
 from ..serializers import ProductSerializer
@@ -8,7 +9,7 @@ from django.db.models import Prefetch
 from django.utils import timezone
 from ..models import ProductBatch
 
-class ProductViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
+class ProductViewSet(CachedListMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     queryset = Product.objects.filter(is_active=True)
     serializer_class = ProductSerializer
     model_label = "Product"

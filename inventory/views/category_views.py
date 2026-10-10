@@ -1,3 +1,4 @@
+from config.data_cache import CachedListMixin
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -7,7 +8,7 @@ from accounts.permissions import IsAdmin, IsStaff
 from rest_framework.permissions import SAFE_METHODS
 from .mixins import SoftDeleteMixin
 
-class CategoryViewSet(SoftDeleteMixin, viewsets.ModelViewSet):
+class CategoryViewSet(CachedListMixin, SoftDeleteMixin, viewsets.ModelViewSet):
     queryset = Category.objects.filter(is_active=True)
     serializer_class = CategorySerializer
     model_label = "Category"

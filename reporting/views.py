@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsAdmin, IsStaff
+from config.data_cache import invalidate_data_cache
 from .serializers import REPORT_SERIALIZERS, ReportPreviewSerializer, ReportTypeQuerySerializer
 from .services import generate_pdf, get_report, refresh_reports
 
@@ -63,6 +64,7 @@ class ReportRefreshView(APIView):
     permission_classes = [IsAdmin | IsStaff]
 
     def post(self, request):
+        invalidate_data_cache()
         visible_to_staff = request.user.role == 'staff'
         generated_at, refreshed = refresh_reports(visible_to_staff=visible_to_staff)
         if not visible_to_staff:

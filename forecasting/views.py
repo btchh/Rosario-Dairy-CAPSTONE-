@@ -3,6 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from accounts.permissions import IsAdmin,IsStaff
 from .serving import report
+from config.data_cache import cache_api_response
 
 class Query(serializers.Serializer):
     period=serializers.ChoiceField(choices=['weekly','monthly','yearly'],default='monthly')
@@ -10,6 +11,7 @@ class Query(serializers.Serializer):
 
 class ForecastView(APIView):
     permission_classes=[IsAdmin|IsStaff]
+    @cache_api_response
     def get(self,request):
         query=Query(data=request.query_params);query.is_valid(raise_exception=True)
         scope=query.validated_data['scope']

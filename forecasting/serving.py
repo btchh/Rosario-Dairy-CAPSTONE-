@@ -26,8 +26,6 @@ def report(scope='real', period='monthly'):
     if period not in PERIODS:
         raise ValueError('Invalid forecast period')
     daily, signature, warnings = source(scope)
-    from .historical import period_projection
-    planning = period_projection(daily, period, timezone.localdate()) if daily else None
     payload = {
         'generated_at': timezone.now(), 'horizon_days': {'weekly':7, 'monthly':30, 'yearly':365}[period],
         'method':'unavailable', 'is_placeholder':False, 'forecast':[], 'status':'pending_update',
@@ -37,7 +35,7 @@ def report(scope='real', period='monthly'):
         'regular':{}, 'bulk':{'status':'not_used'}, 'combined':{}, 'cutoff':{},
         'metrics':{}, 'baselines':{}, 'historical_comparison':[],
         'limitations':LIMITATIONS, 'warnings':warnings,
-        'planning_projection': planning,
+        'planning_projection': None,
     }
     fingerprint = options(scope).signature()
     run = ForecastRun.objects.filter(scope=scope, version=VERSION,
@@ -79,12 +77,8 @@ def report(scope='real', period='monthly'):
     if run.data_end != timezone.localdate() - timedelta(days=1):
         payload['warnings'] = [*warnings, 'Sales have not been recorded through yesterday; current projections are withheld.']
         payload['status'] = 'stale_data'
-        # Keep the 2025 evaluation stored, but do not present its points as a
-        # current forecast in the dashboard.
-        payload['historical_comparison'] = []
-        payload['fixed_origin_comparison'] = []
-        payload['baselines'] = {}
-        payload['component_metrics'] = {}
+        # Historical comparisons remain explicitly dated 2025. Stale data
+        # blocks publication, but must not hide the replacement's audit.
         payload['status_message'] = (
             f'No current forecast is available. The latest recorded sale is {run.data_end:%Y-%m-%d}; '
             'the 2025 WAPE is a historical backtest, not a forecast for today.'

@@ -1,11 +1,16 @@
-from datetime import datetime
+from config.data_cache import cache_api_response
+from config.renderers import CachedJSONRenderer
+from datetime import datetime, time
+from django.conf import settings
 from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
+from rest_framework.renderers import BrowsableAPIRenderer
 from accounts.permissions import IsAdmin, IsStaff
 from inventory.models import ProductBatch
+from inventory.services.stock_check_service import _available_stock
 from ..models import Transaction, TransactionItem
 from ..serializers import TransactionSerializer
 
@@ -34,21 +39,21 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = TransactionSerializer
     permission_classes = [IsAdmin | IsStaff]
     pagination_class = TransactionPagination
+    renderer_classes = [CachedJSONRenderer, BrowsableAPIRenderer]
+    data_cache_timeout = settings.HISTORY_CACHE_TIMEOUT
 
     def get_queryset(self):
-        available_batches = ProductBatch.objects.filter(
-            status='available', expiration_date__gte=timezone.localdate()
-        ).only('product_id', 'remaining_quantity')
-        items = TransactionItem.objects.select_related(
-            'product_batch__product__category'
-        ).prefetch_related(Prefetch(
-            'product_batch__product__batches',
-            queryset=available_batches,
-            to_attr='available_batches_for_total',
+        # A batch can appear on hundreds of invoice lines. Fetch it once and
+        # compute its product's current stock in the same query.
+        batches = ProductBatch.objects.select_related('product__category').annotate(
+            available_product_stock=_available_stock('product__batches', timezone.localdate())
+        )
+        items = TransactionItem.objects.prefetch_related(Prefetch(
+            'product_batch', queryset=batches,
         ))
         queryset = super().get_queryset().select_related(
             'handled_by', 'customer'
-        ).prefetch_related(Prefetch('items', queryset=items)).order_by('-created_at')
+        ).prefetch_related(Prefetch('items', queryset=items)).order_by('-created_at', '-id')
         if self.request.user.role == 'staff':
             queryset = queryset.exclude(
                 items__product_batch__product__category__is_visible_to_staff=False
@@ -64,6 +69,7 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
         except (ValueError, TypeError):
             raise ValueError(f"{field_name} must be in YYYY-MM-DD format.")
 
+    @cache_api_response
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
         params = request.query_params
@@ -81,9 +87,13 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({'error': 'start_date cannot be after end_date.'}, status=status.HTTP_400_BAD_REQUEST)
 
         if start_date:
-            queryset = queryset.filter(created_at__date__gte=start_date)
+            queryset = queryset.filter(created_at__gte=timezone.make_aware(
+                datetime.combine(start_date, time.min)
+            ))
         if end_date:
-            queryset = queryset.filter(created_at__date__lte=end_date)
+            queryset = queryset.filter(created_at__lte=timezone.make_aware(
+                datetime.combine(end_date, time.max)
+            ))
 
         payment_method = params.get('payment_method')
         if payment_method:

@@ -7,6 +7,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from django.db import transaction as db_transaction
 from django.db.models import Sum
 from django.utils import timezone
+from config.data_cache import invalidate_data_cache
 
 from accounts.models import Users
 from inventory.models import (
@@ -167,6 +168,8 @@ def load(result, admin_username):
         expected = Counter(ticket.sale_date.year for ticket in tickets)
         if Transaction.objects.count() != len(tickets) or TransactionItem.objects.count() != len(transaction_items):
             raise ValueError('Imported row counts do not match parsed source records.')
+        # Bulk ORM writes bypass model signals.
+        invalidate_data_cache()
         return {
             'transactions': len(transactions), 'transaction_items': len(transaction_items),
             'orders': len(orders), 'order_items': len(order_items),

@@ -206,3 +206,4 @@ class ReportPreviewSerializer(serializers.Serializer):
 class ReportTypeQuerySerializer(serializers.Serializer):
     type = serializers.ChoiceField(choices=list(REPORT_SERIALIZERS))
     period = serializers.ChoiceField(choices=['weekly','monthly','yearly'],required=False)
+    scope = serializers.ChoiceField(choices=['real'], required=False)

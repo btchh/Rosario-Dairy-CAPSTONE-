@@ -6,6 +6,7 @@ from django.core.cache import cache
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Min, Q, Sum
 from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
+from config.data_cache import data_version
 
 from inventory.models import Ingredient, IngredientBatch, Product, ProductBatch
 from sales.models import Customer, Transaction, TransactionItem
@@ -387,11 +388,10 @@ REPORT_BUILDERS = {
 def get_report(report_type, force_refresh=False, visible_to_staff=False, period='monthly'):
     if report_type not in REPORT_BUILDERS:
         raise ValueError(f'Unsupported report type: {report_type}')
-    if report_type == 'sarima_forecast':
-        return sarima_forecast(period)
     scope = 'staff' if visible_to_staff else 'admin'
     settings_version = get_runtime_settings()['version']
-    key = f'{CACHE_PREFIX}{settings_version}:{scope}:{report_type}'
+    key = (f'{CACHE_PREFIX}{data_version()}:{settings_version}:{scope}:{report_type}:'
+           f'{period}:{timezone.get_current_timezone_name()}:{timezone.localdate()}')
     if not force_refresh:
         try:
             cached = cache.get(key)
@@ -400,7 +400,9 @@ def get_report(report_type, force_refresh=False, visible_to_staff=False, period=
             cached = None
         if cached is not None:
             return cached
-    if report_type == 'inventory':
+    if report_type == 'sarima_forecast':
+        data = sarima_forecast(period)
+    elif report_type == 'inventory':
         data = inventory_status(visible_to_staff=visible_to_staff)
     else:
         data = REPORT_BUILDERS[report_type]()

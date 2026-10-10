@@ -5,7 +5,7 @@ from hashlib import sha256
 import json
 import math
 
-VERSION = 'sarima-v11'
+VERSION = 'daily-sarima-v1'
 TARGET_PERCENT = 30.0
 LIMITATIONS = (
     '2025 has already been inspected during development; these are retrospective backtests, '
@@ -14,7 +14,10 @@ LIMITATIONS = (
     'Days without a recorded ticket count as zero recorded revenue within those workbooks. '
     'Milk-feeding labels identify recorded customers, not future delivery commitments. '
     'Yearly error is based on one test year and is insufficient for a 30% acceptance claim. '
-    'Summed marginal SARIMA bounds are a planning range, not a calibrated period interval.'
+    'Daily SARIMA uses seven-day calendar seasonality and sums daily monetary expectations. '
+    'Reporting ranges use pre-2025 period validation errors; their future coverage is not guaranteed. '
+    'Fixed-origin annual paths have no validated interval. '
+    'Unscheduled milk-feeding contracts cannot be inferred reliably from ticket history alone.'
 )
 
 

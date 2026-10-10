@@ -1,3 +1,4 @@
+from config.data_cache import cache_api_response
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -9,6 +10,7 @@ from systemsetting.models import NotificationSettings
 class LowStockProductView (APIView):
   permission_classes = [IsAdmin | IsStaff]
 
+  @cache_api_response
   def get(self, request):
     if not NotificationSettings.get_config().low_stock_alerts:
       return Response([], status=status.HTTP_200_OK)
@@ -21,6 +23,7 @@ class LowStockProductView (APIView):
 class ExpiringProductView (APIView):
   permission_classes = [IsAdmin | IsStaff]
 
+  @cache_api_response
   def get(self, request):
     if not NotificationSettings.get_config().near_expiry_alerts:
       return Response([], status=status.HTTP_200_OK)

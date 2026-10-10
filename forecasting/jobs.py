@@ -10,7 +10,7 @@ from .models import ForecastRun,IssuedForecast
 
 
 def refresh(scope='real',options=None,progress=None):
-    from .rebuilt import evaluate
+    from .daily_sarima import evaluate
     options=options or configured_options(scope);fingerprint=options.signature()
     with connection.cursor() as cursor:
         cursor.execute('SELECT pg_try_advisory_lock(%s)',[82197033])

@@ -1,3 +1,4 @@
+from config.data_cache import cache_api_response
 from datetime import datetime
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -19,6 +20,7 @@ def _parse_date_param(value, param_name):
 class RevenueReportView(APIView):
     permission_classes = [IsAdmin]
 
+    @cache_api_response
     def get(self, request):
         period = request.query_params.get('period', 'monthly')
 
@@ -44,6 +46,7 @@ class RevenueReportView(APIView):
 class BestSellersReportView(APIView):
     permission_classes = [IsAdmin]
 
+    @cache_api_response
     def get(self, request):
         try:
             limit = int(request.query_params.get('limit', 10))
@@ -73,6 +76,7 @@ class BestSellersReportView(APIView):
 class SalesByCategoryReportView(APIView):
     permission_classes = [IsAdmin]
 
+    @cache_api_response
     def get(self, request):
         try:
             start_date = _parse_date_param(request.query_params.get('start_date'), 'start_date')

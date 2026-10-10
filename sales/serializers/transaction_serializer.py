@@ -5,8 +5,25 @@ from accounts.serializers import UserSerializer
 from .customer_serializer import CustomerSerializer
 
 
+class TransactionBatchSerializer(ProdBatchSerializer):
+    """Serialize each batch once within a transaction response.
+
+    Historical invoices repeatedly reference the same catalog batches. Keep
+    the complete response shape while reusing their nested representations.
+    This cache belongs to this serializer instance, never to another request.
+    """
+    def to_representation(self, instance):
+        if not hasattr(self, '_batch_data'):
+            self._batch_data = {}
+        if instance.pk not in self._batch_data:
+            if hasattr(instance, 'available_product_stock'):
+                instance.product.available_stock = instance.available_product_stock
+            self._batch_data[instance.pk] = super().to_representation(instance)
+        return self._batch_data[instance.pk]
+
+
 class TransactionItemSerializer(serializers.ModelSerializer):
-    product_batch = ProdBatchSerializer(read_only=True)
+    product_batch = TransactionBatchSerializer(read_only=True)
 
     class Meta:
         model = TransactionItem

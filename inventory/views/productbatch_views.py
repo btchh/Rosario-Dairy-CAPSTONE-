@@ -1,3 +1,4 @@
+from config.data_cache import CachedListMixin
 from rest_framework import viewsets
 from ..models import ProductBatch
 from ..serializers import ProdBatchSerializer
@@ -6,7 +7,7 @@ from .mixins import BatchCreateDestroyMixin
 from django.db.models import Prefetch
 from django.utils import timezone
 
-class ProductBatchViewSet(BatchCreateDestroyMixin, viewsets.ModelViewSet):
+class ProductBatchViewSet(CachedListMixin, BatchCreateDestroyMixin, viewsets.ModelViewSet):
     queryset = ProductBatch.objects.all()
     serializer_class = ProdBatchSerializer
     permission_classes = [IsAdmin | IsStaff]

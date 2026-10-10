@@ -40,6 +40,11 @@ class Transaction(models.Model):
   source_note = models.TextField(blank=True)
   created_at = models.DateTimeField(auto_now_add=True)
 
+  class Meta:
+    indexes = [
+      models.Index(fields=['-created_at', '-id'], name='sales_txn_history_order_idx'),
+    ]
+
   if TYPE_CHECKING:
     items: "Manager[TransactionItem]"
 

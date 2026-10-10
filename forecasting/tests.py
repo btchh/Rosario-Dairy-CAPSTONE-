@@ -9,8 +9,9 @@ import numpy as np
 import pandas as pd
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
+from django.core.cache import cache
 from django.db import IntegrityError, transaction
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -150,8 +151,10 @@ class SarimaEvaluationTests(SimpleTestCase):
         self.assertEqual(period_acceptance({'rows':11, 'wape_percent':10, 'failed_rows':1}), 'model_unavailable')
 
 
+@override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
 class ForecastServingTests(TestCase):
     def setUp(self):
+        cache.clear()
         self.user = get_user_model().objects.create_user(
             username='forecast-admin', email='forecast@example.com', role='admin')
         self.client = APIClient(HTTP_HOST='127.0.0.1')
@@ -201,7 +204,7 @@ class ForecastServingTests(TestCase):
             configuration_signature=options().signature(), setup='sarima', period='monthly',
             date=issued['date'], trained_through=self.end, payload=issued)
         with patch('forecasting.serving.source', return_value=({self.end:Decimal('100')}, 'a' * 64, [])), \
-             patch('forecasting.rebuilt.forecast', side_effect=AssertionError('HTTP fitting')):
+             patch('forecasting.daily_sarima.fit_path', side_effect=AssertionError('HTTP fitting')):
             payload = report(period='monthly')
         self.assertEqual(payload['status'], 'ready')
         self.assertEqual(payload['forecast'][0]['predicted_revenue'], 123)
@@ -238,8 +241,11 @@ class ForecastServingTests(TestCase):
             self.assertEqual(self.client.get('/api/forecasting/forecast/?period=daily').status_code, 400)
             self.assertEqual(self.client.get('/api/forecasting/forecast/?period=hourly').status_code, 400)
             self.assertEqual(self.client.get('/api/forecasting/forecast/?scope=simulation').status_code, 400)
+            self.assertEqual(self.client.get('/api/forecasting/forecast/?scope=demo').status_code, 400)
+            self.assertEqual(self.client.get('/api/reports/preview/?type=sarima_forecast&scope=demo').status_code, 400)
+            self.assertEqual(self.client.get('/api/reports/export-pdf/?type=sarima_forecast&scope=demo').status_code, 400)
 
-    def test_current_period_estimates_are_separate_from_stale_sarima_forecast(self):
+    def test_replacement_removes_median_estimates_and_keeps_dated_audit_visible(self):
         today = date(2026, 10, 3)
         daily = {date(year, 1, 1) + timedelta(days=offset): Decimal('100')
                  for year in (2023, 2024, 2025)
@@ -256,15 +262,8 @@ class ForecastServingTests(TestCase):
         for period, result in results.items():
             self.assertEqual(result['status'], 'stale_data')
             self.assertEqual(result['forecast'], [])
-            self.assertEqual(result['historical_comparison'], [])
-            self.assertEqual(result['planning_projection']['point_kind'], 'historical_median')
-            self.assertEqual(result['planning_projection']['sample_count'], 3)
-        self.assertEqual(results['weekly']['planning_projection']['date'], '2026-09-28')
-        self.assertEqual(results['weekly']['planning_projection']['predicted_revenue'], '700.00')
-        self.assertEqual(results['monthly']['planning_projection']['date'], '2026-10-01')
-        self.assertEqual(results['monthly']['planning_projection']['predicted_revenue'], '3100.00')
-        self.assertEqual(results['yearly']['planning_projection']['date'], '2026-01-01')
-        self.assertEqual(results['yearly']['planning_projection']['predicted_revenue'], '36500.00')
+            self.assertEqual(result['historical_comparison'][0]['date'], '2025-01-01')
+            self.assertIsNone(result['planning_projection'])
 
     def test_uncovered_years_do_not_become_zero_sales_estimates(self):
         from .historical import period_projection

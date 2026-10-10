@@ -124,6 +124,8 @@ class ConditionalDeleteAPITests(TestCase):
 
 class StaffCategoryVisibilityAPITests(TestCase):
     def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
         self.client = APIClient()
         self.staff = make_user('visibilitystaff')
         self.admin = make_user('visibilityadmin', role='admin')

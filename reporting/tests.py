@@ -8,7 +8,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from inventory.models import Category, Ingredient, IngredientBatch, Product, ProductBatch
+from inventory.models import Category, FEFOConf, Ingredient, IngredientBatch, Product, ProductBatch
 from reporting.services import inventory_status
 from sales.models import Customer, Transaction, TransactionItem
 from systemsetting.models import SystemSettings
@@ -51,7 +51,7 @@ class ReportAPITests(TestCase):
         self.category = Category.objects.create(name='Reports')
         self.product = Product.objects.create(
             category=self.category, name='Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7, low_stock_threshold=10,
+            unit_price=Decimal('50.00'), shelf_life=7,
         )
         self.product_batch = ProductBatch.objects.create(
             product=self.product, batch_number='PRD-REPORT-001',
@@ -61,7 +61,7 @@ class ReportAPITests(TestCase):
         )
         self.ingredient = Ingredient.objects.create(
             name='Raw Milk', unit='liter', unit_price=Decimal('20.00'),
-            shelf_life=3, low_stock_threshold=10,
+            shelf_life=3,
         )
         IngredientBatch.objects.create(
             ingredient=self.ingredient, batch_number='ING-REPORT-001',
@@ -90,6 +90,28 @@ class ReportAPITests(TestCase):
         self.assertEqual(product['quantity'], Decimal('0.00'))
         self.assertIsNone(product['next_expiration_date'])
         self.assertTrue(product['is_low_stock'])
+
+    def test_inventory_report_uses_global_alert_thresholds(self):
+        config = FEFOConf.get_config()
+        config.low_stock_threshold = 20
+        config.near_expiry_threshold = 7
+        config.save()
+        self.product_batch.expiration_date = timezone.localdate() + timedelta(days=8)
+        self.product_batch.save(update_fields=['expiration_date'])
+        result = inventory_status()
+        self.assertEqual(result['low_stock_count'], 2)
+        self.assertTrue(all(item['low_stock_threshold'] == 20 for item in result['items']))
+        product = next(item for item in result['items'] if item['item_type'] == 'product')
+        self.assertEqual(product['fefo_status'], 'healthy')
+
+        config.low_stock_threshold = 4
+        config.near_expiry_threshold = 8
+        config.save()
+        result = inventory_status()
+        self.assertEqual(result['low_stock_count'], 0)
+        self.assertTrue(all(item['low_stock_threshold'] == 4 for item in result['items']))
+        product = next(item for item in result['items'] if item['item_type'] == 'product')
+        self.assertEqual(product['fefo_status'], 'expiring_soon')
 
     def test_staff_inventory_report_excludes_inactive_category(self):
         self.category.is_active = False

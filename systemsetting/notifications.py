@@ -3,6 +3,7 @@ from hashlib import sha256
 import json
 from django.utils import timezone
 from inventory.services.batch_service import BatchService
+from inventory.models import FEFOConf
 from sales.models import Order
 from .models import NotificationSettings, NotificationState
 
@@ -18,12 +19,13 @@ def live_notifications(user):
             'body': body, 'time': time, 'unread': True, 'dismissed': False})
 
     if settings.low_stock_alerts:
+        threshold = FEFOConf.get_config().low_stock_threshold
         for kind, rows, entity in (
             ('products', BatchService.check_product_stock(visible_to_staff=visible), 'product'),
             ('ingredients', BatchService.check_ingredient_stock(), 'ingredient'),
         ):
             if rows:
-                source = sorted((row[entity].pk, str(row['remaining_quantity']), row[entity].low_stock_threshold) for row in rows)
+                source = sorted((row[entity].pk, str(row['remaining_quantity']), threshold) for row in rows)
                 add(f'low-stock-{kind}', 'warning', 'Low Stock Alert', f'{len(rows)} {kind} below minimum stock', source)
     if settings.near_expiry_alerts:
         for kind, rows, entity, title in (

@@ -2,6 +2,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import IsAdmin, IsStaff
+from inventory.models import FEFOConf
+from inventory.serializers import FEFOConfSerializer
 from ..models import NotificationSettings, SystemSettings
 from ..serializers import NotificationSettingsSerializer, SystemSettingsSerializer
 
@@ -23,4 +25,5 @@ class SettingsOverviewView(APIView):
         }
         if is_admin:
             data['system'] = SystemSettingsSerializer(SystemSettings.get_config()).data
+            data['inventory'] = FEFOConfSerializer(FEFOConf.get_config()).data
         return Response(data)

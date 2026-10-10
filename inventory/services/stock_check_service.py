@@ -41,9 +41,8 @@ def check_product_stock(visible_to_staff=False):
     products = products.filter(category__is_active=True, category__is_visible_to_staff=True)
   config = FEFOConf.get_config()
   for product in products:
-    low_stock_threshold = product.low_stock_threshold if product.low_stock_threshold is not None else config.low_stock_threshold
     total_remaining = product.available_stock
-    if total_remaining <= low_stock_threshold:
+    if total_remaining <= config.low_stock_threshold:
       low_stock_prods.append({'product': product, 'remaining_quantity': total_remaining})
   return low_stock_prods
 
@@ -55,9 +54,8 @@ def check_ingredient_stock():
   )
   config = FEFOConf.get_config()
   for ingredient in ingredients:
-    low_stock_threshold = ingredient.low_stock_threshold if ingredient.low_stock_threshold is not None else config.low_stock_threshold
     total_remaining = ingredient.available_stock
-    if total_remaining <= low_stock_threshold:
+    if total_remaining <= config.low_stock_threshold:
       low_stock_ings.append({'ingredient': ingredient, 'remaining_quantity': total_remaining})
   return low_stock_ings
 

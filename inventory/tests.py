@@ -308,7 +308,6 @@ class StockAlertQueryTests(TestCase):
             product = Product.objects.create(
                 category=self.category, name=f'Product {index}', unit='piece',
                 unit_price=Decimal('10.00'), shelf_life=7,
-                low_stock_threshold=Decimal('20.00'),
             )
             ProductBatch.objects.create(
                 product=product, batch_number=f'PRD-STOCK-{index}',
@@ -327,7 +326,6 @@ class StockAlertQueryTests(TestCase):
             ingredient = Ingredient.objects.create(
                 name=f'Ingredient {index}', unit='liter',
                 unit_price=Decimal('10.00'), shelf_life=7,
-                low_stock_threshold=Decimal('20.00'),
             )
             IngredientBatch.objects.create(
                 ingredient=ingredient, batch_number=f'ING-STOCK-{index}',
@@ -1473,11 +1471,11 @@ class InventoryAuditRegressionTests(TestCase):
         self.category = Category.objects.create(name='Audit Category')
         self.product = Product.objects.create(
             category=self.category, name='Audit Product', unit='piece',
-            unit_price=Decimal('10.00'), shelf_life=7, low_stock_threshold=5,
+            unit_price=Decimal('10.00'), shelf_life=7,
         )
         self.ingredient = Ingredient.objects.create(
             name='Audit Ingredient', unit='kg', unit_price=Decimal('5.00'),
-            shelf_life=7, low_stock_threshold=5,
+            shelf_life=7,
         )
 
     def test_expired_product_stock_is_excluded_from_total_and_low_stock_check(self):
@@ -1550,25 +1548,22 @@ class InventoryAuditRegressionTests(TestCase):
         self.assertFalse(serializer.is_valid())
         self.assertIn('ingredient_id', serializer.errors)
 
-    def test_negative_shelf_life_and_threshold_are_rejected(self):
+    def test_negative_shelf_life_is_rejected(self):
         from inventory.serializers import IngredientSerializer, ProductSerializer
 
         product = ProductSerializer(data={
             'category_id': self.category.pk, 'name': 'Invalid Product',
             'unit': 'piece', 'unit_price': '1.00', 'shelf_life': -1,
-            'low_stock_threshold': -1,
         })
         ingredient = IngredientSerializer(data={
             'name': 'Invalid Ingredient', 'unit': 'kg', 'unit_price': '1.00',
-            'shelf_life': -1, 'low_stock_threshold': -1,
+            'shelf_life': -1,
         })
 
         self.assertFalse(product.is_valid())
         self.assertIn('shelf_life', product.errors)
-        self.assertIn('low_stock_threshold', product.errors)
         self.assertFalse(ingredient.is_valid())
         self.assertIn('shelf_life', ingredient.errors)
-        self.assertIn('low_stock_threshold', ingredient.errors)
 
     def test_ingredient_batch_grade_is_available_through_serializer(self):
         from inventory.serializers import IngBatchSerializer

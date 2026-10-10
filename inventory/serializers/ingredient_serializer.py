@@ -2,9 +2,11 @@ from rest_framework import serializers
 from django.db.models import Sum
 from django.utils import timezone
 from ..models import Ingredient
+from .stock_threshold import StockThresholdMixin
 
 
-class IngredientSerializer(serializers.ModelSerializer):
+class IngredientSerializer(StockThresholdMixin, serializers.ModelSerializer):
+  low_stock_threshold = serializers.SerializerMethodField()
   total_stock = serializers.SerializerMethodField()
 
   def get_total_stock(self, obj):

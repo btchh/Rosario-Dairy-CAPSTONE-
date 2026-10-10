@@ -8,7 +8,7 @@ from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
 from config.data_cache import data_version
 
-from inventory.models import Ingredient, IngredientBatch, Product, ProductBatch
+from inventory.models import FEFOConf, Ingredient, IngredientBatch, Product, ProductBatch
 from sales.models import Customer, Transaction, TransactionItem
 from systemsetting.runtime import get_runtime_settings
 
@@ -246,7 +246,8 @@ def monthly_sales():
 
 def _inventory_rows(model, relation_name, item_type, visible_to_staff=False):
     today = timezone.localdate()
-    soon = today + timedelta(days=7)
+    config = FEFOConf.get_config()
+    soon = today + timedelta(days=config.near_expiry_threshold)
     rows = model.objects.filter(is_active=True)
     if visible_to_staff and model is Product:
         rows = rows.filter(category__is_active=True, category__is_visible_to_staff=True)
@@ -283,8 +284,8 @@ def _inventory_rows(model, relation_name, item_type, visible_to_staff=False):
             'item_type': item_type, 'id': item.pk,
             'name': _product_label(item.name, getattr(item, 'variant', None)),
             'unit': item.unit, 'quantity': quantity,
-            'low_stock_threshold': Decimal(str(item.low_stock_threshold)),
-            'is_low_stock': quantity <= item.low_stock_threshold,
+            'low_stock_threshold': Decimal(str(config.low_stock_threshold)),
+            'is_low_stock': quantity <= config.low_stock_threshold,
             'next_expiration_date': next_expiration, 'fefo_status': fefo_status,
         })
     return result
@@ -292,7 +293,8 @@ def _inventory_rows(model, relation_name, item_type, visible_to_staff=False):
 
 def inventory_status(visible_to_staff=False):
     today = timezone.localdate()
-    soon = today + timedelta(days=7)
+    config = FEFOConf.get_config()
+    soon = today + timedelta(days=config.near_expiry_threshold)
     items = _inventory_rows(Product, 'batches', 'product', visible_to_staff)
     items += _inventory_rows(Ingredient, 'batches', 'ingredient')
     available_batches = Q(status='available', remaining_quantity__gt=0)

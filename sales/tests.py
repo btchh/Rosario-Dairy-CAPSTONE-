@@ -1070,6 +1070,8 @@ class SalesAuditRegressionTests(TestCase):
         self.assertEqual(processed, sorted(processed))
 
     def test_transaction_history_query_count_does_not_grow_per_item(self):
+        from inventory.models import FEFOConf
+        FEFOConf.get_config()
         for _ in range(3):
             SalesService.checkout(
                 [(self.product, Decimal('1.00'))], self.staff,

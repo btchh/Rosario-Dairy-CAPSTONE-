@@ -5,9 +5,11 @@ from django.db.models import Sum
 from django.utils import timezone
 from ..models import Product, Category
 from .category_serializer import CategorySerializer
+from .stock_threshold import StockThresholdMixin
 
 
-class ProductSerializer(serializers.ModelSerializer):
+class ProductSerializer(StockThresholdMixin, serializers.ModelSerializer):
+  low_stock_threshold = serializers.SerializerMethodField()
   category = CategorySerializer(read_only=True)
   category_id = serializers.PrimaryKeyRelatedField(
     queryset=Category.objects.filter(is_active=True),

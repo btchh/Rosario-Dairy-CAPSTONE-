@@ -14,7 +14,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework.renderers import JSONRenderer
 
-from inventory.models import Category, Product, ProductBatch
+from inventory.models import Category, FEFOConf, Product, ProductBatch
 from inventory.serializers import ProdBatchSerializer
 from sales.models import Transaction, TransactionItem, Order, OrderItem, Customer
 from sales.serializers import TransactionSerializer
@@ -24,6 +24,7 @@ from sales.views.transaction_views import TransactionViewSet
 class SalesHistoryPerformanceTests(TestCase):
     def setUp(self):
         cache.clear()
+        FEFOConf.get_config()
         self.user = get_user_model().objects.create_user(
             username='history-performance', email='history-performance@example.com', role='admin',
         )
@@ -86,7 +87,8 @@ class SalesHistoryPerformanceTests(TestCase):
         view = TransactionViewSet()
         view.action = 'list'
         view.request = type('Request', (), {'user': self.user})()
-        with self.assertNumQueries(3):
+        # One shared global-threshold read, independent of the number of items.
+        with self.assertNumQueries(4):
             sale = list(view.get_queryset())[0]
             items = list(sale.items.all())
             data = TransactionSerializer(sale).data

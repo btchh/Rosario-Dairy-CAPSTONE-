@@ -14,6 +14,9 @@ from inventory.serializers import IngredientSerializer, IngBatchSerializer
 
 
 class CatalogQueryTests(TestCase):
+    def setUp(self):
+        FEFOConf.get_config()
+
     def test_ingredient_catalog_and_nested_batches_use_bounded_queries(self):
         for i in range(12):
             ingredient = Ingredient.objects.create(
@@ -32,7 +35,7 @@ class CatalogQueryTests(TestCase):
             view = view_type()
             view.action = 'list'
             view.request = SimpleNamespace(query_params={})
-            with self.assertNumQueries(queries):
+            with self.assertNumQueries(queries + 1):
                 data = serializer(view.get_queryset(), many=True).data
             self.assertEqual(len(data), 24 if nested else 12)
             self.assertTrue(all(
@@ -51,14 +54,14 @@ class CatalogQueryTests(TestCase):
         for view_type,serializer,nested in [(ProductViewSet,ProductSerializer,False),(ProductBatchViewSet,ProdBatchSerializer,True)]:
             view=view_type();view.action='list'
             view.request=SimpleNamespace(user=SimpleNamespace(role='admin'),query_params={})
-            with self.assertNumQueries(2):
+            with self.assertNumQueries(3):
                 data=serializer(view.get_queryset(),many=True).data
             self.assertEqual(len(data),24 if nested else 12)
             self.assertTrue(all(Decimal(str((r['product'] if nested else r)['total_stock']))==10 for r in data))
 
         from inventory.services.stock_check_service import check_product_expiration
         FEFOConf.get_config()
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(4):
             data=ProdBatchSerializer(check_product_expiration(),many=True).data
         self.assertEqual(len(data),12)
         self.assertTrue(all(Decimal(str(r['product']['total_stock']))==10 for r in data))

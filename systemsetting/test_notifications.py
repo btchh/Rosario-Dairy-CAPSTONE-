@@ -16,7 +16,7 @@ class NotificationInboxTests(TestCase):
         self.admin = Users.objects.create_user(username='alert-admin', email='alert-admin@example.test', role='admin', password='secret123!')
         self.staff = Users.objects.create_user(username='alert-staff', email='alert-staff@example.test', role='staff', password='secret123!')
         self.category = Category.objects.create(name='Dairy')
-        self.product = Product.objects.create(name='Milk', category=self.category, unit='liter', unit_price=50, shelf_life=7, low_stock_threshold=10)
+        self.product = Product.objects.create(name='Milk', category=self.category, unit='liter', unit_price=50, shelf_life=7)
         self.batch = ProductBatch.objects.create(product=self.product, batch_number='ALERT-001', initial_quantity=5,
             remaining_quantity=5, expiration_date=timezone.localdate()+timedelta(days=2))
         self.client = APIClient()

@@ -11,6 +11,11 @@ from django.utils import timezone
 from sales.models import Transaction
 
 
+def feeding_filter():
+    return Q(source_customer_label__icontains='feedin') | (
+        Q(source_customer_label='') & Q(customer__name__icontains='feedin'))
+
+
 def source(scope='real', include_components=False):
     if scope != 'real':
         raise ValueError('Only real sales are supported')
@@ -18,8 +23,7 @@ def source(scope='real', include_components=False):
     # Imported labels are sale-time evidence. Live sales use their linked
     # customer name only when there is no imported label.
     # The source workbook contains both "feeding" and "feedin" labels.
-    feeding = Q(source_customer_label__icontains='feedin') | (
-        Q(source_customer_label='') & Q(customer__name__icontains='feedin'))
+    feeding = feeding_filter()
     rows = Transaction.objects.filter(is_voided=False, created_at__lt=cutoff).annotate(
         day=TruncDate('created_at', tzinfo=timezone.get_current_timezone()),
         segment=Case(When(feeding, then=Value('feeding')), default=Value('other_sales'), output_field=CharField()),

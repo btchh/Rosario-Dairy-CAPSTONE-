@@ -1,7 +1,7 @@
 from typing import cast
 from datetime import timedelta
 from django.utils import timezone
-from accounts.models import Users
+from accounts.models import Users, PasswordResetChallenge
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -25,6 +25,11 @@ def update_own_profile(user, data):
     phone number, address, and email may be changed here.
     """
     data = {key: data.get(key) for key in data}
+    current_password = data.pop('current_password', None)
+    if 'email' in data:
+        if not isinstance(data['email'], str) or data['email'].casefold() != user.email.casefold():
+            raise ValueError('Use /accounts/email-change/ to verify a new recovery email.')
+        data.pop('email')
     blocked = [f for f in _SELF_EDIT_BLOCKED_FIELDS if f in data]
     if blocked:
         raise ValueError(
@@ -54,6 +59,10 @@ def update_own_profile(user, data):
             locked_user = cast(
                 Users, Users.objects.select_for_update().get(pk=user.pk)
             )
+            if 'username' in data and data['username'] != locked_user.username:
+                if not isinstance(current_password, str) or not locked_user.check_password(current_password):
+                    raise ValueError('Current password is required to change your username.')
+                PasswordResetChallenge.objects.filter(user=locked_user).delete()
             if locked_user.last_profile_update_at is not None:
                 elapsed = timezone.now() - locked_user.last_profile_update_at
                 cooldown = timedelta(minutes=PROFILE_EDIT_COOLDOWN_MINUTES)

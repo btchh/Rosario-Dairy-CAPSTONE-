@@ -35,6 +35,7 @@ class Users(AbstractUser):
     locked_until = models.DateTimeField(blank=True, null=True)
     last_profile_update_at = models.DateTimeField(blank=True, null=True)
     last_password_change_at = models.DateTimeField(blank=True, null=True)
+    token_version = models.PositiveIntegerField(default=0)
 
     objects = UsersManager()
 
@@ -65,3 +66,12 @@ class PasswordResetChallenge(models.Model):
 
     def __str__(self):
         return f'Password reset challenge for {self.user}'
+
+
+class EmailChangeChallenge(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    email = models.EmailField()
+    otp_digest = models.CharField(max_length=64)
+    expires_at = models.DateTimeField()
+    failed_attempts = models.PositiveSmallIntegerField(default=0)
+    last_sent_at = models.DateTimeField()

@@ -2,7 +2,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import IntegrityError, transaction as db_transaction
 from typing import cast
-from accounts.models import Users
+from accounts.models import Users, PasswordResetChallenge, EmailChangeChallenge
 
 
 _ADMIN_EDITABLE_FIELDS = {
@@ -23,6 +23,7 @@ def update_user(pk, data, requesting_user):
     with db_transaction.atomic():
         user = cast(Users, Users.objects.select_for_update().get(pk=pk))
         data = {key: data.get(key) for key in data}
+        current_password = data.pop('current_password', None)
         unknown = sorted(set(data) - _ADMIN_EDITABLE_FIELDS)
         if unknown:
             raise ValueError(f"Unsupported field(s): {', '.join(unknown)}.")
@@ -31,6 +32,11 @@ def update_user(pk, data, requesting_user):
             raise ValueError("'is_active' must be a boolean.")
 
         is_self = user.pk == requesting_user.pk
+        if is_self and 'email' in data and data['email'] != user.email:
+            raise ValueError('Use /accounts/email-change/ to verify your recovery email.')
+        if is_self and 'username' in data and data['username'] != user.username:
+            if not isinstance(current_password, str) or not user.check_password(current_password):
+                raise ValueError('Current password is required to change your username.')
 
         if is_self and any(
             field in data for field in ('role', 'is_active', 'deactivation_reason')
@@ -79,6 +85,10 @@ def update_user(pk, data, requesting_user):
         for field in _ADMIN_EDITABLE_FIELDS:
             if field in data:
                 setattr(user, field, data[field])
+
+        if {'email', 'username'} & data.keys():
+            PasswordResetChallenge.objects.filter(user=user).delete()
+            EmailChangeChallenge.objects.filter(user=user).delete()
 
         try:
             user.full_clean(exclude=['password'])

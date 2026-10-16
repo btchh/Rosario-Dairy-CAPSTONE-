@@ -4,7 +4,8 @@ from typing import cast
 from django.utils import timezone
 from django.db import transaction
 from accounts.models import Users
-from accounts.throttles import LoginRateThrottle
+from accounts.throttles import LoginRateThrottle, TokenRefreshRateThrottle
+from accounts.authentication import check_token_version
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import (
     TokenObtainPairSerializer,
@@ -44,6 +45,12 @@ class CooldownTokenObtainPairSerializer(TokenObtainPairSerializer):
     the same generic 401 response.
     """
 
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        token['token_version'] = user.token_version
+        return token
+
     def validate(self, attrs):
         username = attrs.get(self.username_field)
         user = cast(
@@ -81,22 +88,26 @@ class CooldownTokenObtainPairView(TokenObtainPairView):
 class PasswordAwareTokenRefreshSerializer(TokenRefreshSerializer):
     """Reject refresh tokens issued before the user's latest password change."""
 
+    @transaction.atomic
     def validate(self, attrs):
         refresh = self.token_class(attrs['refresh'])
         user_id = refresh.get(api_settings.USER_ID_CLAIM)
-        user = Users.objects.filter(
+        user = Users.objects.select_for_update().filter(
             **{api_settings.USER_ID_FIELD: user_id}
         ).first()
         if user is None or not api_settings.USER_AUTHENTICATION_RULE(user):
             raise AuthenticationFailed(self.error_messages['no_active_account'])
+        check_token_version(user, refresh)
         if refresh.get(api_settings.REVOKE_TOKEN_CLAIM) != get_md5_hash_password(
             user.password
         ):
             raise AuthenticationFailed(
                 'The user password has been changed.', code='password_changed'
             )
+        # Reparse under the user lock, so two concurrent uses cannot both rotate.
         return super().validate(attrs)
 
 
 class PasswordAwareTokenRefreshView(TokenRefreshView):
     serializer_class = PasswordAwareTokenRefreshSerializer
+    throttle_classes = [TokenRefreshRateThrottle]

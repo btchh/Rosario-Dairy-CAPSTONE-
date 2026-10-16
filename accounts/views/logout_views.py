@@ -10,6 +10,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.utils import get_md5_hash_password
 from accounts.services import user_service
+from accounts.authentication import check_token_version
 
 
 User = get_user_model()
@@ -38,6 +39,7 @@ class LogoutJWTAuthentication(JWTAuthentication):
       raise AuthenticationFailed(
         _('The user password has been changed.'), code='password_changed'
       )
+    check_token_version(user, validated_token)
     return user
 
 

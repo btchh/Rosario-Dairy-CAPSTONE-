@@ -38,6 +38,8 @@ load_dotenv(BASE_DIR / '.env')
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 DJANGO_ENV = os.getenv('DJANGO_ENV', 'development').strip().lower()
+if DJANGO_ENV not in {'development', 'production', 'test'}:
+    raise ImproperlyConfigured('DJANGO_ENV must be development, production, or test.')
 IS_PRODUCTION = DJANGO_ENV == 'production'
 DEBUG = env_bool('DJANGO_DEBUG', not IS_PRODUCTION)
 if IS_PRODUCTION and DEBUG:
@@ -48,6 +50,8 @@ if not SECRET_KEY:
     if IS_PRODUCTION:
         raise ImproperlyConfigured('DJANGO_SECRET_KEY is required in production.')
     SECRET_KEY = 'django-insecure-development-only-change-before-production'
+if IS_PRODUCTION and (len(SECRET_KEY) < 50 or SECRET_KEY.startswith('django-insecure-')):
+    raise ImproperlyConfigured('Production requires a generated secret of at least 50 characters.')
 
 ALLOWED_HOSTS = env_list(
     'DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1,[::1]' if not IS_PRODUCTION else ''
@@ -202,17 +206,36 @@ REST_FRAMEWORK = {
         'login': '10/minute',
         'password_reset_request': '5/minute',
         'password_reset_confirm': '10/minute',
+        'token_refresh': '30/minute',
+        'email_change': '5/minute',
+        'profile': '10/minute',
+        'report_refresh': '1/minute',
+        'expensive_read': '30/minute',
+        'sale_write': '30/minute',
     },
+    # Ignore forwarded headers unless the operator explicitly configures hops.
+    'NUM_PROXIES': 0,
 }
 if os.getenv('DJANGO_NUM_PROXIES'):
-    REST_FRAMEWORK['NUM_PROXIES'] = int(os.environ['DJANGO_NUM_PROXIES'])
+    try:
+        proxy_count = int(os.environ['DJANGO_NUM_PROXIES'])
+        if proxy_count < 0:
+            raise ValueError
+    except ValueError as exc:
+        raise ImproperlyConfigured('DJANGO_NUM_PROXIES must be a nonnegative integer.') from exc
+    REST_FRAMEWORK['NUM_PROXIES'] = proxy_count
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'UPDATE_LAST_LOGIN': True,
     'CHECK_REVOKE_TOKEN': True,
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
 }
+REST_FRAMEWORK['DEFAULT_AUTHENTICATION_CLASSES'] = ('accounts.authentication.RevocableJWTAuthentication',)
+
+MAX_CART_ITEMS = 100
 
 AUTH_USER_MODEL = 'accounts.Users'
 

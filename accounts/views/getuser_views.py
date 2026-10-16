@@ -5,12 +5,16 @@ from rest_framework.response import Response
 from accounts.permissions import IsAdmin, IsStaff
 from django.contrib.auth import get_user_model
 from accounts.services import user_service
+from accounts.throttles import ProfileRateThrottle
 
 User = get_user_model()
 
 
 class GetUserView(APIView):
   permission_classes = [IsAdmin | IsStaff]
+
+  def get_throttles(self):
+    return [ProfileRateThrottle()] if self.request.method == 'PATCH' else []
 
   def get(self, request):
     try:

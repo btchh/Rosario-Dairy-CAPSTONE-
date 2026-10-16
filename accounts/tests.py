@@ -810,7 +810,7 @@ class ProfileEditCooldownTests(TestCase):
 
     def test_staff_can_change_own_username_and_name(self):
         response = self.client.patch('/accounts/user/', {
-            'username': '  newstaff  ', 'first_name': 'Alex', 'last_name': 'Reyes',
+            'username': '  newstaff  ', 'current_password': 'testpass123!', 'first_name': 'Alex', 'last_name': 'Reyes',
         }, format='json')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['username'], 'newstaff')
@@ -827,7 +827,7 @@ class ProfileEditCooldownTests(TestCase):
         self.user.role = 'admin'
         self.user.save(update_fields=['role'])
         response = self.client.patch('/accounts/user/', {
-            'username': 'newadmin',
+            'username': 'newadmin', 'current_password': 'testpass123!',
         }, format='json')
         self.assertEqual(response.status_code, 200)
         self.user.refresh_from_db()
@@ -846,9 +846,9 @@ class ProfileEditCooldownTests(TestCase):
         self.assertIsNone(self.user.last_profile_update_at)
 
     def test_username_edit_obeys_cooldown_and_cannot_change_role(self):
-        first = self.client.patch('/accounts/user/', {'username': 'changed'}, format='json')
+        first = self.client.patch('/accounts/user/', {'username': 'changed', 'current_password': 'testpass123!'}, format='json')
         self.assertEqual(first.status_code, 200)
-        second = self.client.patch('/accounts/user/', {'username': 'again'}, format='json')
+        second = self.client.patch('/accounts/user/', {'username': 'again', 'current_password': 'testpass123!'}, format='json')
         self.assertEqual(second.status_code, 400)
         self.assertIn('minute', second.data['error'].lower())
         blocked = self.client.patch('/accounts/user/', {'role': 'admin'}, format='json')

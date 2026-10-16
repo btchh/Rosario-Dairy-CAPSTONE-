@@ -13,6 +13,7 @@ from inventory.models import ProductBatch
 from inventory.services.stock_check_service import _available_stock
 from ..models import Transaction, TransactionItem
 from ..serializers import TransactionSerializer
+from ..visibility import visible_transactions
 
 
 class TransactionPagination(PageNumberPagination):
@@ -54,13 +55,7 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
         queryset = super().get_queryset().select_related(
             'handled_by', 'customer'
         ).prefetch_related(Prefetch('items', queryset=items)).order_by('-created_at', '-id')
-        if self.request.user.role == 'staff':
-            queryset = queryset.exclude(
-                items__product_batch__product__category__is_visible_to_staff=False
-            ).exclude(
-                items__product_batch__product__category__is_active=False
-            )
-        return queryset
+        return visible_transactions(self.request.user.role == 'staff', queryset)
 
     @staticmethod
     def _parse_date_param(value, field_name):

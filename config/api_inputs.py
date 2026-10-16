@@ -2,6 +2,7 @@ from collections.abc import Mapping
 from functools import wraps
 
 from rest_framework import serializers
+from django.conf import settings
 
 
 def object_body(handler):
@@ -18,8 +19,24 @@ def require_item_list(value):
     """Return a JSON item list or raise a user-facing validation error."""
     if not isinstance(value, list) or not value:
         raise ValueError("'items' must be a non-empty list.")
+    if len(value) > settings.MAX_CART_ITEMS:
+        raise ValueError(f'A cart may contain at most {settings.MAX_CART_ITEMS} items.')
     if any(not isinstance(item, Mapping) for item in value):
         raise ValueError('Each item must be a JSON object.')
+    seen = set()
+    for item in value:
+        product_id = item.get('product_id')
+        if isinstance(product_id, bool) or not isinstance(product_id, (str, int)):
+            raise ValueError('Each item requires a valid product_id.')
+        try:
+            product_id = int(product_id)
+        except ValueError as exc:
+            raise ValueError('Each item requires a valid product_id.') from exc
+        if product_id <= 0 or product_id > 9223372036854775807:
+            raise ValueError('Each item requires a valid product_id.')
+        if product_id in seen:
+            raise ValueError('Combine quantities for duplicate products before submitting a cart.')
+        seen.add(product_id)
     return value
 
 

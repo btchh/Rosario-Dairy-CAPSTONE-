@@ -739,6 +739,7 @@ class PlaceOrderTests(TestCase):
         self.assertEqual(response.data['transaction']['change_due'], '50.00')
 
     def test_discount_applies_correctly_on_creation(self):
+        self.client.force_authenticate(make_user('discountadmin', role='admin'))
         response = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
             'items': [{'product_id': self.product.pk, 'quantity': '2.00'}],

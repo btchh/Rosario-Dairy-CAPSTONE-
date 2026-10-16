@@ -33,6 +33,8 @@ def checkout(cart_items, staff_user, payment_method='cash',
         raise ValueError("Discount value must be zero when discount type is none.")
     if discount_type not in ('none', 'percent', 'fixed'):
         raise ValueError(f"Invalid discount_type '{discount_type}'. Must be one of 'none', 'percent', 'fixed'.")
+    if staff_user.role != 'admin' and discount_value != Decimal('0.00'):
+        raise ValueError('Only an admin can authorize a price discount.')
 
     if amount_tendered is not None:
         amount_tendered = Decimal(str(amount_tendered))

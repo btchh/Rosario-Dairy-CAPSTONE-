@@ -18,6 +18,7 @@ from ..serializers import OrderSerializer
 from ..serializers.order_serializer import OrderListSerializer
 from ..services import SalesService
 from config.api_inputs import parse_decimal, require_item_list
+from accounts.throttles import SaleWriteRateThrottle
 
 
 class OrderPagination(PageNumberPagination):
@@ -34,6 +35,9 @@ class OrderViewSet(CachedListMixin, viewsets.ModelViewSet):
     renderer_classes = [CachedJSONRenderer, BrowsableAPIRenderer]
     data_cache_timeout = settings.HISTORY_CACHE_TIMEOUT
     http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_throttles(self):
+        return [SaleWriteRateThrottle()] if self.request.method == 'POST' else []
 
     def get_serializer_class(self):
         return OrderListSerializer if self.action == 'list' else OrderSerializer
@@ -94,15 +98,17 @@ class OrderViewSet(CachedListMixin, viewsets.ModelViewSet):
         return queryset
 
     def create(self, request, *args, **kwargs):
-        serializer = OrderSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        validated_data = cast(dict, serializer.validated_data)
-
+        if not isinstance(request.data, dict):
+            return Response({'error': 'Request body must be a JSON object.'}, status=400)
         raw_items = request.data.get('items', [])
         try:
             raw_items = require_item_list(raw_items)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=400)
+
+        serializer = OrderSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        validated_data = cast(dict, serializer.validated_data)
 
         items = []
         for index, entry in enumerate(raw_items):

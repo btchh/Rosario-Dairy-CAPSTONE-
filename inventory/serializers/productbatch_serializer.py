@@ -55,6 +55,13 @@ class ProdBatchSerializer(serializers.ModelSerializer):
     datetime (see to_date()'s docstring) if the instance was created
     without an explicit date_received and never re-fetched from the DB.
     """
+    request = self.context.get('request')
+    if request and request.user.role != 'admin' and 'unit_price' in attrs:
+      expected = self.instance.unit_price if self.instance else attrs['product'].unit_price
+      if attrs['unit_price'] != expected:
+        raise serializers.ValidationError({'unit_price': 'Only an admin can override prices.'})
+      # Staff creation always uses the current server-side product price.
+      attrs.pop('unit_price')
     if (self.instance is not None and 'product' in attrs and
         attrs['product'].pk != self.instance.product_id):
       raise serializers.ValidationError({

@@ -8,9 +8,11 @@ from ..services import SalesService
 from inventory.models import Product
 from decimal import Decimal
 from config.api_inputs import parse_decimal, require_item_list
+from accounts.throttles import SaleWriteRateThrottle
 
 class CheckoutView(viewsets.ViewSet):
     permission_classes = [IsAdmin | IsStaff]
+    throttle_classes = [SaleWriteRateThrottle]
 
     @object_body
     def create(self, request):

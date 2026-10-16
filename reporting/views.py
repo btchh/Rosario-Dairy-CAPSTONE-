@@ -9,7 +9,8 @@ from rest_framework.views import APIView
 from accounts.permissions import IsAdmin, IsStaff
 from config.data_cache import invalidate_data_cache
 from .serializers import REPORT_SERIALIZERS, ReportPreviewSerializer, ReportTypeQuerySerializer
-from .services import generate_pdf, get_report, refresh_reports
+from .services import generate_pdf, get_report, refresh_reports, report_refresh_slot
+from accounts.throttles import ExpensiveReadRateThrottle, ReportRefreshRateThrottle
 
 
 class ReportTypeMixin:
@@ -30,6 +31,7 @@ class ReportTypeMixin:
 
 class ReportPreviewView(ReportTypeMixin, APIView):
     permission_classes = [IsAdmin | IsStaff]
+    throttle_classes = [ExpensiveReadRateThrottle]
 
     def get(self, request):
         report_type = self.get_report_type(request)
@@ -46,6 +48,7 @@ class ReportPreviewView(ReportTypeMixin, APIView):
 
 class ReportPDFExportView(ReportTypeMixin, APIView):
     permission_classes = [IsAdmin | IsStaff]
+    throttle_classes = [ExpensiveReadRateThrottle]
 
     def get(self, request):
         report_type = self.get_report_type(request)
@@ -62,13 +65,15 @@ class ReportPDFExportView(ReportTypeMixin, APIView):
 
 class ReportRefreshView(APIView):
     permission_classes = [IsAdmin | IsStaff]
+    throttle_classes = [ReportRefreshRateThrottle]
 
     def post(self, request):
-        invalidate_data_cache()
         visible_to_staff = request.user.role == 'staff'
-        generated_at, refreshed = refresh_reports(visible_to_staff=visible_to_staff)
-        if not visible_to_staff:
-            refresh_reports(visible_to_staff=True)
+        with report_refresh_slot():
+            invalidate_data_cache()
+            generated_at, refreshed = refresh_reports(visible_to_staff=visible_to_staff)
+            if not visible_to_staff:
+                refresh_reports(visible_to_staff=True)
         return Response({
             'message': 'Report metrics refreshed successfully.',
             'generated_at': generated_at,

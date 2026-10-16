@@ -128,6 +128,9 @@ class ReportAPITests(TestCase):
         ):
             with self.subTest(report_type=report_type):
                 response = self.client.get(f'/api/reports/preview/?type={report_type}')
+                if report_type == 'sarima_forecast':
+                    self.assertEqual(response.status_code, 403)
+                    continue
                 self.assertEqual(response.status_code, 200, response.data)
                 self.assertEqual(response.data['report_type'], report_type)
                 self.assertIn('data', response.data)
@@ -257,7 +260,8 @@ class ReportAPITests(TestCase):
         self.client.force_authenticate(user=self.staff)
         response = self.client.post('/api/reports/refresh/', {}, format='json')
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data['report_types']), 6)
+        self.assertEqual(len(response.data['report_types']), 5)
+        self.assertNotIn('sarima_forecast', response.data['report_types'])
 
     @patch('reporting.views.refresh_reports')
     def test_admin_refreshes_admin_and_staff_cache_scopes(self, refresh_mock):

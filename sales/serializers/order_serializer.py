@@ -30,8 +30,8 @@ class OrderSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Order
-        fields = ['id', 'customer', 'customer_id', 'handled_by', 'status', 'discount_type', 'discount_value', 'transaction', 'items', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'handled_by', 'status', 'transaction', 'created_at', 'updated_at']
+        fields = ['id', 'customer', 'customer_id', 'handled_by', 'status', 'warning', 'discount_type', 'discount_value', 'transaction', 'items', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'handled_by', 'status', 'warning', 'transaction', 'created_at', 'updated_at']
 
     def validate(self, attrs):
         discount_type = attrs.get('discount_type', 'none')

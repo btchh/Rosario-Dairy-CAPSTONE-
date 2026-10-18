@@ -21,6 +21,7 @@ class Order(models.Model):
   customer = models.ForeignKey('Customer', on_delete=models.PROTECT, related_name='orders')
   handled_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='orders_handled')
   status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='fulfilled')
+  warning = models.TextField(blank=True, default='')
   discount_type = models.CharField(max_length=10, choices=DISCOUNT_CHOICES, default='none')
   discount_value = models.DecimalField(max_digits=20, decimal_places=2, default=Decimal('0.00'))
   transaction = models.OneToOneField('Transaction', on_delete=models.SET_NULL, blank=True, null=True, related_name='+')

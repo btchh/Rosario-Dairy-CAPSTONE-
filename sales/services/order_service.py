@@ -93,6 +93,10 @@ def void_fulfilled_order(order, admin_user):
         txn.save()
 
         order.status = 'cancelled'
+        order.warning = (
+            f"Stock could not be restored for the following expired/disposed batches: {', '.join(skipped_batches)}"
+            if skipped_batches else ''
+        )
         order.save()
 
     return txn, skipped_batches

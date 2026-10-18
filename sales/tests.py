@@ -898,6 +898,51 @@ class CancelOrderPermissionTests(TestCase):
         self.client.force_authenticate(user=self.admin)
         response = self.client.post(f'/sales/orders/{self.order_id}/cancel/')
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['warning'], '')
+        self.assertEqual(Order.objects.get(pk=self.order_id).warning, '')
+        listed = self.client.get('/sales/orders/').data['results']
+        self.assertEqual(listed[0]['warning'], '')
+
+    def test_cancellation_warning_survives_list_and_detail_reload(self):
+        batch = ProductBatch.objects.get(product=self.product)
+        self.client.force_authenticate(user=self.admin)
+        for reason in ('expired', 'disposed', 'past_expiration_date'):
+            with self.subTest(reason=reason):
+                batch.refresh_from_db()
+                batch.status = 'available'
+                batch.expiration_date = timezone.localdate() + timedelta(days=30)
+                batch.save()
+                order = SalesService.place_order(
+                    self.customer, [(self.product, Decimal('1.00'))], self.staff,
+                    amount_tendered=Decimal('50.00'),
+                )
+                if reason == 'past_expiration_date':
+                    batch.expiration_date = timezone.localdate() - timedelta(days=1)
+                else:
+                    batch.status = reason
+                # Update only the expiration/status so the stock sold stays deducted.
+                batch.save(update_fields=['status', 'expiration_date'])
+                remaining = ProductBatch.objects.get(pk=batch.pk).remaining_quantity
+
+                with self.captureOnCommitCallbacks(execute=True):
+                    response = self.client.post(f'/sales/orders/{order.pk}/cancel/')
+
+                self.assertEqual(response.status_code, 200)
+                warning = response.data['warning']
+                self.assertIn(batch.batch_number, warning)
+                order.refresh_from_db()
+                self.assertEqual(order.warning, warning)
+                self.assertEqual(order.status, 'cancelled')
+                batch.refresh_from_db()
+                self.assertEqual(batch.remaining_quantity, remaining)
+                detail = self.client.get(f'/sales/orders/{order.pk}/')
+                self.assertEqual(detail.data['warning'], warning)
+                listed = self.client.get('/sales/orders/').data['results']
+                self.assertEqual(next(o for o in listed if o['id'] == order.pk)['warning'], warning)
+                repeated = self.client.post(f'/sales/orders/{order.pk}/cancel/')
+                self.assertEqual(repeated.status_code, 400)
+                order.refresh_from_db()
+                self.assertEqual(order.warning, warning)
 
 
 class SalesAuditRegressionTests(TestCase):

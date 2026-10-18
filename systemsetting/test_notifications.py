@@ -1,10 +1,11 @@
 from datetime import timedelta
 from decimal import Decimal
+from unittest.mock import patch
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 from accounts.models import Users
-from inventory.models import Category, Product, ProductBatch
+from inventory.models import Category, Ingredient, IngredientBatch, Product, ProductBatch
 from sales.models import Customer
 from sales.services import SalesService
 from systemsetting.models import NotificationSettings, NotificationState
@@ -113,3 +114,62 @@ class NotificationInboxTests(TestCase):
         self.client.force_authenticate(None)
         self.assertEqual(self.client.get('/settings/inbox/').status_code,401)
         self.assertEqual(self.client.post('/settings/inbox/',{},format='json').status_code,401)
+
+    def test_expired_alerts_bulk_read_survives_a_fresh_client(self):
+        self.batch.expiration_date = timezone.localdate() - timedelta(days=1)
+        self.batch.save(update_fields=['expiration_date'])
+        ingredient = Ingredient.objects.create(name='Cream', unit='liter', unit_price=20, shelf_life=7)
+        batch = IngredientBatch.objects.create(
+            ingredient=ingredient, batch_number='EXPIRED-CREAM', initial_quantity=3,
+            remaining_quantity=3, expiration_date=self.batch.expiration_date, status='expired',
+        )
+        expected = {f'expiry-product-{self.batch.pk}', f'expiry-ingredient-{batch.pk}'}
+        rows = self.feed()
+        self.assertEqual({row['id'] for row in rows if row['id'].startswith('expiry-')}, expected)
+        self.assertEqual(self.act('read', rows).status_code, 200)
+        self.batch.status = 'expired'
+        self.batch.save(update_fields=['status'])
+        fresh = APIClient()
+        fresh.force_authenticate(self.admin)
+        refreshed = fresh.get('/settings/inbox/').data
+        self.assertTrue(all(not row['unread'] for row in refreshed))
+        self.assertEqual({row['id']: row['revision'] for row in rows},
+                         {row['id']: row['revision'] for row in refreshed})
+        self.client.force_authenticate(self.staff)
+        self.assertTrue(all(row['unread'] for row in self.feed()))
+        settings = NotificationSettings.get_config()
+        settings.near_expiry_alerts = False
+        settings.save(update_fields=['near_expiry_alerts'])
+        self.assertFalse(any(row['id'].startswith('expiry-') for row in self.feed()))
+
+    def test_expired_alert_dismiss_restore_and_inventory_filters(self):
+        self.batch.expiration_date = timezone.localdate() - timedelta(days=1)
+        self.batch.status = 'expired'
+        self.batch.save(update_fields=['expiration_date', 'status'])
+        key = f'expiry-product-{self.batch.pk}'
+        row = next(row for row in self.feed() if row['id'] == key)
+        self.assertEqual(self.act('dismiss', [row]).status_code, 200)
+        refreshed = next(row for row in self.feed() if row['id'] == key)
+        self.assertTrue(refreshed['dismissed'])
+        self.assertFalse(refreshed['unread'])
+        self.assertEqual(self.act('restore', [row]).status_code, 200)
+        self.assertFalse(next(row for row in self.feed() if row['id'] == key)['dismissed'])
+        self.category.is_visible_to_staff = False
+        self.category.save(update_fields=['is_visible_to_staff'])
+        self.client.force_authenticate(self.staff)
+        self.assertNotIn(key, [row['id'] for row in self.feed()])
+        self.client.force_authenticate(self.admin)
+        for status, quantity in [('disposed', 5), ('depleted', 5), ('available', 0)]:
+            self.batch.status = status
+            self.batch.remaining_quantity = quantity
+            self.batch.save(update_fields=['status', 'remaining_quantity'])
+            self.assertNotIn(key, [row['id'] for row in self.feed()])
+
+    def test_newly_expired_batch_has_a_new_revision(self):
+        row = next(row for row in self.feed() if row['id'] == f'expiry-product-{self.batch.pk}')
+        self.assertEqual(self.act('read', [row]).status_code, 200)
+        with patch('django.utils.timezone.localdate', return_value=self.batch.expiration_date + timedelta(days=1)):
+            expired = next(item for item in self.feed() if item['id'] == row['id'])
+            self.assertNotEqual(expired['revision'], row['revision'])
+            self.assertTrue(expired['unread'])
+            self.assertEqual(self.act('read', [row]).status_code, 409)

@@ -3,7 +3,7 @@ from hashlib import sha256
 import json
 from django.utils import timezone
 from inventory.services.batch_service import BatchService
-from inventory.models import FEFOConf
+from inventory.models import FEFOConf, IngredientBatch, ProductBatch
 from sales.models import Order
 from .models import NotificationSettings, NotificationState
 
@@ -28,6 +28,32 @@ def live_notifications(user):
                 source = sorted((row[entity].pk, str(row['remaining_quantity']), threshold) for row in rows)
                 add(f'low-stock-{kind}', 'warning', 'Low Stock Alert', f'{len(rows)} {kind} below minimum stock', source)
     if settings.near_expiry_alerts:
+        today = timezone.localdate()
+        # The inventory expiry checks cover only today and future dates. Keep
+        # expired stock in the inbox too so clients can persist acknowledgements
+        # using the same batch IDs instead of creating temporary local alerts.
+        expired_products = ProductBatch.objects.filter(
+            status__in=['available', 'expired'], expiration_date__lt=today,
+            remaining_quantity__gt=0,
+        ).select_related('product')
+        if visible:
+            expired_products = expired_products.filter(
+                product__is_active=True, product__category__is_active=True,
+                product__category__is_visible_to_staff=True,
+            )
+        expired_ingredients = IngredientBatch.objects.filter(
+            status__in=['available', 'expired'], expiration_date__lt=today,
+            remaining_quantity__gt=0,
+        ).select_related('ingredient')
+        for kind, rows, entity in (
+            ('product', expired_products, 'product'),
+            ('ingredient', expired_ingredients, 'ingredient'),
+        ):
+            for batch in rows:
+                item = getattr(batch, entity)
+                add(f'expiry-{kind}-{batch.pk}', 'danger', 'EXPIRED • Action Required',
+                    f'{item.name} (batch {batch.batch_number}) expired on {batch.expiration_date}',
+                    [batch.pk, batch.expiration_date, 'expired'])
         for kind, rows, entity, title in (
             ('product', BatchService.check_product_expiration(visible_to_staff=visible), 'product', 'Product Expiry Warning'),
             ('ingredient', BatchService.check_ingredient_expiration().select_related('ingredient'), 'ingredient', 'Ingredient Expiry Warning'),

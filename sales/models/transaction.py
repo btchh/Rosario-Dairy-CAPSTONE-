@@ -32,6 +32,9 @@ class Transaction(models.Model):
   amount_tendered = models.DecimalField(max_digits=20, decimal_places=2, null=True, blank=True)
   change_due = models.DecimalField(max_digits=20, decimal_places=2, null=True, blank=True)
   payment_method = models.CharField(max_length=20, choices=PAYMENT_CHOICES, default='cash')
+  payment_status = models.CharField(max_length=10, choices=[('pending', 'Pending'), ('paid', 'Paid'), ('unknown', 'Not recorded')], default='unknown')
+  payment_updated_at = models.DateTimeField(null=True, editable=False)
+  payment_updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, editable=False, related_name='+')
   delivery_status = models.CharField(max_length=50, blank=True, null=True)
   is_voided = models.BooleanField(default=False)
   source_reference = models.CharField(max_length=100, unique=True, null=True, blank=True)
@@ -39,6 +42,11 @@ class Transaction(models.Model):
   source_customer_label = models.CharField(max_length=255, blank=True)
   source_note = models.TextField(blank=True)
   created_at = models.DateTimeField(auto_now_add=True)
+  # created_at is the effective sales date used throughout reports/history.
+  # encoded_at preserves the actual entry time for manually backdated sales.
+  encoded_at = models.DateTimeField(null=True, editable=False)
+  encoding_request_id = models.UUIDField(null=True, unique=True, editable=False)
+  encoding_payload_hash = models.CharField(max_length=64, blank=True, editable=False)
 
   class Meta:
     indexes = [

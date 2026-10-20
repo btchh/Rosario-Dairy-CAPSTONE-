@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     CustomerViewSet, OrderViewSet, CheckoutView,
     RevenueReportView, BestSellersReportView, SalesByCategoryReportView,
-    TransactionViewSet,
+    TransactionViewSet, EncodingViewSet,
 )
 
 router = DefaultRouter()
@@ -11,6 +11,7 @@ router.register('customers', CustomerViewSet)
 router.register('orders', OrderViewSet)
 router.register('checkout', CheckoutView, basename='checkout')
 router.register('transactions', TransactionViewSet, basename='transaction')
+router.register('encoding', EncodingViewSet, basename='encoding')
 
 urlpatterns = router.urls + [
   path('reports/revenue/', RevenueReportView.as_view(), name='revenue-report'),

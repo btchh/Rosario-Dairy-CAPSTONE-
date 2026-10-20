@@ -9,6 +9,7 @@ from accounts.permissions import IsAdmin, IsStaff
 from decimal import Decimal
 from django.db.models import Q
 from config.api_inputs import parse_decimal
+from rest_framework import serializers
 
 class StockAdjustmentViewSet(CachedListMixin, viewsets.ModelViewSet):
     queryset = StockAdjustment.objects.all()
@@ -17,7 +18,10 @@ class StockAdjustmentViewSet(CachedListMixin, viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'head', 'options']
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = super().get_queryset().select_related(
+            'adjusted_by', 'product_batch__product__category', 'ingredient_batch__ingredient',
+            'ingredient_batch__supplier',
+        ).order_by('-created_at', '-id')
         if self.request.user.role == 'staff':
             qs = qs.filter(
                 Q(product_batch__isnull=True) |
@@ -25,6 +29,22 @@ class StockAdjustmentViewSet(CachedListMixin, viewsets.ModelViewSet):
                   product_batch__product__category__is_active=True,
                   product_batch__product__category__is_visible_to_staff=True)
             )
+        adjustment_type = self.request.query_params.get('adjustment_type')
+        if adjustment_type:
+            if adjustment_type not in dict(StockAdjustment.ADJUSTMENT_TYPES):
+                raise serializers.ValidationError({'adjustment_type': 'Invalid adjustment_type.'})
+            qs = qs.filter(adjustment_type=adjustment_type)
+        dates = {}
+        for field in ('start_date', 'end_date'):
+            value = self.request.query_params.get(field)
+            if value:
+                dates[field] = serializers.DateField(input_formats=['%Y-%m-%d']).run_validation(value)
+        if dates.get('start_date') and dates.get('end_date') and dates['start_date'] > dates['end_date']:
+            raise serializers.ValidationError({'start_date': 'start_date cannot be after end_date.'})
+        if 'start_date' in dates:
+            qs = qs.filter(created_at__date__gte=dates['start_date'])
+        if 'end_date' in dates:
+            qs = qs.filter(created_at__date__lte=dates['end_date'])
         return qs
     
     @object_body

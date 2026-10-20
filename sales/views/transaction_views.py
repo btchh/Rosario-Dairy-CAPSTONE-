@@ -46,6 +46,7 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
       start_date=YYYY-MM-DD
       end_date=YYYY-MM-DD
       payment_method=cash|online
+      payment_status=pending|paid|unknown
       handled_by=<user id>
       customer_id=<customer id>
       include_voided=true   (defaults to false — voided sales hidden by default)
@@ -104,6 +105,12 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             queryset = queryset.filter(payment_method=payment_method)
+
+        payment_status = params.get('payment_status')
+        if payment_status:
+            if payment_status not in ('pending', 'paid', 'unknown'):
+                return Response({'error': 'payment_status must be pending, paid, or unknown.'}, status=400)
+            queryset = queryset.filter(payment_status=payment_status)
 
         handled_by = params.get('handled_by')
         if handled_by:

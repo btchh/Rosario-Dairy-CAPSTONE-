@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.utils import timezone
 from ..models import Transaction, TransactionItem
 from inventory.serializers import ProdBatchSerializer
 from accounts.serializers import UserSerializer
@@ -40,10 +41,18 @@ class TransactionItemSerializer(serializers.ModelSerializer):
 
 class TransactionNumberMixin(serializers.Serializer):
     transaction_number = serializers.SerializerMethodField()
+    transaction_date = serializers.SerializerMethodField()
+    is_manually_encoded = serializers.SerializerMethodField()
 
     def get_transaction_number(self, instance):
         # Preserve recorded invoice formatting; missing numbers must not be fabricated.
         return instance.source_invoice_number or None
+
+    def get_transaction_date(self, instance):
+        return timezone.localtime(instance.created_at).date().isoformat() if instance.created_at else None
+
+    def get_is_manually_encoded(self, instance):
+        return instance.encoded_at is not None
 
 
 class TransactionSerializer(TransactionNumberMixin, serializers.ModelSerializer):
@@ -53,5 +62,5 @@ class TransactionSerializer(TransactionNumberMixin, serializers.ModelSerializer)
 
     class Meta:
         model = Transaction
-        fields = ['id', 'transaction_number', 'handled_by', 'customer', 'subtotal', 'discount_type', 'discount_value', 'discount_amount', 'total_amount', 'amount_tendered', 'change_due', 'payment_method', 'delivery_status', 'is_voided', 'items', 'created_at', 'source_reference', 'source_invoice_number', 'source_customer_label', 'source_note']
-        read_only_fields = ['id', 'handled_by', 'subtotal', 'discount_type', 'discount_value', 'discount_amount', 'total_amount', 'change_due', 'delivery_status', 'is_voided', 'items', 'created_at']
+        fields = ['id', 'transaction_number', 'transaction_date', 'is_manually_encoded', 'encoded_at', 'encoding_request_id', 'handled_by', 'customer', 'subtotal', 'discount_type', 'discount_value', 'discount_amount', 'total_amount', 'amount_tendered', 'change_due', 'payment_method', 'payment_status', 'payment_updated_at', 'payment_updated_by', 'delivery_status', 'is_voided', 'items', 'created_at', 'source_reference', 'source_invoice_number', 'source_customer_label', 'source_note']
+        read_only_fields = ['id', 'handled_by', 'subtotal', 'discount_type', 'discount_value', 'discount_amount', 'total_amount', 'change_due', 'delivery_status', 'is_voided', 'items', 'created_at', 'encoded_at', 'encoding_request_id', 'payment_status', 'payment_updated_at', 'payment_updated_by']

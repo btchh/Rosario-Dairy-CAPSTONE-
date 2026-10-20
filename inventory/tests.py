@@ -1,39 +1,72 @@
-"""
-Tests for inventory app — covers the bug fixes made in the Round 3 audit session,
-Round 6 (quantity/price validation, BatchSequence race fix, batch_number
-uniqueness), and Round 7 (expired batches excluded from FEFO deduction).
+"""Inventory tests: catalog, batches, FEFO, adjustments, visibility and outflow records.
 
-Run with: python manage.py test inventory
-
-NOTE on concurrency: standard Django TestCase runs on a single connection, so it
-cannot exercise real select_for_update() row-locking the way two concurrent
-requests would in production against Postgres. Most tests below verify the
-*logic* each fix depends on (correct validation, correct math, correct
-rejection of bad states) rather than the locking itself. The one exception is
-BatchSequenceConcurrencyTests, which uses TransactionTestCase + threading +
-the real Postgres connection to actually exercise the row lock — that's the
-one place true concurrency is worth the extra weight, since it's the whole
-point of the BatchSequence redesign.
+Run all app tests: python manage.py test inventory
+Run one class: python manage.py test inventory.tests.<TestClass>
+PostgreSQL is required for the concurrency and database-locking checks.
 """
+
 import threading
 from datetime import date, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import patch
-from django.db import IntegrityError, transaction
-from django.db import connections
-from django.test import TestCase, TransactionTestCase
+
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.db import IntegrityError, connections, transaction
+from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
-from inventory.models import (
-    Category, Product, ProductBatch, Ingredient, IngredientBatch,
-    Supplier, StockAdjustment, StockCount, BatchSequence, FEFOConf,
-)
-from inventory.services.batch_service import BatchService
-from inventory.services.batch_sequence_service import next_sequence
 from rest_framework.test import APIClient
+
+from config.data_cache import data_version
+from forecasting.data import source
+from inventory.models import (
+    BatchSequence,
+    Category,
+    FEFOConf,
+    Ingredient,
+    IngredientBatch,
+    Product,
+    ProductBatch,
+    StockAdjustment,
+    StockCount,
+    Supplier,
+)
+from inventory.serializers import (
+    IngBatchSerializer,
+    IngredientSerializer,
+    ProdBatchSerializer,
+    ProductSerializer,
+)
+from inventory.services.batch_sequence_service import next_sequence
+from inventory.services.batch_service import BatchService
+from inventory.views.ingredient_views import IngredientViewSet
+from inventory.views.ingredientbatch_views import IngredientBatchViewSet
+from inventory.views.product_views import ProductViewSet
+from inventory.views.productbatch_views import ProductBatchViewSet
+from sales.models import Order, Transaction
+from sales.models import Customer, OrderItem, TransactionItem
+from inventory.services.product_consolidation import (
+    consolidation_plan, consolidate_products, product_name_key,
+)
+
 
 User = get_user_model()
 
+
+def make_user(username='staffuser', role='staff'):
+    return User.objects.create_user( # type: ignore
+        username=username,
+        password='testpass123!',
+        email=f'{username}@example.com',
+        role=role,
+        first_name='Test',
+        last_name='User',
+    )
+
+
+# Core application behavior
+# ----------------------------------------------------------------------------
 
 class ConditionalDeleteAPITests(TestCase):
     def setUp(self):
@@ -279,17 +312,6 @@ class StaffCategoryVisibilityAPITests(TestCase):
         self.assertEqual(count.status_code, 400)
         batch.refresh_from_db()
         self.assertEqual(batch.remaining_quantity, Decimal('5.00'))
-
-
-def make_user(username='staffuser', role='staff'):
-    return User.objects.create_user( # type: ignore
-        username=username,
-        password='testpass123!',
-        email=f'{username}@example.com',
-        role=role,
-        first_name='Test',
-        last_name='User',
-    )
 
 
 class StockAlertQueryTests(TestCase):
@@ -743,11 +765,6 @@ class DeductBatchTests(TestCase):
             BatchService.deduct_product_batch(self.product, Decimal('0.00'))
 
 
-# ---------------------------------------------------------------------------
-# Round 6: quantity/price validation on batch serializers, BatchSequence
-# race-condition fix, batch_number uniqueness constraint
-# ---------------------------------------------------------------------------
-
 class BatchQuantityPriceValidationTests(TestCase):
     """
     Covers: ProdBatchSerializer/IngBatchSerializer used to accept quantity <= 0
@@ -1115,10 +1132,6 @@ class BatchNumberUniquenessTests(TestCase):
         self.assertEqual(IngredientBatch.objects.filter(batch_number='SHARED-001').count(), 1)
 
 
-# ---------------------------------------------------------------------------
-# Round 7: expired batches excluded from FEFO deduction
-# ---------------------------------------------------------------------------
-
 class ExpiredBatchExclusionTests(TestCase):
     """
     Covers: deduct_product_batch()/deduct_ingredient_batch() previously
@@ -1237,10 +1250,6 @@ class ExpiredBatchExclusionTests(TestCase):
         with self.assertRaises(ValueError):
             BatchService.deduct_ingredient_batch(self.ingredient, Decimal('10.00'))
 
-# ---------------------------------------------------------------------------
-# Round 8: status locked to audited transitions only, expiration_date must
-# not precede date_received
-# ---------------------------------------------------------------------------
 
 class BatchStatusReadOnlyTests(TestCase):
     """
@@ -1673,3 +1682,287 @@ class CategoryIconAPITests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual([item['value'] for item in response.data],
                          ['', *[value for value, _ in Category.ICON_CHOICES]])
+
+
+# Catalog query performance
+# ----------------------------------------------------------------------------
+
+class CatalogQueryTests(TestCase):
+    def setUp(self):
+        FEFOConf.get_config()
+
+    def test_ingredient_catalog_and_nested_batches_use_bounded_queries(self):
+        for i in range(12):
+            ingredient = Ingredient.objects.create(
+                name=f'Ingredient {i}', unit='liter', unit_price=20, shelf_life=7,
+            )
+            for offset, quantity in [(2, 10), (-1, 5)]:
+                IngredientBatch.objects.create(
+                    ingredient=ingredient, batch_number=f'ING-{i}-{offset}',
+                    initial_quantity=quantity, remaining_quantity=quantity,
+                    expiration_date=timezone.localdate() + timedelta(days=offset),
+                )
+        for view_type, serializer, nested, queries in [
+            (IngredientViewSet, IngredientSerializer, False, 1),
+            (IngredientBatchViewSet, IngBatchSerializer, True, 2),
+        ]:
+            view = view_type()
+            view.action = 'list'
+            view.request = SimpleNamespace(query_params={})
+            with self.assertNumQueries(queries + 1):
+                data = serializer(view.get_queryset(), many=True).data
+            self.assertEqual(len(data), 24 if nested else 12)
+            self.assertTrue(all(
+                Decimal(str((row['ingredient'] if nested else row)['total_stock'])) == 10
+                for row in data
+            ))
+
+    def test_catalog_and_nested_batches_use_bounded_queries_and_exclude_expired_stock(self):
+        category=Category.objects.create(name='Milk')
+        for i in range(12):
+            product=Product.objects.create(name=f'Milk {i}',category=category,unit='liter',shelf_life=7)
+            for offset,qty in [(2,10),(-1,5)]:
+                ProductBatch.objects.create(product=product,batch_number=f'{i}-{offset}',
+                    initial_quantity=qty,remaining_quantity=qty,status='available',
+                    expiration_date=timezone.localdate()+timedelta(days=offset))
+        for view_type,serializer,nested in [(ProductViewSet,ProductSerializer,False),(ProductBatchViewSet,ProdBatchSerializer,True)]:
+            view=view_type();view.action='list'
+            view.request=SimpleNamespace(user=SimpleNamespace(role='admin'),query_params={})
+            with self.assertNumQueries(3):
+                data=serializer(view.get_queryset(),many=True).data
+            self.assertEqual(len(data),24 if nested else 12)
+            self.assertTrue(all(Decimal(str((r['product'] if nested else r)['total_stock']))==10 for r in data))
+
+        from inventory.services.stock_check_service import check_product_expiration
+        FEFOConf.get_config()
+        with self.assertNumQueries(4):
+            data=ProdBatchSerializer(check_product_expiration(),many=True).data
+        self.assertEqual(len(data),12)
+        self.assertTrue(all(Decimal(str(r['product']['total_stock']))==10 for r in data))
+
+
+# Spoilage, complimentary items and free taste
+# ----------------------------------------------------------------------------
+
+class InventoryOutflowTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = make_user('outflowstaff')
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        self.category = Category.objects.create(name='Outflow Dairy')
+        self.product = Product.objects.create(category=self.category, name='Milk', unit='liter', shelf_life=7)
+        self.batch = ProductBatch.objects.create(product=self.product, batch_number='OUTFLOW-STOCK',
+            initial_quantity=10, remaining_quantity=10, unit_price=25,
+            expiration_date=timezone.localdate() + timedelta(days=7))
+        self.url = '/inventory/stock-adjustments/'
+
+    def record(self, kind, **extra):
+        return self.client.post(self.url, {'product_batch_id': self.batch.pk,
+            'adjustment_type': kind, 'quantity': '2.00', 'unit_cost': '25.00',
+            'reason': 'Inventory usage record', **extra}, format='json')
+
+    def test_spoilage_complimentary_and_free_taste_are_distinct_inventory_records(self):
+        signature = source()[1]
+        version = data_version()
+        for kind in ('spoilage', 'complimentary', 'free_taste'):
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.record(kind)
+            self.assertEqual(response.status_code, 201, response.data)
+            self.assertEqual(response.data['adjustment_type'], kind)
+            self.assertEqual(response.data['quantity'], '2.00')
+            self.assertEqual(response.data['unit_cost'], '25.00')
+            self.assertEqual(response.data['adjusted_by']['id'], self.user.pk)
+            self.assertEqual(response.data['reason'], 'Inventory usage record')
+            self.assertTrue(response.data['created_at'])
+        self.batch.refresh_from_db()
+        self.assertEqual(self.batch.remaining_quantity, Decimal('4'))
+        self.assertEqual(Decimal(str(ProductSerializer(self.product).data['total_stock'])), Decimal('4'))
+        self.assertNotEqual(data_version(), version)
+        self.assertEqual(StockAdjustment.objects.count(), 3)
+        self.assertFalse(Transaction.objects.exists())
+        self.assertFalse(Order.objects.exists())
+        self.assertEqual(source()[1], signature)
+
+    def test_complimentary_and_free_taste_deplete_stock_and_spoilage_disposes_it(self):
+        for kind, expected in (('complimentary', 'depleted'), ('free_taste', 'depleted'), ('spoilage', 'disposed')):
+            self.batch.remaining_quantity = 10
+            self.batch.status = 'available'
+            self.batch.save()
+            response = self.record(kind, quantity='10')
+            self.assertEqual(response.status_code, 201, response.data)
+            self.batch.refresh_from_db()
+            self.assertEqual(self.batch.remaining_quantity, 0)
+            self.assertEqual(self.batch.status, expected)
+
+    def test_ingredient_batches_use_the_same_outflow_records(self):
+        ingredient = Ingredient.objects.create(name='Raw Milk', unit='L', unit_price=20, shelf_life=7)
+        batch = IngredientBatch.objects.create(ingredient=ingredient, batch_number='OUTFLOW-INGREDIENT',
+            initial_quantity=10, remaining_quantity=10, unit_price=20,
+            expiration_date=timezone.localdate() + timedelta(days=7))
+        response = self.record('free_taste', product_batch_id=None, ingredient_batch_id=batch.pk, unit_cost='20')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertIsNone(response.data['product_batch'])
+        self.assertEqual(response.data['ingredient_batch']['id'], batch.pk)
+        batch.refresh_from_db()
+        self.assertEqual(batch.remaining_quantity, 8)
+
+    def test_invalid_quantities_costs_and_insufficient_stock_leave_no_records(self):
+        for values in ({'quantity':'0'}, {'quantity':'-1'}, {'quantity':'11'},
+                       {'quantity':'NaN'}, {'quantity':'1.001'}, {'unit_cost':'-1'}):
+            response = self.record('complimentary', **values)
+            self.assertEqual(response.status_code, 400, response.data)
+        self.batch.refresh_from_db()
+        self.assertEqual(self.batch.remaining_quantity, 10)
+        self.assertFalse(StockAdjustment.objects.exists())
+
+    def test_free_items_cannot_come_from_expired_or_disposed_stock(self):
+        for status, expired in (('expired', False), ('disposed', False), ('available', True)):
+            self.batch.status = status
+            self.batch.expiration_date = timezone.localdate() + timedelta(days=-1 if expired else 7)
+            self.batch.save()
+            for kind in ('complimentary', 'free_taste'):
+                self.assertEqual(self.record(kind).status_code, 400)
+        self.assertFalse(StockAdjustment.objects.exists())
+        self.batch.refresh_from_db()
+        self.assertEqual(self.batch.remaining_quantity, 10)
+
+    def test_filters_and_legacy_taste_test_rejection_remain_separate(self):
+        for kind in ('spoilage', 'complimentary', 'free_taste', 'taste_test'):
+            self.assertEqual(self.record(kind, quantity='1').status_code, 201)
+        for kind in ('spoilage', 'complimentary', 'free_taste', 'taste_test'):
+            response = self.client.get(self.url, {'adjustment_type':kind,
+                'start_date':str(timezone.localdate()), 'end_date':str(timezone.localdate())})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(len(response.data), 1)
+            self.assertEqual(response.data[0]['adjustment_type'], kind)
+        for query in ({'adjustment_type':'invalid'}, {'start_date':'bad-date'},
+                      {'start_date':'2026-10-02','end_date':'2026-10-01'}):
+            self.assertEqual(self.client.get(self.url, query).status_code, 400)
+
+    def test_visibility_and_authentication_apply_to_inventory_outflows(self):
+        self.assertEqual(self.record('complimentary').status_code, 201)
+        self.category.is_visible_to_staff = False
+        self.category.save()
+        self.assertEqual(self.record('free_taste').status_code, 400)
+        self.assertEqual(self.client.get(self.url).data, [])
+        self.client.force_authenticate(user=None)
+        self.assertIn(self.record('free_taste').status_code, (401,403))
+
+    def test_recorded_outflows_cannot_be_edited_or_deleted(self):
+        response = self.record('complimentary')
+        row_url = f'{self.url}{response.data["id"]}/'
+        self.assertEqual(self.client.patch(row_url, {'quantity':'1'}, format='json').status_code, 405)
+        self.assertEqual(self.client.delete(row_url).status_code, 405)
+
+    def test_unknown_adjustment_type_is_rejected_in_the_service_too(self):
+        with self.assertRaisesRegex(ValueError, 'Invalid adjustment_type'):
+            BatchService.create_stock_adjustment('invalid', Decimal('1'), Decimal('25'), self.user, product_batch=self.batch)
+
+
+class ProductConsolidationTests(TestCase):
+    def setUp(self):
+        self.category = Category.objects.create(name='Dairy')
+        self.original = self.product('BB300')
+        self.duplicate = self.product('BB 300')
+
+    def product(self, name, **overrides):
+        fields = dict(name=name, category=self.category, unit='unit', shelf_life=7)
+        fields.update(overrides)
+        return Product.objects.create(**fields)
+
+    def test_formatting_only_equivalence_preserves_meaningful_punctuation(self):
+        self.assertEqual(product_name_key('FML (Pouch)'), product_name_key('fml pouch'))
+        self.assertNotEqual(product_name_key('WC1.60kg'), product_name_key('WC160kg'))
+        self.assertNotEqual(product_name_key('TM-CML'), product_name_key('TMCML'))
+
+    def test_sizes_variants_units_and_pouch_remain_separate(self):
+        others = [self.product('BB200'), self.product('BB300', variant='chocolate'),
+                  self.product('BB300', unit='box'), self.product('BB300 Pouch')]
+        consolidate_products()
+        self.assertEqual(set(Product.objects.values_list('pk', flat=True)),
+                         {self.original.pk, *(p.pk for p in others)})
+        self.assertFalse(consolidation_plan())
+
+    def test_moves_stock_orders_and_report_snapshots_without_changing_money(self):
+        user = make_user('consolidation', role='admin')
+        customer = Customer.objects.create(name='Customer', created_by=user)
+        sale = Transaction.objects.create(handled_by=user, customer=customer, total_amount='17.00')
+        order = Order.objects.create(customer=customer, handled_by=user, transaction=sale)
+        batch = ProductBatch.objects.create(product=self.duplicate, batch_number='MERGE-1',
+            initial_quantity='12', remaining_quantity='10', unit_price='5.00',
+            expiration_date=timezone.localdate() + timedelta(days=7))
+        item = OrderItem.objects.create(order=order, product=self.duplicate, quantity='2',
+            unit_price='10', subtotal='20', discount_type='fixed', discount_value='3',
+            discount_amount='3', total_amount='17')
+        line = TransactionItem.objects.create(transaction=sale, product_batch=batch,
+            quantity='2', unit_price='10', subtotal='20', discount_type='fixed',
+            discount_value='3', discount_amount='3', total_amount='17',
+            product_id_snapshot=self.duplicate.pk, product_name_snapshot=self.duplicate.name)
+        with self.captureOnCommitCallbacks(execute=True):
+            consolidate_products()
+        for obj in (sale, batch, item, line):
+            obj.refresh_from_db()
+        self.assertFalse(Product.objects.filter(pk=self.duplicate.pk).exists())
+        self.assertEqual(batch.product_id, self.original.pk)
+        self.assertEqual(batch.remaining_quantity, 10)
+        self.assertEqual(batch.initial_quantity, 12)
+        self.assertEqual(batch.unit_price, 5)
+        self.assertEqual(item.product_id, self.original.pk)
+        self.assertEqual(line.product_batch_id, batch.pk)
+        self.assertEqual(line.product_id_snapshot, self.original.pk)
+        self.assertEqual(line.product_name_snapshot, 'BB300')
+        self.assertEqual(line.source_product_label, 'BB 300')
+        for row in (line, item):
+            self.assertEqual(row.quantity, 2)
+            self.assertEqual(row.unit_price, 10)
+            self.assertEqual(row.discount_amount, 3)
+            self.assertEqual(row.total_amount, 17)
+        self.assertEqual(sale.total_amount, 17)
+        self.assertEqual(consolidate_products(), [])
+
+    def test_cross_category_duplicates_keep_oldest_category_and_active_availability(self):
+        other = Category.objects.create(name='Other')
+        self.duplicate.category = other
+        self.duplicate.save()
+        self.original.is_active = False
+        self.original.save()
+        consolidate_products()
+        self.original.refresh_from_db()
+        self.assertEqual(self.original.category_id, self.category.pk)
+        self.assertTrue(self.original.is_active)
+
+    def test_failure_rolls_back_every_merge(self):
+        batch = ProductBatch.objects.create(product=self.duplicate, batch_number='MERGE-ROLLBACK',
+            initial_quantity=5, remaining_quantity=5, expiration_date=timezone.localdate())
+        # Order reassignment follows the batch move; a later failure must undo it.
+        with patch.object(OrderItem.objects, 'filter', side_effect=RuntimeError('interrupted')):
+            with self.assertRaises(RuntimeError):
+                consolidate_products()
+        self.assertEqual(Product.objects.count(), 2)
+        batch.refresh_from_db()
+        self.assertEqual(batch.product_id, self.duplicate.pk)
+        self.assertEqual(batch.remaining_quantity, 5)
+
+    def test_api_rejects_duplicate_names_but_accepts_different_size(self):
+        consolidate_products()
+        fields = {'name': 'bb 300', 'unit': 'unit', 'category_id': self.category.pk, 'shelf_life': 7}
+        serializer = ProductSerializer(data=fields)
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('name', serializer.errors)
+        fields['name'] = 'BB200'
+        self.assertTrue(ProductSerializer(data=fields).is_valid())
+        serializer = ProductSerializer(self.original, data={'name':'Bb 300'}, partial=True)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
+    def test_original_import_label_is_preserved(self):
+        user = make_user('mergeimport', role='admin')
+        sale = Transaction.objects.create(handled_by=user)
+        batch = ProductBatch.objects.create(product=self.duplicate, batch_number='MERGE-2',
+            initial_quantity=0, remaining_quantity=0, expiration_date=timezone.localdate())
+        line = TransactionItem.objects.create(transaction=sale, product_batch=batch, quantity=1,
+            unit_price=10, source_product_label='Spreadsheet original label',
+            product_id_snapshot=self.duplicate.pk, product_name_snapshot='BB 300')
+        consolidate_products()
+        line.refresh_from_db()
+        self.assertEqual(line.source_product_label, 'Spreadsheet original label')

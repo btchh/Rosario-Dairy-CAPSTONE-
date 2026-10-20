@@ -2,8 +2,46 @@
 
 Updated: October 20, 2026 (Asia/Manila).
 
-The backend changes below are implemented. Frontend source files were left
-unchanged. This document excludes database cleanup.
+The backend changes below are implemented. Frontend changes are limited to
+recorded SI-number display and internal sales-table keys; the other frontend
+integration work remains. This document excludes database cleanup.
+
+## Inventory records: spoilage, complimentary items and free taste
+
+Use `POST /inventory/stock-adjustments/` to record stock leaving a batch without
+a sale. Spoilage already exists; `complimentary` and `free_taste` are new types.
+Keep `taste_test` for its original meaning, Taste Test Rejection.
+
+The inventory form needs adjustment type, selected product/ingredient batch,
+quantity, inventory unit cost and optional notes. Staff member and recording
+time are filled by the backend. Add the new types to inventory history and
+support `adjustment_type`, `start_date` and `end_date` filters.
+
+These records reduce inventory and update stock totals/alerts. They do not
+create sales/orders or add revenue to reports/forecasting. See
+[Inventory outflows API](inventory/OUTFLOWS_API.md) for the payload and validation
+rules. Apply `inventory/0011_alter_stockadjustment_adjustment_type`.
+
+## New: staff Encoding module
+
+See [Staff encoding API](sales/ENCODING_API.md) for the new backend module:
+`POST /sales/encoding/`, `GET /sales/encoding/`, and
+`GET /sales/encoding/{transaction_id}/`.
+
+Staff/admin users can enter a custom sales date, customer, SI number and manual
+item prices/quantities. Per the client's choice, encoding past sales deducts
+**current stock** through FEFO. Selected customers receive a linked fulfilled
+order. These are normal shared transactions, included in customer/sales history,
+reports and forecasting input under the selected sales date. `encoded_at`
+separately records actual entry time. Existing discount permissions remain.
+
+Add the staff navigation/page and a date picker, retain a UUID `request_id` for
+safe retries, and extend frontend cache invalidation to recognize
+`/sales/encoding/`. Detailed field, retry and integration rules are in the linked
+API document. Apply migration `sales/0012_transaction_encoded_at_and_more`.
+Encoding now also supports Paid/Pending status and
+`PATCH /sales/encoding/{transaction_id}/payment/`; apply
+`sales/0013_transaction_payment_status_and_more` for payment tracking.
 
 ## Completed and pending work
 
@@ -13,9 +51,10 @@ unchanged. This document excludes database cleanup.
 | Manual price and quantity encoding | Each item requires an entered selling price on every sale/order request. |
 | Per-product discounts | Percentage and fixed discounts implemented per encoded line. |
 | Customer transaction history | Customer-specific, paginated endpoint implemented. Wire customer selection to it. |
-| SI number | Recorded SI number exposed as `transaction_number`. Add the frontend column/display. |
+| SI number | Backend and frontend use the recorded SI number. Missing numbers display “Not recorded”; sales table keys use the numeric transaction ID. |
 | “Make total amount editable/remove amount” | Client confirmed this requirement is completed. Current APIs calculate totals from entered item prices, quantities and discounts; there is no arbitrary total override. |
-| Pending payment status | Still pending backend work. No payment-status field or update endpoint exists yet. |
+| Pending payment status | Encoding defaults to Pending and staff/admins can update Paid/Pending through the payment endpoint. Frontend controls and badges still need integration. |
+| Spoilage, complimentary and free-taste records | Inventory API supports all three as separate stock-adjustment reasons. Add frontend form/history controls. |
 | Session-expired notification on logout | Cause reproduced; frontend fix still needed. See below. |
 
 ## 1. Products no longer have a selling price
@@ -177,18 +216,39 @@ recorded invoice exactly as stored, for example `SI0608`.
 - Available on checkout responses, transaction history/details, customer history,
   and transactions nested in order list/detail responses.
 - Missing recorded number returns `null`; show “Not recorded” or a dash.
-- Replace the existing `TXN-...` fallback with this field. Do not fabricate an SI.
+- The generated transaction-number fallback has been removed from the frontend.
+  Sales lists, mobile cards and receipt details label the recorded number as
+  “SI Number”. Do not fabricate an SI when the recorded number is missing.
 - Use transaction `id` for React keys and internal identity; invoice numbers may
   be absent or repeat across source records.
 - `source_invoice_number` remains available for compatibility. Automatic SI
-  generation and manual SI-entry endpoints have not been added.
+  generation has not been added. Manual SI entry is now supported through the
+  staff Encoding endpoint's `si_number` input.
 
-## 5. Payment status is still pending
+## 5. Payment status for encoded transactions
 
-There is currently no `payment_status` field or endpoint to mark a payment paid.
-Do not derive paid/pending from `payment_method`, delivery status or order status.
-Payment method describes how payment is recorded; it does not establish status.
-The pending-payment workflow needs backend implementation before wiring the UI.
+Send `payment_status: "pending"` (the default) or `"paid"` when creating an
+encoded transaction. Pending cash entries do not require tender; paid cash
+requires an amount covering the total. Partial payments are not supported.
+
+Use `PATCH /sales/encoding/{transaction_id}/payment/` with `payment_status` to
+update an existing encoded entry. When recording cash payment, include
+`amount_tendered`; optional `payment_method` accepts cash or online.
+Marking pending clears the recorded tender/change fields.
+
+The response includes `payment_status`, `payment_updated_at`, and
+`payment_updated_by` (the authenticated updater's user ID). These fields are
+also visible in regular transaction/customer history and nested order
+transactions. Older records retain `unknown` (“Not recorded”); no historical
+payment status is guessed. Normal new checkout/order sales are marked paid.
+
+Add Paid/Pending controls and badges to the Encoding page and payment details.
+Payment changes do not create a new sale, deduct stock, or alter revenue totals
+or the sale date. Refresh shared sales/customer/order caches after a successful
+PATCH. Encoding and transaction lists support `payment_status` filtering.
+Do not derive payment status from payment method or fulfillment status.
+
+See [Staff encoding API](sales/ENCODING_API.md) for request samples and validation.
 
 ## 6. Logout: false “session expired” notification
 
@@ -248,15 +308,19 @@ Paths below are relative to `SarimaHoesButFrontend/`.
 - [Checkout and FEFO allocation](sales/services/checkout_service.py).
 - [Customer history endpoint](sales/views/customer_views.py).
 - [Transaction response fields](sales/serializers/transaction_serializer.py).
-- [Manual pricing tests](sales/test_item_pricing.py).
+- [Sales tests, including manual pricing and encoding](sales/tests.py).
+- [Backend test layout and run commands](TESTING.md).
 
 Schema migrations were applied to the local backend database. Other environments
 need `python manage.py migrate` before using this version of the code:
 
 - `inventory/0010_remove_product_unit_price`
+- `inventory/0011_alter_stockadjustment_adjustment_type`
 - `sales/0011_orderitem_discount_amount_orderitem_discount_type_and_more`
+- `sales/0012_transaction_encoded_at_and_more`
+- `sales/0013_transaction_payment_status_and_more`
 
-Verification: 432 backend tests passed using the test-only MD5 password hasher
+Verification: 470 backend tests passed using the test-only MD5 password hasher
 to speed up fixtures. Production password hashing configuration was unchanged.
 Existing history columns matched before/after schema-migration checks, and the
 customer history endpoint was checked against the local database. The logout

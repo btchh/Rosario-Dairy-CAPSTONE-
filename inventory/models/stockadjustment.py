@@ -5,6 +5,8 @@ class StockAdjustment(models.Model):
   ADJUSTMENT_TYPES = [
     ('expired', 'Expired'),
     ('spoilage', 'Spoilage'),
+    ('complimentary', 'Complimentary'),
+    ('free_taste', 'Free Taste'),
     ('spillage', 'Spillage'),
     ('taste_test', 'Taste Test Rejection'),
     ('processing_use', 'Used for Processing'), 

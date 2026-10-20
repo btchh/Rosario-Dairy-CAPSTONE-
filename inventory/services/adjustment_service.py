@@ -1,9 +1,12 @@
 from decimal import Decimal
 from django.db import transaction as db_transaction
+from django.utils import timezone
 from ..models import ProductBatch, IngredientBatch, StockAdjustment, StockCount
 
 
 def create_stock_adjustment(adjustment_type, quantity, unit_cost, adjusted_by, reason="", ingredient_batch=None, product_batch=None):
+    if adjustment_type not in dict(StockAdjustment.ADJUSTMENT_TYPES):
+        raise ValueError('Invalid adjustment_type.')
     if bool(product_batch) == bool(ingredient_batch):
         raise ValueError("Exactly one of product_batch or ingredient_batch must be provided.")
 
@@ -20,6 +23,10 @@ def create_stock_adjustment(adjustment_type, quantity, unit_cost, adjusted_by, r
             raise ValueError(
                 f"Batch {batch.batch_number} is {batch.status} and cannot be adjusted."
             )
+
+        if (adjustment_type in ('complimentary', 'free_taste') and
+                batch.expiration_date < timezone.localdate()):
+            raise ValueError('Expired stock cannot be used for complimentary items or free taste.')
 
         if quantity > Decimal('0.00') and quantity > batch.remaining_quantity:
             raise ValueError(

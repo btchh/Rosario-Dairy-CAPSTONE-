@@ -1,14 +1,15 @@
 from django.db import transaction as db_transaction
 from decimal import Decimal
+from django.utils import timezone
 from ..models import Transaction, TransactionItem
 from inventory.services.batch_service import BatchService
 from .item_pricing import ZERO, money, price_items, reject_invoice_discount
-from config.api_inputs import parse_decimal
+from .payment_service import payment_values
 
 
 def checkout(cart_items, staff_user, payment_method='cash',
              discount_type='none', discount_value=ZERO,
-             amount_tendered=None, customer=None):
+             amount_tendered=None, customer=None, payment_status='paid'):
     """Every cart line explicitly supplies its selling price and optional discount."""
     if payment_method not in ('cash', 'online'):
         raise ValueError(f"Invalid payment_method '{payment_method}'. Must be cash or online.")
@@ -17,21 +18,14 @@ def checkout(cart_items, staff_user, payment_method='cash',
     subtotal = sum((line.subtotal for line in lines), ZERO)
     discount_amount = sum((line.discount_amount for line in lines), ZERO)
     total = subtotal - discount_amount
-    if amount_tendered is not None:
-        amount_tendered = parse_decimal(amount_tendered, 'amount_tendered', min_value=ZERO, max_digits=20)
-    change_due = None
-    if payment_method == 'cash':
-        if amount_tendered is None:
-            raise ValueError('Amount tendered is required for cash payments.')
-        if amount_tendered < total:
-            raise ValueError(f'Amount tendered ({amount_tendered}) is less than the total due ({total}).')
-        change_due = amount_tendered - total
+    amount_tendered, change_due = payment_values(total, payment_method, payment_status, amount_tendered)
 
     with db_transaction.atomic():
         txn = Transaction.objects.create(
             handled_by=staff_user, customer=customer, payment_method=payment_method,
             subtotal=subtotal, discount_amount=discount_amount, total_amount=total,
             amount_tendered=amount_tendered, change_due=change_due,
+            payment_status=payment_status, payment_updated_at=timezone.now(), payment_updated_by=staff_user,
         )
         # Lock products in a stable order, retaining the original encoded line numbers.
         for line_number, line in sorted(enumerate(lines, 1), key=lambda pair: pair[1].product.pk):

@@ -50,7 +50,8 @@ class OrderListTransactionSerializer(TransactionNumberMixin, serializers.ModelSe
     class Meta:
         model = Transaction
         fields = [
-            'id', 'transaction_number', 'subtotal', 'discount_amount', 'total_amount', 'payment_method',
+            'id', 'transaction_number', 'transaction_date', 'is_manually_encoded', 'encoded_at', 'encoding_request_id',
+            'subtotal', 'discount_amount', 'total_amount', 'payment_method', 'payment_status', 'payment_updated_at', 'payment_updated_by',
             'amount_tendered', 'change_due', 'source_reference', 'source_invoice_number',
         ]
 

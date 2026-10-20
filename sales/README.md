@@ -1,5 +1,9 @@
 # Manual sale encoding API
 
+For the staff module with custom dates and current-stock deduction, see
+[Staff encoding API](ENCODING_API.md). Existing checkout/order behavior below
+continues to apply to normal sales.
+
 `POST /sales/checkout/` and `POST /sales/orders/` require an explicit `unit_price`
 on every item, on every request. Orders also require `customer_id`.
 Products no longer have a catalog selling price. Batch `unit_price` remains an

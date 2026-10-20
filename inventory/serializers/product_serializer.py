@@ -6,6 +6,7 @@ from django.utils import timezone
 from ..models import Product, Category
 from .category_serializer import CategorySerializer
 from .stock_threshold import StockThresholdMixin
+from inventory.services.product_consolidation import product_name_key
 
 
 class ProductSerializer(StockThresholdMixin, serializers.ModelSerializer):
@@ -21,6 +22,15 @@ class ProductSerializer(StockThresholdMixin, serializers.ModelSerializer):
   def validate(self, attrs):
     if 'unit_price' in self.initial_data:
       raise serializers.ValidationError({'unit_price': 'Enter the selling price on each sale or order item instead.'})
+    name = attrs.get('name', getattr(self.instance, 'name', ''))
+    unit = attrs.get('unit', getattr(self.instance, 'unit', '')).strip().casefold()
+    variant = (attrs.get('variant', getattr(self.instance, 'variant', '')) or '').strip().casefold()
+    candidates = Product.objects.exclude(pk=getattr(self.instance, 'pk', None))
+    for product in candidates.only('id', 'name', 'unit', 'variant'):
+      if (product_name_key(name) == product_name_key(product.name)
+          and unit == product.unit.strip().casefold()
+          and variant == (product.variant or '').strip().casefold()):
+        raise serializers.ValidationError({'name': f'This product already exists as {product.name} (ID {product.pk}). Use the existing product.'})
     return super().validate(attrs)
 
   def get_total_stock(self, obj):

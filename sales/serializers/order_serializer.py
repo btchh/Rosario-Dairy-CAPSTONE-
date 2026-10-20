@@ -1,11 +1,10 @@
 from rest_framework import serializers
-from decimal import Decimal
 from ..models import Customer, Order, OrderItem, Transaction
 from inventory.models import Product
 from inventory.serializers import ProductSerializer
 from accounts.serializers import UserSerializer
 from .customer_serializer import CustomerSerializer
-from .transaction_serializer import TransactionSerializer
+from .transaction_serializer import TransactionNumberMixin, TransactionSerializer
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -15,7 +14,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = OrderItem
-        fields = ['id', 'product', 'quantity', 'unit_price', 'subtotal']
+        fields = ['id', 'product', 'quantity', 'unit_price', 'subtotal', 'discount_type', 'discount_value', 'discount_amount', 'total_amount']
         read_only_fields = fields
 
 
@@ -31,19 +30,7 @@ class OrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = ['id', 'customer', 'customer_id', 'handled_by', 'status', 'warning', 'discount_type', 'discount_value', 'transaction', 'items', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'handled_by', 'status', 'warning', 'transaction', 'created_at', 'updated_at']
-
-    def validate(self, attrs):
-        discount_type = attrs.get('discount_type', 'none')
-        discount_value = attrs.get('discount_value', Decimal('0.00'))
-        if discount_type == 'percent' and not (0 <= discount_value <= 100):
-            raise serializers.ValidationError("Percentage discount must be between 0 and 100.")
-        if discount_type == 'fixed' and discount_value < 0:
-            raise serializers.ValidationError("Discount value cannot be negative.")
-        if discount_type == 'none' and discount_value != Decimal('0.00'):
-            raise serializers.ValidationError("Discount value must be zero when discount type is none.")
-        return attrs
-
+        read_only_fields = ['id', 'handled_by', 'status', 'warning', 'transaction', 'discount_type', 'discount_value', 'created_at', 'updated_at']
 
 class OrderListProductSerializer(serializers.ModelSerializer):
     class Meta:
@@ -56,14 +43,14 @@ class OrderListItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = OrderItem
-        fields = ['id', 'product', 'quantity', 'unit_price', 'subtotal']
+        fields = ['id', 'product', 'quantity', 'unit_price', 'subtotal', 'discount_type', 'discount_value', 'discount_amount', 'total_amount']
 
 
-class OrderListTransactionSerializer(serializers.ModelSerializer):
+class OrderListTransactionSerializer(TransactionNumberMixin, serializers.ModelSerializer):
     class Meta:
         model = Transaction
         fields = [
-            'id', 'subtotal', 'discount_amount', 'total_amount', 'payment_method',
+            'id', 'transaction_number', 'subtotal', 'discount_amount', 'total_amount', 'payment_method',
             'amount_tendered', 'change_due', 'source_reference', 'source_invoice_number',
         ]
 

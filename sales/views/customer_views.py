@@ -1,17 +1,44 @@
-from config.data_cache import CachedListMixin
+from config.data_cache import CachedListMixin, cache_api_response
+from django.conf import settings
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from django.db.models import ProtectedError
 from django.db.models import Count, Max, Q
 from rest_framework.decorators import action
 from ..models import Customer
-from ..serializers import CustomerSummarySerializer
+from ..serializers import CustomerSummarySerializer, TransactionSerializer
 from accounts.permissions import IsAdmin, IsStaff
+from .transaction_views import TransactionPagination, transaction_history_queryset
 
 
 class CustomerViewSet(CachedListMixin, viewsets.ModelViewSet):
     queryset = Customer.objects.all()
     serializer_class = CustomerSummarySerializer
+    data_cache_timeout = settings.API_DATA_CACHE_TIMEOUT
+
+    @action(detail=True, methods=['get'], pagination_class=TransactionPagination,
+            data_cache_timeout=settings.HISTORY_CACHE_TIMEOUT)
+    @cache_api_response
+    def transactions(self, request, pk=None):
+        """GET /sales/customers/{id}/transactions/, newest receipts first.
+
+        Returns {count, next, previous, results} with full transaction details.
+        Accepts page, page_size (default 50, maximum 200), and include_voided
+        (default false). Inactive customers retain access to their history.
+        Staff receive only transactions allowed by sales visibility rules.
+        """
+        customer = self.get_object()
+        queryset = transaction_history_queryset(request.user).filter(customer_id=customer.pk)
+        if request.query_params.get('include_voided', 'false').lower() != 'true':
+            queryset = queryset.filter(is_voided=False)
+        page = self.paginate_queryset(queryset)
+        serializer = TransactionSerializer(
+            page if page is not None else queryset, many=True,
+            context=self.get_serializer_context(),
+        )
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
     def get_queryset(self):
         active_sales = Q(transactions__is_voided=False)

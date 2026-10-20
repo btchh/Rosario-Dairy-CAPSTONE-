@@ -28,7 +28,7 @@ class BackendRegressionTests(TestCase):
         self.category = Category.objects.create(name='Dairy')
         self.product = Product.objects.create(
             name='Original milk', category=self.category, unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
+            shelf_life=7,
         )
         self.batch = ProductBatch.objects.create(
             product=self.product, batch_number='REGRESSION-001',
@@ -38,9 +38,8 @@ class BackendRegressionTests(TestCase):
 
     def sale(self):
         response = self.client.post('/sales/checkout/', {
-            'items': [{'product_id': self.product.pk, 'quantity': '2.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '2.00', 'unit_price': '50', 'discount_type': 'percent', 'discount_value': '10.00'}],
             'payment_method': 'cash', 'amount_tendered': '100.00',
-            'discount_type': 'percent', 'discount_value': '10.00',
         }, format='json')
         self.assertEqual(response.status_code, 201, response.data)
         return Transaction.objects.get(pk=response.data['id'])

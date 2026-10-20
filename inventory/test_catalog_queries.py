@@ -46,7 +46,7 @@ class CatalogQueryTests(TestCase):
     def test_catalog_and_nested_batches_use_bounded_queries_and_exclude_expired_stock(self):
         category=Category.objects.create(name='Milk')
         for i in range(12):
-            product=Product.objects.create(name=f'Milk {i}',category=category,unit='liter',unit_price=50,shelf_life=7)
+            product=Product.objects.create(name=f'Milk {i}',category=category,unit='liter',shelf_life=7)
             for offset,qty in [(2,10),(-1,5)]:
                 ProductBatch.objects.create(product=product,batch_number=f'{i}-{offset}',
                     initial_quantity=qty,remaining_quantity=qty,status='available',

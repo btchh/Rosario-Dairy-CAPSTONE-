@@ -17,7 +17,7 @@ class NotificationInboxTests(TestCase):
         self.admin = Users.objects.create_user(username='alert-admin', email='alert-admin@example.test', role='admin', password='secret123!')
         self.staff = Users.objects.create_user(username='alert-staff', email='alert-staff@example.test', role='staff', password='secret123!')
         self.category = Category.objects.create(name='Dairy')
-        self.product = Product.objects.create(name='Milk', category=self.category, unit='liter', unit_price=50, shelf_life=7)
+        self.product = Product.objects.create(name='Milk', category=self.category, unit='liter',  shelf_life=7)
         self.batch = ProductBatch.objects.create(product=self.product, batch_number='ALERT-001', initial_quantity=5,
             remaining_quantity=5, expiration_date=timezone.localdate()+timedelta(days=2))
         self.client = APIClient()
@@ -102,7 +102,7 @@ class NotificationInboxTests(TestCase):
     def test_staff_does_not_receive_order_alert_for_inactive_category(self):
         customer = Customer.objects.create(name='Alert Customer', created_by=self.admin)
         order = SalesService.place_order(
-            customer, [(self.product, Decimal('1.00'))], self.admin,
+            customer, [(self.product, Decimal('1.00'), Decimal('50.00'))], self.admin,
             amount_tendered=Decimal('50.00'),
         )
         self.category.is_active = False

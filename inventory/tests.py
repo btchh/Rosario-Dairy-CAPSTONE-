@@ -52,7 +52,7 @@ class ConditionalDeleteAPITests(TestCase):
         category = Category.objects.create(name='Linked')
         product = Product.objects.create(
             category=category, name='Linked Product', unit='piece',
-            unit_price=Decimal('10.00'), shelf_life=7,
+            shelf_life=7,
         )
         response = self.client.delete(f'/inventory/categories/{category.pk}/')
         self.assertEqual(response.data['deletion_type'], 'deactivated')
@@ -74,11 +74,11 @@ class ConditionalDeleteAPITests(TestCase):
         category = Category.objects.create(name='Products')
         unused = Product.objects.create(
             category=category, name='Unused', unit='piece',
-            unit_price=Decimal('10.00'), shelf_life=7,
+            shelf_life=7,
         )
         linked = Product.objects.create(
             category=category, name='Linked', unit='piece',
-            unit_price=Decimal('10.00'), shelf_life=7,
+            shelf_life=7,
         )
         ProductBatch.objects.create(
             product=linked, batch_number='DELETE-LINKED-PRODUCT',
@@ -135,11 +135,11 @@ class StaffCategoryVisibilityAPITests(TestCase):
         )
         self.visible_product = Product.objects.create(
             category=self.visible_category, name='Visible Product', unit='piece',
-            unit_price=Decimal('10.00'), shelf_life=7,
+            shelf_life=7,
         )
         self.hidden_product = Product.objects.create(
             category=self.hidden_category, name='Hidden Product', unit='piece',
-            unit_price=Decimal('10.00'), shelf_life=7,
+            shelf_life=7,
         )
         self.hidden_batch = ProductBatch.objects.create(
             product=self.hidden_product, batch_number='PRD-HIDDEN-001',
@@ -307,7 +307,7 @@ class StockAlertQueryTests(TestCase):
         for index in range(3):
             product = Product.objects.create(
                 category=self.category, name=f'Product {index}', unit='piece',
-                unit_price=Decimal('10.00'), shelf_life=7,
+                shelf_life=7,
             )
             ProductBatch.objects.create(
                 product=product, batch_number=f'PRD-STOCK-{index}',
@@ -342,7 +342,7 @@ class StockAlertQueryTests(TestCase):
     def test_expiration_check_excludes_expired_and_labels_urgency(self):
         product = Product.objects.create(
             category=self.category, name='Expiry Product', unit='piece',
-            unit_price=Decimal('10.00'), shelf_life=7,
+            shelf_life=7,
         )
         for suffix, offset in (
             ('EXPIRED', -1), ('CRITICAL', 2), ('NEAR', 5), ('LATER', 8),
@@ -389,7 +389,7 @@ class CreateStockAdjustmentTests(TestCase):
         self.category = Category.objects.create(name='Dairy')
         self.product = Product.objects.create(
             category=self.category, name='Fresh Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
+            shelf_life=7,
         )
         self.batch = ProductBatch.objects.create(
             product=self.product, batch_number='PRD-TEST-001',
@@ -547,7 +547,7 @@ class ReconcileTests(TestCase):
         self.category = Category.objects.create(name='Dairy')
         self.product = Product.objects.create(
             category=self.category, name='Fresh Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
+            shelf_life=7,
         )
         self.batch = ProductBatch.objects.create(
             product=self.product, batch_number='PRD-TEST-002',
@@ -646,7 +646,7 @@ class BatchQuantityUpdateTests(TestCase):
         self.category = Category.objects.create(name='Dairy')
         self.product = Product.objects.create(
             category=self.category, name='Fresh Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
+            shelf_life=7,
         )
         self.batch = ProductBatch.objects.create(
             product=self.product, batch_number='PRD-TEST-003',
@@ -700,7 +700,7 @@ class DeductBatchTests(TestCase):
         self.category = Category.objects.create(name='Dairy')
         self.product = Product.objects.create(
             category=self.category, name='Fresh Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
+            shelf_life=7,
         )
         today = timezone.localdate()
         # Two batches, different expiration dates — FEFO should drain the soonest first.
@@ -763,7 +763,7 @@ class BatchQuantityPriceValidationTests(TestCase):
         self.category = Category.objects.create(name='Dairy')
         self.product = Product.objects.create(
             category=self.category, name='Fresh Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
+            shelf_life=7,
         )
         self.ingredient = Ingredient.objects.create(
             name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
@@ -819,8 +819,8 @@ class BatchQuantityPriceValidationTests(TestCase):
         })
         self.assertTrue(serializer.is_valid(), serializer.errors)
 
-    def test_product_batch_still_autofills_unit_price_when_omitted(self):
-        """Regression guard: the validators shouldn't interfere with the auto-fill-from-product path."""
+    def test_product_batch_has_no_default_selling_price(self):
+        """A batch cost is optional and never inherited from a product selling price."""
         from inventory.serializers import ProdBatchSerializer
         serializer = ProdBatchSerializer(data={
             'product_id': self.product.pk, 'quantity': '10.00',
@@ -828,7 +828,7 @@ class BatchQuantityPriceValidationTests(TestCase):
         })
         self.assertTrue(serializer.is_valid(), serializer.errors)
         batch = serializer.save()
-        self.assertEqual(batch.unit_price, self.product.unit_price) # type: ignore
+        self.assertIsNone(batch.unit_price)
 
     # --- IngredientBatch: quantity ---
 
@@ -871,12 +871,7 @@ class BatchQuantityPriceValidationTests(TestCase):
 
 
 class ProductIngredientPriceValidationTests(TestCase):
-    """
-    Covers the model-level MinValueValidator added to Product.unit_price and
-    Ingredient.unit_price. ProductSerializer/IngredientSerializer don't
-    override unit_price either, so this is enforced the same way as
-    IngredientBatch above — via DRF copying the model field's validators.
-    """
+    """Catalog products reject selling prices; ingredient costs stay validated."""
 
     def setUp(self):
         self.category = Category.objects.create(name='Dairy')
@@ -899,20 +894,10 @@ class ProductIngredientPriceValidationTests(TestCase):
         self.assertFalse(serializer.is_valid())
         self.assertIn('unit_price', serializer.errors)
 
-    def test_product_model_full_clean_rejects_negative_unit_price(self):
-        """
-        Documents the model-level guarantee for non-serializer write paths
-        (admin, shell, scripts). Note: plain .save() does NOT call
-        full_clean() in Django — that's exactly why the serializer-level
-        tests above matter most for the actual API, and this test only
-        covers callers that explicitly validate.
-        """
-        product = Product(
-            category=self.category, name='Bad Milk', unit='liter',
-            unit_price=Decimal('-1.00'), shelf_life=7,
-        )
-        with self.assertRaises(Exception):
-            product.full_clean()
+    def test_product_model_has_no_catalog_selling_price(self):
+        product = Product(category=self.category, name='Milk', unit='liter', shelf_life=7)
+        product.full_clean()
+        self.assertNotIn('unit_price', {field.name for field in Product._meta.fields})
 
     def test_ingredient_model_full_clean_rejects_negative_unit_price(self):
         ingredient = Ingredient(
@@ -966,7 +951,7 @@ class BatchSequenceServiceTests(TestCase):
         category = Category.objects.create(name='Dairy')
         product = Product.objects.create(
             category=category, name='Fresh Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
+            shelf_life=7,
         )
         future_date = (timezone.localdate() + timedelta(days=30)).isoformat()
 
@@ -993,7 +978,7 @@ class BatchSequenceServiceTests(TestCase):
         category = Category.objects.create(name='Dairy')
         product = Product.objects.create(
             category=category, name='Fresh Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
+            shelf_life=7,
         )
         ingredient = Ingredient.objects.create(
             name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
@@ -1071,7 +1056,7 @@ class BatchNumberUniquenessTests(TestCase):
         self.category = Category.objects.create(name='Dairy')
         self.product = Product.objects.create(
             category=self.category, name='Fresh Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
+            shelf_life=7,
         )
         self.ingredient = Ingredient.objects.create(
             name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
@@ -1147,7 +1132,7 @@ class ExpiredBatchExclusionTests(TestCase):
         self.category = Category.objects.create(name='Dairy')
         self.product = Product.objects.create(
             category=self.category, name='Fresh Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
+            shelf_life=7,
         )
         self.ingredient = Ingredient.objects.create(
             name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
@@ -1271,7 +1256,7 @@ class BatchStatusReadOnlyTests(TestCase):
         self.category = Category.objects.create(name='Dairy')
         self.product = Product.objects.create(
             category=self.category, name='Fresh Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
+            shelf_life=7,
         )
         self.ingredient = Ingredient.objects.create(
             name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
@@ -1350,7 +1335,7 @@ class BatchDateValidationTests(TestCase):
         self.category = Category.objects.create(name='Dairy')
         self.product = Product.objects.create(
             category=self.category, name='Fresh Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
+            shelf_life=7,
         )
         self.ingredient = Ingredient.objects.create(
             name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
@@ -1471,7 +1456,7 @@ class InventoryAuditRegressionTests(TestCase):
         self.category = Category.objects.create(name='Audit Category')
         self.product = Product.objects.create(
             category=self.category, name='Audit Product', unit='piece',
-            unit_price=Decimal('10.00'), shelf_life=7,
+            shelf_life=7,
         )
         self.ingredient = Ingredient.objects.create(
             name='Audit Ingredient', unit='kg', unit_price=Decimal('5.00'),
@@ -1515,7 +1500,7 @@ class InventoryAuditRegressionTests(TestCase):
 
         other = Product.objects.create(
             category=self.category, name='Other Product', unit='piece',
-            unit_price=Decimal('10.00'), shelf_life=7,
+            shelf_life=7,
         )
         batch = ProductBatch.objects.create(
             product=self.product, batch_number='PRD-AUDIT-MOVE',
@@ -1618,7 +1603,7 @@ class FEFOTransactionBoundaryTests(TransactionTestCase):
         category = Category.objects.create(name='Transaction Boundary')
         self.product = Product.objects.create(
             category=category, name='Transaction Product', unit='piece',
-            unit_price=Decimal('10.00'), shelf_life=7,
+            shelf_life=7,
         )
         self.batch = ProductBatch.objects.create(
             product=self.product, batch_number='PRD-AUDIT-ATOMIC',

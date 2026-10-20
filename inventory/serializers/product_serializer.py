@@ -18,6 +18,11 @@ class ProductSerializer(StockThresholdMixin, serializers.ModelSerializer):
   )
   total_stock = serializers.SerializerMethodField()
 
+  def validate(self, attrs):
+    if 'unit_price' in self.initial_data:
+      raise serializers.ValidationError({'unit_price': 'Enter the selling price on each sale or order item instead.'})
+    return super().validate(attrs)
+
   def get_total_stock(self, obj):
     if hasattr(obj, 'available_stock'):
       return obj.available_stock
@@ -35,6 +40,6 @@ class ProductSerializer(StockThresholdMixin, serializers.ModelSerializer):
   class Meta:
     model = Product
     fields = [
-      'id', 'name', 'variant', 'unit', 'unit_price', 'shelf_life', 'low_stock_threshold', 'is_active', 'category', 'category_id', 'total_stock', 'created_at', 'updated_at'
+      'id', 'name', 'variant', 'unit', 'shelf_life', 'low_stock_threshold', 'is_active', 'category', 'category_id', 'total_stock', 'created_at', 'updated_at'
     ]
     read_only_fields = ['id', 'is_active', 'created_at', 'updated_at', 'total_stock']

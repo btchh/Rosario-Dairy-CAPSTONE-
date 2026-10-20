@@ -1,4 +1,3 @@
-from decimal import Decimal
 from django.core.validators import MinValueValidator
 from django.db import models
 
@@ -6,7 +5,6 @@ class Product(models.Model):
   category = models.ForeignKey('Category', on_delete=models.PROTECT, related_name='products')
   name = models.CharField(max_length=100)
   unit = models.CharField(max_length=50)
-  unit_price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal('0.00'))])
   variant = models.CharField(max_length=100, blank=True,null=True)
   shelf_life = models.IntegerField(validators=[MinValueValidator(0)])
   is_active = models.BooleanField(default=True)

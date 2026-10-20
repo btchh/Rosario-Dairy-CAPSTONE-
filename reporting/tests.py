@@ -51,7 +51,7 @@ class ReportAPITests(TestCase):
         self.category = Category.objects.create(name='Reports')
         self.product = Product.objects.create(
             category=self.category, name='Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
+            shelf_life=7,
         )
         self.product_batch = ProductBatch.objects.create(
             product=self.product, batch_number='PRD-REPORT-001',
@@ -183,7 +183,7 @@ class ReportAPITests(TestCase):
     def test_product_family_rolls_up_variants_and_uses_sale_name_snapshot(self):
         smaller = Product.objects.create(
             category=self.category, name='Milk', variant='500ml', unit='piece',
-            unit_price=Decimal('25.00'), shelf_life=7,
+            shelf_life=7,
         )
         smaller_batch = ProductBatch.objects.create(
             product=smaller, batch_number='PRD-REPORT-500ML',
@@ -238,7 +238,7 @@ class ReportAPITests(TestCase):
         )
         Product.objects.create(
             category=hidden_category, name='Admin Product', unit='piece',
-            unit_price=Decimal('5.00'), shelf_life=5,
+            shelf_life=5,
         )
         self.client.force_authenticate(user=self.staff)
         response = self.client.get('/api/reports/preview/?type=inventory')

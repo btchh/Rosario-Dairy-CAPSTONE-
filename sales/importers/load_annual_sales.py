@@ -74,7 +74,6 @@ def load(result, admin_username):
         Product.objects.bulk_create([
             Product(name=name, category=category_by_name[category_for_product(name)],
                     unit='L' if name == 'Raw Milk 1L' else 'unit',
-                    unit_price=price if price is not None and price >= 0 else Decimal('0.00'),
                     shelf_life=0)
             for name, _, _, price in catalog.values()
         ], batch_size=500)

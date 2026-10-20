@@ -17,7 +17,9 @@ from ..models import Order, OrderItem, TransactionItem
 from ..serializers import OrderSerializer
 from ..serializers.order_serializer import OrderListSerializer
 from ..services import SalesService
-from config.api_inputs import parse_decimal, require_item_list
+from config.api_inputs import parse_decimal
+from ..serializers.sale_input_serializer import encoded_sale_items
+from ..services.item_pricing import reject_invoice_discount
 from accounts.throttles import SaleWriteRateThrottle
 
 
@@ -100,41 +102,14 @@ class OrderViewSet(CachedListMixin, viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         if not isinstance(request.data, dict):
             return Response({'error': 'Request body must be a JSON object.'}, status=400)
-        raw_items = request.data.get('items', [])
         try:
-            raw_items = require_item_list(raw_items)
+            reject_invoice_discount(request.data.get('discount_type', 'none'), request.data.get('discount_value', '0'))
+            items = encoded_sale_items(request.data.get('items', []), request)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=400)
-
         serializer = OrderSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         validated_data = cast(dict, serializer.validated_data)
-
-        items = []
-        for index, entry in enumerate(raw_items):
-            product_id = entry.get('product_id')
-            quantity = entry.get('quantity')
-            if product_id is None or quantity is None:
-                return Response(
-                    {'error': f"Item at index {index} requires 'product_id' and 'quantity'."}, status=400
-                )
-            try:
-                quantity = parse_decimal(
-                    quantity, 'quantity', min_value=Decimal('0.01')
-                )
-            except ValueError as exc:
-                return Response({'error': f'Item at index {index}: {exc}'}, status=400)
-            try:
-                products = Product.objects.filter(is_active=True)
-                if request.user.role == 'staff':
-                    products = products.filter(category__is_active=True,
-                                               category__is_visible_to_staff=True)
-                product = products.get(pk=product_id)
-            except (Product.DoesNotExist, ValueError, TypeError):
-                return Response(
-                    {'error': f"Product {product_id} at index {index} not found or is inactive."}, status=400
-                )
-            items.append((product, quantity))
 
         payment_method = request.data.get('payment_method', 'cash')
         amount_tendered = request.data.get('amount_tendered')
@@ -152,8 +127,6 @@ class OrderViewSet(CachedListMixin, viewsets.ModelViewSet):
                 customer=validated_data['customer'],
                 items=items,
                 handled_by=request.user,
-                discount_type=validated_data.get('discount_type', 'none'),
-                discount_value=validated_data.get('discount_value', Decimal('0.00')),
                 payment_method=payment_method,
                 amount_tendered=amount_tendered,
             )

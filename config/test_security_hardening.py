@@ -43,7 +43,7 @@ class SecurityHardeningTests(TestCase):
 
     def product(self, name='Milk', hidden=False):
         category = Category.objects.create(name=name, is_visible_to_staff=not hidden)
-        product = Product.objects.create(name=name, category=category, unit='piece', unit_price=100, shelf_life=7)
+        product = Product.objects.create(name=name, category=category, unit='piece', shelf_life=7)
         batch = ProductBatch.objects.create(product=product, batch_number=name, unit_price=100,
             initial_quantity=10, remaining_quantity=10, expiration_date=timezone.localdate()+timedelta(days=7))
         return product, batch
@@ -116,18 +116,18 @@ class SecurityHardeningTests(TestCase):
             self.assertEqual(response.status_code, 400, response.data)
         batch.refresh_from_db()
         self.assertEqual(batch.unit_price, 100)
-        response = self.client.post('/sales/checkout/', {'items':[{'product_id':product.pk,'quantity':'1.00'}], 'amount_tendered':'100.00'}, format='json')
+        response = self.client.post('/sales/checkout/', {'items':[{'product_id':product.pk,'quantity':'1.00', 'unit_price': '100'}], 'amount_tendered':'100.00'}, format='json')
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(Transaction.objects.get().total_amount, 100)
 
-    def test_staff_new_batch_uses_server_price(self):
+    def test_staff_new_batch_does_not_default_to_a_selling_price(self):
         product, _ = self.product()
         values = {'product_id':product.pk, 'quantity':'5.00', 'expiration_date':str(timezone.localdate()+timedelta(days=7))}
         response = self.client.post('/inventory/product-batches/', {**values, 'unit_price':'0.00'}, format='json')
         self.assertEqual(response.status_code, 400)
         response = self.client.post('/inventory/product-batches/', values, format='json')
         self.assertEqual(response.status_code, 201, response.data)
-        self.assertEqual(ProductBatch.objects.get(pk=response.data['id']).unit_price, 100)
+        self.assertIsNone(ProductBatch.objects.get(pk=response.data['id']).unit_price)
 
     def test_staff_cannot_use_discounts_as_a_price_override(self):
         product, batch = self.product()
@@ -135,8 +135,7 @@ class SecurityHardeningTests(TestCase):
         for url in ('/sales/checkout/', '/sales/orders/'):
             response = self.client.post(url, {
                 'customer_id': customer.pk,
-                'items': [{'product_id': product.pk, 'quantity': '1.00'}],
-                'discount_type': 'percent', 'discount_value': '100.00',
+                'items': [{'product_id': product.pk, 'quantity': '1.00', 'unit_price': '100', 'discount_type': 'percent', 'discount_value': '100.00'}],
                 'amount_tendered': '0.00',
             }, format='json')
             self.assertEqual(response.status_code, 400, response.data)

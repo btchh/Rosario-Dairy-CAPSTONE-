@@ -28,7 +28,8 @@ class TransactionItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = TransactionItem
         fields = [
-            'id', 'product_batch', 'quantity', 'unit_price',
+            'id', 'product_batch', 'quantity', 'unit_price', 'line_number',
+            'discount_type', 'discount_value', 'discount_amount', 'subtotal', 'total_amount',
             'source_product_label', 'source_line_total',
             'product_id_snapshot', 'product_name_snapshot',
             'product_variant_snapshot', 'category_id_snapshot',
@@ -37,12 +38,20 @@ class TransactionItemSerializer(serializers.ModelSerializer):
         read_only_fields = fields  # every field here is system-generated at checkout, never client-supplied
 
 
-class TransactionSerializer(serializers.ModelSerializer):
+class TransactionNumberMixin(serializers.Serializer):
+    transaction_number = serializers.SerializerMethodField()
+
+    def get_transaction_number(self, instance):
+        # Preserve recorded invoice formatting; missing numbers must not be fabricated.
+        return instance.source_invoice_number or None
+
+
+class TransactionSerializer(TransactionNumberMixin, serializers.ModelSerializer):
     handled_by = UserSerializer(read_only=True)
     customer = CustomerSerializer(read_only=True)
     items = TransactionItemSerializer(many=True, read_only=True)
 
     class Meta:
         model = Transaction
-        fields = ['id', 'handled_by', 'customer', 'subtotal', 'discount_type', 'discount_value', 'discount_amount', 'total_amount', 'amount_tendered', 'change_due', 'payment_method', 'delivery_status', 'is_voided', 'items', 'created_at', 'source_reference', 'source_invoice_number', 'source_customer_label', 'source_note']
-        read_only_fields = ['id', 'handled_by', 'subtotal', 'discount_amount', 'total_amount', 'change_due', 'delivery_status', 'is_voided', 'items', 'created_at']
+        fields = ['id', 'transaction_number', 'handled_by', 'customer', 'subtotal', 'discount_type', 'discount_value', 'discount_amount', 'total_amount', 'amount_tendered', 'change_due', 'payment_method', 'delivery_status', 'is_voided', 'items', 'created_at', 'source_reference', 'source_invoice_number', 'source_customer_label', 'source_note']
+        read_only_fields = ['id', 'handled_by', 'subtotal', 'discount_type', 'discount_value', 'discount_amount', 'total_amount', 'change_due', 'delivery_status', 'is_voided', 'items', 'created_at']

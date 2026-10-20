@@ -32,7 +32,7 @@ class SalesHistoryPerformanceTests(TestCase):
         self.client.force_authenticate(self.user)
         category = Category.objects.create(name='Milk')
         product = Product.objects.create(
-            category=category, name='Milk', unit='L', unit_price=50, shelf_life=7,
+            category=category, name='Milk', unit='L',  shelf_life=7,
         )
         self.batch = ProductBatch.objects.create(
             product=product, batch_number='HISTORY-PERF', initial_quantity=100,

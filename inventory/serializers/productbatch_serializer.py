@@ -57,10 +57,10 @@ class ProdBatchSerializer(serializers.ModelSerializer):
     """
     request = self.context.get('request')
     if request and request.user.role != 'admin' and 'unit_price' in attrs:
-      expected = self.instance.unit_price if self.instance else attrs['product'].unit_price
+      expected = self.instance.unit_price if self.instance else None
       if attrs['unit_price'] != expected:
         raise serializers.ValidationError({'unit_price': 'Only an admin can override prices.'})
-      # Staff creation always uses the current server-side product price.
+      # Batch prices represent inventory costs, never a default selling price.
       attrs.pop('unit_price')
     if (self.instance is not None and 'product' in attrs and
         attrs['product'].pk != self.instance.product_id):
@@ -86,8 +86,6 @@ class ProdBatchSerializer(serializers.ModelSerializer):
         quantity = validated_data.pop('quantity')
         validated_data['initial_quantity'] = quantity
         validated_data['remaining_quantity'] = quantity
-        if validated_data.get('unit_price') is None:
-            validated_data['unit_price'] = validated_data['product'].unit_price
         seq = next_sequence('PRD')
         validated_data['batch_number'] = generate_batch_number('PRD', seq)
         return super().create(validated_data)

@@ -28,7 +28,7 @@ class DataCacheTests(TestCase):
         self.client.force_authenticate(self.admin)
         self.category = Category.objects.create(name='Visible')
         self.product = Product.objects.create(
-            name='Milk', category=self.category, unit='L', unit_price=50, shelf_life=7,
+            name='Milk', category=self.category, unit='L',  shelf_life=7,
         )
         self.batch = ProductBatch.objects.create(
             product=self.product, batch_number='CACHE-001', initial_quantity=10,
@@ -122,7 +122,7 @@ class DataCacheTests(TestCase):
         self.client.get('/inventory/products/')
         with self.captureOnCommitCallbacks(execute=True):
             sale = self.client.post('/sales/checkout/', {
-                'items': [{'product_id': self.product.pk, 'quantity': '2.00'}],
+                'items': [{'product_id': self.product.pk, 'quantity': '2.00', 'unit_price': '50.00'}],
                 'payment_method': 'cash', 'amount_tendered': '100.00',
             }, format='json')
         self.assertEqual(sale.status_code, 201, sale.data)

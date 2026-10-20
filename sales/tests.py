@@ -34,7 +34,7 @@ class HiddenCategorySalesAPITests(TestCase):
         )
         self.product = Product.objects.create(
             category=self.category, name='Hidden Product', unit='piece',
-            unit_price=Decimal('10.00'), shelf_life=7,
+            shelf_life=7,
         )
         ProductBatch.objects.create(
             product=self.product, batch_number='PRD-HIDDEN-SALE',
@@ -48,7 +48,7 @@ class HiddenCategorySalesAPITests(TestCase):
     def test_staff_cannot_checkout_hidden_product_by_known_id(self):
         self.client.force_authenticate(user=self.staff)
         response = self.client.post('/sales/checkout/', {
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '10.00'}],
             'payment_method': 'cash', 'amount_tendered': '20.00',
         }, format='json')
         self.assertEqual(response.status_code, 400)
@@ -58,7 +58,7 @@ class HiddenCategorySalesAPITests(TestCase):
         self.client.force_authenticate(user=self.staff)
         response = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '10.00'}],
         }, format='json')
         self.assertEqual(response.status_code, 400)
         self.assertIn('not found', response.data['error'])
@@ -69,13 +69,13 @@ class HiddenCategorySalesAPITests(TestCase):
         self.category.save(update_fields=['is_visible_to_staff', 'is_active'])
         self.client.force_authenticate(user=self.staff)
         checkout = self.client.post('/sales/checkout/', {
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '10.00'}],
             'payment_method': 'cash', 'amount_tendered': '20.00',
         }, format='json')
         self.assertEqual(checkout.status_code, 400)
         order = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '10.00'}],
             'payment_method': 'cash', 'amount_tendered': '20.00',
         }, format='json')
         self.assertEqual(order.status_code, 400)
@@ -86,7 +86,7 @@ class HiddenCategorySalesAPITests(TestCase):
         self.client.force_authenticate(user=self.admin)
         order = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '10.00'}],
             'payment_method': 'cash', 'amount_tendered': '20.00',
         }, format='json')
         self.assertEqual(order.status_code, 201)
@@ -99,7 +99,7 @@ class HiddenCategorySalesAPITests(TestCase):
     def test_admin_can_checkout_hidden_product(self):
         self.client.force_authenticate(user=self.admin)
         response = self.client.post('/sales/checkout/', {
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '10.00'}],
             'payment_method': 'cash', 'amount_tendered': '20.00',
         }, format='json')
         self.assertEqual(response.status_code, 201)
@@ -107,13 +107,13 @@ class HiddenCategorySalesAPITests(TestCase):
     def test_staff_sales_history_does_not_expose_hidden_products(self):
         self.client.force_authenticate(user=self.admin)
         checkout = self.client.post('/sales/checkout/', {
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '10.00'}],
             'payment_method': 'cash', 'amount_tendered': '20.00',
         }, format='json')
         self.assertEqual(checkout.status_code, 201)
         order = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '10.00'}],
             'payment_method': 'cash', 'amount_tendered': '20.00',
         }, format='json')
         self.assertEqual(order.status_code, 201)
@@ -138,7 +138,7 @@ class TransactionCustomerHistoryTests(TestCase):
         self.category = Category.objects.create(name='Customer History')
         self.product = Product.objects.create(
             category=self.category, name='History Product', unit='piece',
-            unit_price=Decimal('10.00'), shelf_life=7,
+            shelf_life=7,
         )
         ProductBatch.objects.create(
             product=self.product, batch_number='PRD-CUSTOMER-HISTORY',
@@ -154,7 +154,7 @@ class TransactionCustomerHistoryTests(TestCase):
     def test_checkout_customer_is_returned_in_sales_history(self):
         checkout = self.client.post('/sales/checkout/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '10.00'}],
             'payment_method': 'cash', 'amount_tendered': '20.00',
         }, format='json')
         self.assertEqual(checkout.status_code, 201)
@@ -166,7 +166,7 @@ class TransactionCustomerHistoryTests(TestCase):
 
     def test_checkout_without_customer_remains_walk_in_compatible(self):
         checkout = self.client.post('/sales/checkout/', {
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '10.00'}],
             'payment_method': 'cash', 'amount_tendered': '20.00',
         }, format='json')
         self.assertEqual(checkout.status_code, 201)
@@ -175,7 +175,7 @@ class TransactionCustomerHistoryTests(TestCase):
     def test_order_transaction_carries_the_order_customer(self):
         response = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '10.00'}],
             'payment_method': 'cash', 'amount_tendered': '20.00',
         }, format='json')
         self.assertEqual(response.status_code, 201)
@@ -184,13 +184,13 @@ class TransactionCustomerHistoryTests(TestCase):
     def test_customer_summary_counts_direct_checkout_and_order_once_each(self):
         checkout = self.client.post('/sales/checkout/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '10.00'}],
             'payment_method': 'cash', 'amount_tendered': '20.00',
         }, format='json')
         self.assertEqual(checkout.status_code, 201)
         order = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '10.00'}],
             'payment_method': 'cash', 'amount_tendered': '20.00',
         }, format='json')
         self.assertEqual(order.status_code, 201)
@@ -222,7 +222,7 @@ class TransactionCustomerHistoryTests(TestCase):
     def test_transaction_history_exposes_sale_time_product_details(self):
         checkout = self.client.post('/sales/checkout/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '10.00'}],
             'payment_method': 'cash', 'amount_tendered': '20.00',
         }, format='json')
         self.assertEqual(checkout.status_code, 201)
@@ -240,7 +240,7 @@ class TransactionCustomerHistoryTests(TestCase):
     def test_customer_with_direct_checkout_is_deactivated_without_losing_history(self):
         checkout = self.client.post('/sales/checkout/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '10.00'}],
             'payment_method': 'cash', 'amount_tendered': '20.00',
         }, format='json')
         self.assertEqual(checkout.status_code, 201)
@@ -270,13 +270,13 @@ class TransactionCustomerHistoryTests(TestCase):
         self.customer.save(update_fields=['is_active'])
         checkout = self.client.post('/sales/checkout/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '10.00'}],
             'payment_method': 'cash', 'amount_tendered': '20.00',
         }, format='json')
         self.assertEqual(checkout.status_code, 400)
         order = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '10.00'}],
         }, format='json')
         self.assertEqual(order.status_code, 400)
 
@@ -304,7 +304,7 @@ class CheckoutPaymentMethodValidationTests(TestCase):
         self.category = Category.objects.create(name='Dairy')
         self.product = Product.objects.create(
             category=self.category, name='Fresh Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
+            shelf_life=7,
         )
         self.batch = ProductBatch.objects.create(
             product=self.product, batch_number='PRD-TEST-970',
@@ -315,7 +315,7 @@ class CheckoutPaymentMethodValidationTests(TestCase):
         )
 
     def _cart(self, qty=Decimal('2.00')):
-        return [(self.product, qty)]
+        return [(self.product, qty, Decimal('50.00'))]
 
     def test_invalid_payment_method_rejected(self):
         with self.assertRaises(ValueError):
@@ -359,7 +359,7 @@ class CheckoutPaymentMethodValidationTests(TestCase):
         client = APIClient()
         client.force_authenticate(user=self.staff)
         response = client.post('/sales/checkout/', {
-            'items': [{'product_id': self.product.pk, 'quantity': '2.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '2.00', 'unit_price': '50.00'}],
             'payment_method': 'bitcoin',
             'amount_tendered': '100.00',
         }, format='json')
@@ -371,7 +371,7 @@ class CheckoutPaymentMethodValidationTests(TestCase):
         customer = Customer.objects.create(name='Walk-in', created_by=self.staff)
         response = client.post('/sales/orders/', {
             'customer_id': customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '50.00'}],
             'payment_method': 'bitcoin',
             'amount_tendered': '50.00',
         }, format='json')
@@ -410,7 +410,7 @@ class VoidFulfilledOrderTests(TestCase):
         self.category = Category.objects.create(name='Dairy')
         self.product = Product.objects.create(
             category=self.category, name='Fresh Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
+            shelf_life=7,
         )
         self.batch = ProductBatch.objects.create(
             product=self.product, batch_number='PRD-TEST-902',
@@ -423,8 +423,8 @@ class VoidFulfilledOrderTests(TestCase):
 
     def _place_order(self, qty=Decimal('10.00')):
         return SalesService.place_order(
-            customer=self.customer, items=[(self.product, qty)], handled_by=self.staff,
-            amount_tendered=qty * self.product.unit_price,
+            customer=self.customer, items=[(self.product, qty, Decimal('50.00'))], handled_by=self.staff,
+            amount_tendered=(qty * Decimal('50.00')).quantize(Decimal('0.01')),
         )
 
     def test_void_restores_stock_to_correct_batch(self):
@@ -512,7 +512,7 @@ class SalesByCategoryReportTests(TestCase):
         self.category = Category.objects.create(name='Category Report')
         product = Product.objects.create(
             category=self.category, name='Report Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
+            shelf_life=7,
         )
         batch = ProductBatch.objects.create(
             product=product, batch_number='PRD-CATEGORY-REPORT',
@@ -548,7 +548,7 @@ class TransactionHistoryTests(TestCase):
         self.category = Category.objects.create(name='Dairy')
         self.product = Product.objects.create(
             category=self.category, name='Fresh Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
+            shelf_life=7,
         )
         self.batch = ProductBatch.objects.create(
             product=self.product, batch_number='PRD-TEST-950',
@@ -562,7 +562,7 @@ class TransactionHistoryTests(TestCase):
     def _make_txn(self, staff=None, qty=Decimal('2.00'), payment_method='cash', tendered=Decimal('100.00')):
         staff = staff or self.staff
         return SalesService.checkout(
-            [(self.product, qty)], staff, payment_method=payment_method,
+            [(self.product, qty, Decimal('50.00'))], staff, payment_method=payment_method,
             amount_tendered=tendered if payment_method == 'cash' else None,
         )
 
@@ -705,7 +705,7 @@ class PlaceOrderTests(TestCase):
         self.category = Category.objects.create(name='Dairy')
         self.product = Product.objects.create(
             category=self.category, name='Fresh Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
+            shelf_life=7,
         )
         self.batch = ProductBatch.objects.create(
             product=self.product, batch_number='PRD-TEST-960',
@@ -720,7 +720,7 @@ class PlaceOrderTests(TestCase):
     def test_create_order_immediately_fulfills_and_deducts_stock(self):
         response = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '5.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '5.00', 'unit_price': '50.00'}],
             'amount_tendered': '250.00',
         }, format='json')
         self.assertEqual(response.status_code, 201)
@@ -731,7 +731,7 @@ class PlaceOrderTests(TestCase):
     def test_response_includes_nested_transaction_with_change_due(self):
         response = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '2.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '2.00', 'unit_price': '50.00'}],
             'amount_tendered': '150.00',
         }, format='json')
         self.assertEqual(response.status_code, 201)
@@ -742,9 +742,7 @@ class PlaceOrderTests(TestCase):
         self.client.force_authenticate(make_user('discountadmin', role='admin'))
         response = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '2.00'}],
-            'discount_type': 'percent',
-            'discount_value': '10',
+            'items': [{'product_id': self.product.pk, 'quantity': '2.00', 'unit_price': '50.00', 'discount_type': 'percent', 'discount_value': '10'}],
             'amount_tendered': '90.00',
         }, format='json')
         self.assertEqual(response.status_code, 201)
@@ -754,9 +752,7 @@ class PlaceOrderTests(TestCase):
     def test_invalid_percent_discount_rejected(self):
         response = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
-            'discount_type': 'percent',
-            'discount_value': '150',
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '50.00', 'discount_type': 'percent', 'discount_value': '150'}],
         }, format='json')
         self.assertEqual(response.status_code, 400)
         self.assertEqual(Order.objects.count(), 0)
@@ -767,7 +763,7 @@ class PlaceOrderTests(TestCase):
 
     def test_missing_customer_id_rejected(self):
         response = self.client.post('/sales/orders/', {
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '50.00'}],
         }, format='json')
         self.assertEqual(response.status_code, 400)
 
@@ -775,8 +771,8 @@ class PlaceOrderTests(TestCase):
         response = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
             'items': [
-                {'product_id': self.product.pk, 'quantity': '1.00'},
-                {'product_id': 999999, 'quantity': '1.00'},
+                {'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '50.00'},
+                {'product_id': 999999, 'quantity': '1.00', 'unit_price': '50.00'},
             ],
             'amount_tendered': '100.00',
         }, format='json')
@@ -786,14 +782,14 @@ class PlaceOrderTests(TestCase):
     def test_zero_quantity_item_rejected(self):
         response = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '0.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '0.00', 'unit_price': '50.00'}],
         }, format='json')
         self.assertEqual(response.status_code, 400)
 
     def test_insufficient_stock_rolls_back_entire_order(self):
         response = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '9999.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '9999.00', 'unit_price': '50.00'}],
             'amount_tendered': '999999.00',
         }, format='json')
         self.assertEqual(response.status_code, 400)
@@ -803,7 +799,7 @@ class PlaceOrderTests(TestCase):
     def test_insufficient_cash_tendered_rolls_back(self):
         response = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '5.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '5.00', 'unit_price': '50.00'}],
             'amount_tendered': '10.00',
         }, format='json')
         self.assertEqual(response.status_code, 400)
@@ -837,7 +833,7 @@ class OrderMutationRemovedTests(TestCase):
         self.category = Category.objects.create(name='Dairy')
         self.product = Product.objects.create(
             category=self.category, name='Fresh Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
+            shelf_life=7,
         )
         ProductBatch.objects.create(
             product=self.product, batch_number='PRD-TEST-961',
@@ -848,7 +844,7 @@ class OrderMutationRemovedTests(TestCase):
         self.client.force_authenticate(user=self.staff)
         response = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '50.00'}],
             'amount_tendered': '50.00',
         }, format='json')
         self.order_id = response.data['id']
@@ -874,7 +870,7 @@ class CancelOrderPermissionTests(TestCase):
         self.category = Category.objects.create(name='Dairy')
         self.product = Product.objects.create(
             category=self.category, name='Fresh Milk', unit='liter',
-            unit_price=Decimal('50.00'), shelf_life=7,
+            shelf_life=7,
         )
         ProductBatch.objects.create(
             product=self.product, batch_number='PRD-TEST-962',
@@ -885,7 +881,7 @@ class CancelOrderPermissionTests(TestCase):
         self.client.force_authenticate(user=self.staff)
         response = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '50.00'}],
             'amount_tendered': '50.00',
         }, format='json')
         self.order_id = response.data['id']
@@ -913,7 +909,7 @@ class CancelOrderPermissionTests(TestCase):
                 batch.expiration_date = timezone.localdate() + timedelta(days=30)
                 batch.save()
                 order = SalesService.place_order(
-                    self.customer, [(self.product, Decimal('1.00'))], self.staff,
+                    self.customer, [(self.product, Decimal('1.00'), Decimal('50.00'))], self.staff,
                     amount_tendered=Decimal('50.00'),
                 )
                 if reason == 'past_expiration_date':
@@ -952,7 +948,7 @@ class SalesAuditRegressionTests(TestCase):
         self.category = Category.objects.create(name='Audit Category')
         self.product = Product.objects.create(
             category=self.category, name='Audit Product', unit='piece',
-            unit_price=Decimal('10.00'), shelf_life=7,
+            shelf_life=7,
         )
         self.batch = ProductBatch.objects.create(
             product=self.product, batch_number='PRD-SALES-AUDIT',
@@ -966,7 +962,7 @@ class SalesAuditRegressionTests(TestCase):
 
     def test_void_does_not_restore_stock_to_batch_that_has_since_expired(self):
         order = SalesService.place_order(
-            self.customer, [(self.product, Decimal('10.00'))], self.staff,
+            self.customer, [(self.product, Decimal('10.00'), Decimal('10.00'))], self.staff,
             amount_tendered=Decimal('100.00'),
         )
         self.batch.expiration_date = timezone.localdate() - timedelta(days=1)
@@ -981,7 +977,7 @@ class SalesAuditRegressionTests(TestCase):
     def test_best_sellers_keep_same_named_products_separate(self):
         other = Product.objects.create(
             category=self.category, name=self.product.name, unit='piece',
-            unit_price=Decimal('10.00'), shelf_life=7,
+            shelf_life=7,
         )
         ProductBatch.objects.create(
             product=other, batch_number='PRD-SALES-AUDIT-OTHER',
@@ -990,11 +986,11 @@ class SalesAuditRegressionTests(TestCase):
             expiration_date=timezone.localdate() + timedelta(days=30),
         )
         SalesService.checkout(
-            [(self.product, Decimal('2.00'))], self.staff,
+            [(self.product, Decimal('2.00'), Decimal('10.00'))], self.staff,
             payment_method='online',
         )
         SalesService.checkout(
-            [(other, Decimal('3.00'))], self.staff,
+            [(other, Decimal('3.00'), Decimal('10.00'))], self.staff,
             payment_method='online',
         )
 
@@ -1009,7 +1005,7 @@ class SalesAuditRegressionTests(TestCase):
         original_product_name = self.product.name
         original_category_name = self.category.name
         SalesService.checkout(
-            [(self.product, Decimal('1.00'))], self.staff,
+            [(self.product, Decimal('1.00'), Decimal('10.00'))], self.staff,
             payment_method='online',
         )
         self.product.name = 'Renamed Product'
@@ -1027,7 +1023,7 @@ class SalesAuditRegressionTests(TestCase):
         other_category = Category.objects.create(name=self.category.name)
         other_product = Product.objects.create(
             category=other_category, name='Other Product', unit='piece',
-            unit_price=Decimal('10.00'), shelf_life=7,
+            shelf_life=7,
         )
         ProductBatch.objects.create(
             product=other_product, batch_number='PRD-SALES-OTHER-CATEGORY',
@@ -1036,11 +1032,11 @@ class SalesAuditRegressionTests(TestCase):
             expiration_date=timezone.localdate() + timedelta(days=30),
         )
         SalesService.checkout(
-            [(self.product, Decimal('2.00'))], self.staff,
+            [(self.product, Decimal('2.00'), Decimal('10.00'))], self.staff,
             payment_method='online',
         )
         SalesService.checkout(
-            [(other_product, Decimal('3.00'))], self.staff,
+            [(other_product, Decimal('3.00'), Decimal('10.00'))], self.staff,
             payment_method='online',
         )
 
@@ -1057,7 +1053,7 @@ class SalesAuditRegressionTests(TestCase):
         client.force_authenticate(user=self.staff)
 
         response = client.post('/sales/checkout/', {
-            'items': [{'product_id': self.product.pk, 'quantity': '1.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '10.00'}],
             'payment_method': 'online',
             'discount_type': 'none',
             'discount_value': '-25.00',
@@ -1069,13 +1065,11 @@ class SalesAuditRegressionTests(TestCase):
         self.assertEqual(Transaction.objects.count(), 0)
 
     def test_large_valid_line_total_is_stored_without_decimal_overflow(self):
-        self.product.unit_price = Decimal('99999999.99')
-        self.product.save(update_fields=['unit_price'])
         self.batch.unit_price = Decimal('99999999.99')
         self.batch.save(update_fields=['unit_price'])
 
         order = SalesService.place_order(
-            self.customer, [(self.product, Decimal('2.00'))], self.staff,
+            self.customer, [(self.product, Decimal('2.00'), Decimal('99999999.99'))], self.staff,
             payment_method='online',
         )
 
@@ -1096,7 +1090,7 @@ class SalesAuditRegressionTests(TestCase):
     def test_checkout_processes_products_in_stable_primary_key_order(self):
         other = Product.objects.create(
             category=self.category, name='Second Product', unit='piece',
-            unit_price=Decimal('10.00'), shelf_life=7,
+            shelf_life=7,
         )
         processed = []
 
@@ -1109,7 +1103,7 @@ class SalesAuditRegressionTests(TestCase):
             side_effect=record_product,
         ):
             SalesService.checkout(
-                [(other, Decimal('1.00')), (self.product, Decimal('1.00'))],
+                [(other, Decimal('1.00'), Decimal('10.00')), (self.product, Decimal('1.00'), Decimal('10.00'))],
                 self.staff, payment_method='online',
             )
 
@@ -1120,7 +1114,7 @@ class SalesAuditRegressionTests(TestCase):
         FEFOConf.get_config()
         for _ in range(3):
             SalesService.checkout(
-                [(self.product, Decimal('1.00'))], self.staff,
+                [(self.product, Decimal('1.00'), Decimal('10.00'))], self.staff,
                 payment_method='online',
             )
         client = APIClient()
@@ -1135,7 +1129,7 @@ class SalesAuditRegressionTests(TestCase):
     def test_order_history_query_count_does_not_grow_per_item(self):
         for _ in range(3):
             SalesService.place_order(
-                self.customer, [(self.product, Decimal('1.00'))], self.staff,
+                self.customer, [(self.product, Decimal('1.00'), Decimal('10.00'))], self.staff,
                 payment_method='online',
             )
         client = APIClient()

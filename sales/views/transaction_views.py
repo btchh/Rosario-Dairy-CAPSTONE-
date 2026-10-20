@@ -22,6 +22,20 @@ class TransactionPagination(PageNumberPagination):
     max_page_size = 200
 
 
+def transaction_history_queryset(user):
+    """Load receipt details with the same visibility rules for every history API."""
+    batches = ProductBatch.objects.select_related('product__category').annotate(
+        available_product_stock=_available_stock('product__batches', timezone.localdate())
+    )
+    items = TransactionItem.objects.prefetch_related(Prefetch(
+        'product_batch', queryset=batches,
+    ))
+    queryset = Transaction.objects.select_related(
+        'handled_by', 'customer'
+    ).prefetch_related(Prefetch('items', queryset=items)).order_by('-created_at', '-id')
+    return visible_transactions(user.role == 'staff', queryset)
+
+
 class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
     """
     Read-only sales history. Transactions are created via CheckoutView or
@@ -46,16 +60,7 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         # A batch can appear on hundreds of invoice lines. Fetch it once and
         # compute its product's current stock in the same query.
-        batches = ProductBatch.objects.select_related('product__category').annotate(
-            available_product_stock=_available_stock('product__batches', timezone.localdate())
-        )
-        items = TransactionItem.objects.prefetch_related(Prefetch(
-            'product_batch', queryset=batches,
-        ))
-        queryset = super().get_queryset().select_related(
-            'handled_by', 'customer'
-        ).prefetch_related(Prefetch('items', queryset=items)).order_by('-created_at', '-id')
-        return visible_transactions(self.request.user.role == 'staff', queryset)
+        return transaction_history_queryset(self.request.user)
 
     @staticmethod
     def _parse_date_param(value, field_name):

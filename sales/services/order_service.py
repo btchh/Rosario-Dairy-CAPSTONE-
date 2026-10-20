@@ -8,53 +8,25 @@ from . import checkout_service
 
 def place_order(customer, items, handled_by, discount_type='none', discount_value=None,
                  payment_method='cash', amount_tendered=None):
-    """
-    Creates an Order together with its OrderItems and immediately fulfills it.
-    Orders are born fulfilled — there's no 'placed'/'confirmed' holding state
-    anymore. `items` is a list of (product, quantity) tuples, already
-    resolved and validated by the caller (mirrors how checkout_service.checkout()
-    takes pre-resolved cart_items). Entirely atomic: any failure — bad stock,
-    bad tender — rolls back the Order and every OrderItem with it.
-    """
-    if discount_value is None:
-        discount_value = Decimal('0.00')
-
+    """Encode explicit item prices/discounts and immediately fulfill atomically."""
+    from .item_pricing import ZERO, price_items, reject_invoice_discount
+    reject_invoice_discount(discount_type, ZERO if discount_value is None else discount_value)
+    lines = price_items(items, handled_by)
     with db_transaction.atomic():
-        order = Order.objects.create(
-            customer=customer,
-            handled_by=handled_by,
-            discount_type=discount_type,
-            discount_value=discount_value,
-        )
-
-        order_items = []
-        cart_items = []
-        for product, quantity in items:
-            unit_price = product.unit_price
-            order_items.append(OrderItem(
-                order=order,
-                product=product,
-                quantity=quantity,
-                unit_price=unit_price,
-                subtotal=quantity * unit_price,
-            ))
-            # Lock the transaction's price to what was just snapshotted onto
-            # the OrderItem, so what's shown on the order matches exactly
-            # what the customer is charged.
-            cart_items.append((product, quantity, unit_price))
-        OrderItem.objects.bulk_create(order_items)
-
+        order = Order.objects.create(customer=customer, handled_by=handled_by)
+        OrderItem.objects.bulk_create([
+            OrderItem(order=order, product=line.product, quantity=line.quantity,
+                      unit_price=line.unit_price, subtotal=line.subtotal,
+                      discount_type=line.discount_type, discount_value=line.discount_value,
+                      discount_amount=line.discount_amount, total_amount=line.total_amount)
+            for line in lines
+        ])
         txn = checkout_service.checkout(
-            cart_items, handled_by, payment_method,
-            discount_type=discount_type,
-            discount_value=discount_value,
-            amount_tendered=amount_tendered,
-            customer=customer,
+            items, handled_by, payment_method=payment_method,
+            amount_tendered=amount_tendered, customer=customer,
         )
-
-        order.transaction = txn  # pyright: ignore[reportAttributeAccessIssue]
+        order.transaction = txn
         order.save(update_fields=['transaction', 'updated_at'])
-
     order.refresh_from_db()
     return order
 

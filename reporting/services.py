@@ -114,10 +114,7 @@ def _sales_drivers(start_date, end_date, visible_to_staff=False):
 def daily_sales(visible_to_staff=False):
     today = timezone.localdate()
     revenue, count = _sales_summary(today, today, visible_to_staff)
-    line_total = ExpressionWrapper(
-        F('quantity') * F('unit_price'),
-        output_field=DecimalField(max_digits=20, decimal_places=2),
-    )
+    line_total = _line_revenue()
     item_rows = (
         TransactionItem.objects.filter(
             transaction__in=visible_transactions(visible_to_staff),
@@ -157,8 +154,10 @@ def daily_sales(visible_to_staff=False):
 
 
 def _line_revenue():
-    return ExpressionWrapper(
-        F('quantity') * F('unit_price'),
+    return Coalesce(
+        'subtotal',
+        ExpressionWrapper(F('quantity') * F('unit_price'),
+                          output_field=DecimalField(max_digits=20, decimal_places=2)),
         output_field=DecimalField(max_digits=20, decimal_places=2),
     )
 

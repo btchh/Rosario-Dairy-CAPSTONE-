@@ -73,7 +73,7 @@ class InventorySettingsTests(TestCase):
     def test_updated_thresholds_control_product_and_ingredient_alerts(self):
         product = Product.objects.create(
             category=Category.objects.create(name='Alerts'), name='Milk',
-            unit='liter', unit_price=10, shelf_life=30,
+            unit='liter',  shelf_life=30,
         )
         ingredient = Ingredient.objects.create(
             name='Raw Milk', unit='liter', unit_price=10, shelf_life=30,
@@ -122,7 +122,7 @@ class InventorySettingsTests(TestCase):
         for url, payload in (
             ('/inventory/products/', {
                 'category_id': category.pk, 'name': 'Milk', 'unit': 'liter',
-                'unit_price': 10, 'shelf_life': 7,
+                'shelf_life': 7,
             }),
             ('/inventory/ingredients/', {
                 'name': 'Raw Milk', 'unit': 'liter', 'unit_price': 10, 'shelf_life': 7,

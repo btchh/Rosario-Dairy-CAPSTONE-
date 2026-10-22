@@ -1,5 +1,3 @@
-from typing import cast
-
 from django.http import FileResponse
 from django.utils import timezone
 from rest_framework import status
@@ -14,11 +12,10 @@ from accounts.throttles import ExpensiveReadRateThrottle, ReportRefreshRateThrot
 
 
 class ReportTypeMixin:
-    def get_report_type(self, request):
+    def report_options(self, request):
         serializer = ReportTypeQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
-        validated_data = cast(dict[str, str], serializer.validated_data)
-        return validated_data['type']
+        return serializer.validated_data
 
     @staticmethod
     def serialized_data(report_type, data):
@@ -34,13 +31,16 @@ class ReportPreviewView(ReportTypeMixin, APIView):
     throttle_classes = [ExpensiveReadRateThrottle]
 
     def get(self, request):
-        report_type = self.get_report_type(request)
+        options = self.report_options(request)
+        report_type = options['type']
         payload = {
             'report_type': report_type,
             'generated_at': timezone.now(),
             'data': self.serialized_data(
                 report_type,
-                get_report(report_type, visible_to_staff=self.staff_scope(request),period=request.query_params.get('period','monthly')),
+                get_report(report_type, visible_to_staff=self.staff_scope(request),
+                       period=options.get('period', 'monthly'),
+                       start_date=options.get('start_date'), end_date=options.get('end_date')),
             ),
         }
         return Response(ReportPreviewSerializer(payload).data)
@@ -51,12 +51,17 @@ class ReportPDFExportView(ReportTypeMixin, APIView):
     throttle_classes = [ExpensiveReadRateThrottle]
 
     def get(self, request):
-        report_type = self.get_report_type(request)
+        options = self.report_options(request)
+        report_type = options['type']
         data = self.serialized_data(
             report_type,
-            get_report(report_type, visible_to_staff=self.staff_scope(request),period=request.query_params.get('period','monthly')),
+            get_report(report_type, visible_to_staff=self.staff_scope(request),
+                       period=options.get('period', 'monthly'),
+                       start_date=options.get('start_date'), end_date=options.get('end_date')),
         )
-        filename = f'rosario-dairy-{report_type}-{timezone.localdate():%Y%m%d}.pdf'
+        date_label = (f"{data['start_date']}-to-{data['end_date']}"
+                      if 'start_date' in data else f'{timezone.localdate():%Y%m%d}')
+        filename = f'rosario-dairy-{report_type}-{date_label}.pdf'
         return FileResponse(
             generate_pdf(report_type, data), as_attachment=True,
             filename=filename, content_type='application/pdf',

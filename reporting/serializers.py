@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import serializers
 
 
@@ -26,6 +27,9 @@ class FamilyMixSerializer(serializers.Serializer):
 
 
 class SalesDriversSerializer(serializers.Serializer):
+    is_custom_range = serializers.BooleanField(default=False)
+    previous_period_start = serializers.DateField(required=False)
+    previous_period_end = serializers.DateField(required=False)
     gross_sales = serializers.DecimalField(max_digits=24, decimal_places=2)
     discounts = serializers.DecimalField(max_digits=24, decimal_places=2)
     average_ticket = serializers.DecimalField(max_digits=24, decimal_places=2)
@@ -35,6 +39,8 @@ class SalesDriversSerializer(serializers.Serializer):
 
 
 class DailySalesSerializer(SalesDriversSerializer):
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
     product_revenue_basis = serializers.CharField(required=False)
     date = serializers.DateField()
     total_revenue = serializers.DecimalField(max_digits=24, decimal_places=2)
@@ -106,7 +112,28 @@ class StockItemSerializer(serializers.Serializer):
     )
 
 
+class InventoryLedgerRowSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    unit = serializers.CharField()
+    beginning = serializers.DecimalField(max_digits=24, decimal_places=2)
+    received = serializers.DecimalField(max_digits=24, decimal_places=2)
+    total = serializers.DecimalField(max_digits=24, decimal_places=2)
+    outlet = serializers.DecimalField(max_digits=24, decimal_places=2)
+    allocations = serializers.DictField(child=serializers.DecimalField(max_digits=24, decimal_places=2))
+    ending = serializers.DecimalField(max_digits=24, decimal_places=2)
+    adjustments = serializers.DecimalField(max_digits=24, decimal_places=2)
+    remarks = serializers.CharField(allow_blank=True)
+
+
+class InventoryLedgerSerializer(serializers.Serializer):
+    date = serializers.DateField()
+    columns = serializers.ListField(child=serializers.DictField(child=serializers.CharField()))
+    rows = InventoryLedgerRowSerializer(many=True)
+
+
 class InventoryReportSerializer(serializers.Serializer):
+    ledger = InventoryLedgerSerializer()
     as_of = serializers.DateTimeField()
     total_products = serializers.IntegerField()
     total_ingredients = serializers.IntegerField()
@@ -169,7 +196,46 @@ class CustomerTopItemSerializer(serializers.Serializer):
     total_spent = serializers.DecimalField(max_digits=24, decimal_places=2)
 
 
+class CustomerAccountSerializer(CustomerTopItemSerializer):
+    customer_id = serializers.IntegerField()
+    is_active = serializers.BooleanField()
+    paid_amount = serializers.DecimalField(max_digits=24, decimal_places=2)
+    pending_amount = serializers.DecimalField(max_digits=24, decimal_places=2)
+    unknown_amount = serializers.DecimalField(max_digits=24, decimal_places=2)
+    pending_count = serializers.IntegerField()
+    last_purchase = serializers.DateField(allow_null=True)
+
+
+class CustomerMonthlyItemSerializer(CustomerTopItemSerializer):
+    customer_id = serializers.IntegerField()
+    paid_amount = serializers.DecimalField(max_digits=24, decimal_places=2)
+    pending_amount = serializers.DecimalField(max_digits=24, decimal_places=2)
+    unknown_amount = serializers.DecimalField(max_digits=24, decimal_places=2)
+
+
+class CustomerMonthSerializer(serializers.Serializer):
+    month = serializers.CharField()
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    customer_count = serializers.IntegerField()
+    transaction_count = serializers.IntegerField()
+    revenue = serializers.DecimalField(max_digits=24, decimal_places=2)
+    customers = CustomerMonthlyItemSerializer(many=True)
+
+
 class CustomerReportSerializer(serializers.Serializer):
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    timezone = serializers.CharField()
+    total_revenue = serializers.DecimalField(max_digits=24, decimal_places=2)
+    transaction_count = serializers.IntegerField()
+    monthly_summary = CustomerMonthSerializer(many=True)
+    customers = CustomerAccountSerializer(many=True)
+    customer_record_count = serializers.IntegerField()
+    paid_amount = serializers.DecimalField(max_digits=24, decimal_places=2)
+    pending_amount = serializers.DecimalField(max_digits=24, decimal_places=2)
+    unknown_amount = serializers.DecimalField(max_digits=24, decimal_places=2)
+    pending_customer_count = serializers.IntegerField()
     as_of = serializers.DateField()
     total_customers = serializers.IntegerField()
     active_customer_count = serializers.IntegerField()
@@ -207,3 +273,21 @@ class ReportTypeQuerySerializer(serializers.Serializer):
     type = serializers.ChoiceField(choices=list(REPORT_SERIALIZERS))
     period = serializers.ChoiceField(choices=['weekly','monthly','yearly'],required=False)
     scope = serializers.ChoiceField(choices=['real'], required=False)
+    start_date = serializers.DateField(required=False, input_formats=['%Y-%m-%d'])
+    end_date = serializers.DateField(required=False, input_formats=['%Y-%m-%d'])
+
+    def validate(self, attrs):
+        start, end = attrs.get('start_date'), attrs.get('end_date')
+        if (start is None) != (end is None):
+            missing = 'end_date' if end is None else 'start_date'
+            raise serializers.ValidationError({missing: 'Provide both start_date and end_date.'})
+        if start is not None:
+            if attrs['type'] not in ('daily_sales', 'weekly_sales', 'monthly_sales', 'customer'):
+                raise serializers.ValidationError({'start_date': 'Date ranges are supported for sales and customer reports only.'})
+            if start > end:
+                raise serializers.ValidationError({'end_date': 'Must be on or after start_date.'})
+            if end > timezone.localdate():
+                raise serializers.ValidationError({'end_date': 'Must not be in the future.'})
+            if start.year < 2:
+                raise serializers.ValidationError({'start_date': 'Must be in year 0002 or later.'})
+        return attrs

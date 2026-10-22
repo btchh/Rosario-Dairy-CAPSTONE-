@@ -57,6 +57,14 @@ def models_report():
     }
 
 
+def issued_point(run, issued):
+    return {'date': issued.target_month, 'end_date': month_end(issued.target_month),
+        'predicted_revenue': issued.value, 'lower_bound': issued.lower_bound,
+        'upper_bound': issued.upper_bound, 'trained_through': run.trained_through,
+        'range_kind': 'historical_absolute_error_band', 'point_kind': 'regular_monthly_revenue',
+        'sample_count': run.findings['next_month']['sample_count']}
+
+
 def report(scope='real',period='monthly'):
     if scope!='real' or period not in ('weekly','monthly','yearly'):
         raise ValueError('Invalid forecast scope or period')
@@ -102,10 +110,7 @@ def report(scope='real',period='monthly'):
         payload.update(status='unsupported_horizon',status_message='The replacement currently evaluates monthly regular revenue only. Weekly and yearly forecasts are withheld.')
         return payload
     if model_status == 'ready':
-        payload['forecast']=[{'date':issued.target_month,'end_date':month_end(issued.target_month),
-            'predicted_revenue':issued.value,'lower_bound':issued.lower_bound,'upper_bound':issued.upper_bound,
-            'trained_through':run.trained_through,'range_kind':'historical_absolute_error_band',
-            'point_kind':'regular_monthly_revenue','sample_count':run.findings['next_month']['sample_count']}]
+        payload['forecast']=[issued_point(run, issued)]
         payload['regular'].update(predicted_revenue=issued.value)
     return payload
 

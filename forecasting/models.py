@@ -37,6 +37,19 @@ class MonthlyModelRun(models.Model):
             name='monthly_model_revision_unique')]
 
 
+class ForecastExperiment(models.Model):
+    """Archived synthetic experiments; new forecasting experiments are disabled."""
+    version = models.CharField(max_length=60)
+    source_revision = models.CharField(max_length=64)
+    findings = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-pk']
+        constraints = [models.UniqueConstraint(fields=['version', 'source_revision'],
+                                               name='forecast_experiment_revision_unique')]
+
+
 class MonthlyCoverage(models.Model):
     """Operator attestation tied to the exact observed month's contents."""
     month = models.DateField()

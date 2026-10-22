@@ -1,5 +1,14 @@
 # SARIMA regular-dairy forecasting and ongoing learning
 
+## Actual invoices only
+
+Forecasting and validation exclude dummy sales. The former synthetic experiment
+is disabled at the user's request: its API returns HTTP 410 and its command
+fails before reading data or fitting. Previously saved experiments remain
+archived; their metrics are not current forecasting evidence.
+
+## Real-data forecasting
+
 The retired forecasting engine is removed. Its original source, database and
 results remain in `backups/forecasting-reset-20261022-142212/`. Historical
 migrations 0001–0005 preserve the upgrade chain; migration 0006 adds the new
@@ -212,3 +221,49 @@ Backups are private logical Django data dumps, not native PostgreSQL cluster
 backups. Verify hashes and restore into a separate empty database at the matching
 archived schema before planning live recovery. Schema reversal does not restore
 deleted legacy forecast rows. Historical research/model/score rows are retained.
+
+## Recorded-invoice feeding diagnostics
+
+Admin-only `GET /api/forecasting/feeding/` computes an actual-invoice audit
+through the last completed month, without fitting or issuing forecasts. It
+exposes descriptive source-label groups, monthly counts/revenue, unverified
+gaps and readiness limitations. The audit updates as actual invoices arrive.
+
+Export actual evidence with:
+
+```bash
+venv/bin/python manage.py investigate_feeding_sales --output backups/feeding-research-20261022/actual-results
+```
+
+See [FEEDING_RESEARCH.md](FEEDING_RESEARCH.md) for the limited feeding history.
+Missing invoices are not verified absence of demand; no current feeding model
+is approved. The regular SARIMA model and production gates are unchanged.
+
+## Three line-graph views
+
+Admin-only `GET /api/forecasting/chart/?period=monthly` returns `views.combined`,
+`views.regular` and `views.feeding` with aligned `history` rows (`date`, `actual`,
+`predicted`, invoice count and record status), independent historical metrics,
+approved live points and availability status. No fitting occurs on GET.
+Combined recorded totals sum classified invoices. Missing invoice periods are
+null rather than verified zero demand, and unclassified/dummy sales are excluded.
+
+The regular prediction line uses saved, past-only test folds only when its source
+revision and recorded monthly actuals match. Invalid/old comparisons are withheld.
+Historical metrics are recomputed from those matched folds. A stale live status
+does not erase a valid historical comparison. Feeding has no validated prediction
+line; combined forecasts and metrics remain unavailable until both components
+are available. No regular-only values are substituted into combined predictions.
+See `FRONTEND_HANDOFF.md` for the three-tab graph contract.
+
+The chart endpoint accepts `period=weekly|monthly|yearly` (default monthly), with
+all three sales tabs available for each period. Invoice dates determine recorded
+weekly (Monday–Sunday), monthly and annual sums. Cache requests by period. Null
+invoice periods remain gaps. Weekly predictions are unavailable until a separate
+weekly model exists; the monthly model is not split across weeks. Yearly regular
+predictions sum exactly twelve valid monthly rolling backtests where available;
+`prediction_basis` explicitly identifies this aggregation, not a year-ahead
+forecast. Weekly/yearly metrics remain null and no live monthly point is
+relabelled as another horizon. `validated_forecast_periods: [monthly]` describes
+model evidence; `available_periods` keeps all three history selectors visible.
+The legacy forecast/report endpoint's publication rules remain unchanged.

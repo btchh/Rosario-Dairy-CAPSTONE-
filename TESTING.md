@@ -1,5 +1,33 @@
 # Backend verification
 
+Latest pre-push verification (2026-10-22): **420 tests passed** in 22.375 seconds,
+covering forecast chart/actual-only guards/feeding studies and existing sales,
+reports, inventory and config checks. Django system checks passed and the migration
+drift check found no changes. A fast password hasher was used only in the test
+process; production password settings are unchanged.
+
+## Inventory test types and current frontend handoff — 2026-10-22
+
+`inventory/tests.py` uses the typed DRF client/case adapters in
+`config/test_support.py`. They retain normal request and transaction behavior,
+describe DRF response payloads at the test boundary, and prevent generic
+`Client`/`HttpResponse` inference from hiding `force_authenticate`/`data`.
+Serializer results are narrowed where the test knows it is using a single
+instance; decimal fields receive `Decimal`, related IDs use their model relation,
+and query-added expiry annotations are read explicitly. No blanket Pylance rule
+suppression is used. These adapters are for DRF endpoints, not HTML/streaming tests.
+
+All 120 inventory tests passed before and after the initial typing changes.
+The final combined backend suite passed 404 tests in 28.508 seconds.
+The CLI type check reports none of the supplied response/client/model-attribute
+diagnostics, and no diagnostics in the new adapter. Plain Pyright still reports
+other Django dynamic-manager/decorator inference issues; this is not a claim
+that the entire backend passes a strict static type check.
+
+`FRONTEND_HANDOFF.md` now records frontend commit `393383a3`, implemented report
+date controls/service/hooks/cache behavior, and remaining forecast-contract
+differences. The frontend was inspected read-only.
+
 ## Forecasting replacement (2026-10-22)
 
 The legacy forecasting engine has been backed up and removed. New pattern-study
@@ -159,3 +187,59 @@ inventory match the pre-change backup; external login/session changes were
 recorded and preserved. The real source revision is unchanged. The hourly timer
 is enabled and maintenance succeeded with no fabricated coverage, issues or
 deployments. Complete evidence: `backups/sarima-priority-20261022/`.
+
+
+## Actual-only forecasting and feeding diagnostics
+
+```bash
+venv/bin/python manage.py test forecasting.test_demo forecasting.test_feeding forecasting.tests sales reporting inventory config --keepdb --noinput
+```
+
+The former synthetic test path is disabled. Guard tests verify its input/training
+entry points fail without queries, archived scores are withheld and retained,
+the command does not export, and the admin API returns HTTP 410 even when an old
+synthetic payload exists in cache. Dummy sales remain excluded from actual
+snapshots. Test fixtures verify policy; no dummy dataset is used to measure accuracy.
+
+Feeding tests cover actual-only segment selection, gaps without zero-demand
+attestation, label groups with original aliases, empty history, actual JSON/CSV export and admin-only completed-month access
+without fitting. The final actual-only/core suite passed 404 tests in 23.900 seconds, using a
+fast password hasher only in the isolated test process. Runtime hashing is unchanged.
+
+Actual exports: `backups/feeding-research-20261022/actual-results/`. Compare all
+forecasting rows with the pre-change private dump, and live sales/order/item/batch
+fingerprints and actual revision with their baseline. The new API and command
+must not create forecasting evidence rows or alter existing actual models.
+
+## Three forecast line-graph views — 2026-10-22
+
+`forecasting.test_chart` covers the combined/regular/feeding calendars and recorded
+sums, excluded unclassified revenue, null gaps, separate backtest/live results,
+source-correction withholding, invalid fold/origin rejection, component forecast
+withholding, empty history and admin-only GET without fitting/publication.
+Unsupported chart periods (such as daily) and synthetic scopes return HTTP 400.
+
+The combined core suite passed 413 tests before the final query-validation
+addition. All 10 final chart tests passed after it. Live admin smoke checks
+confirmed three views, 12 historical regular prediction points, 10.6433% WAPE,
+no feeding/combined predictions, and unchanged model/issued/experiment counts.
+A standalone three-tab line-graph preview is saved privately under
+`backups/frontend-integration-preview-20261022/three-views.html`. No frontend
+source files changed. No synthetic sales were used for any displayed score.
+
+## Weekly, monthly and yearly chart controls — 2026-10-22
+
+The chart API accepts all three periods for each of the three sales views.
+Tests cover cross-year Monday–Sunday buckets, leap-day boundaries, totals and
+calendar reconciliation, null invoice gaps, twelve-month prediction aggregation,
+incomplete annual comparisons, period-specific request/cache selection, and
+withholding live monthly points at other horizons. The full core suite passed
+419 tests before the final partial-period test; final focused chart checks also
+cover cutoff clipping and partial annual labels.
+
+Live smoke checks verified all nine view/period combinations, equal recorded
+revenue totals across groupings, unchanged model/issued/experiment counts,
+monthly historical WAPE 10.6433%, zero fabricated weekly predictions and one
+annual sum built from the twelve saved 2025 monthly predictions. No fitting or
+source-data changes occurred. The standalone preview now has both the three
+sales tabs and Weekly / Monthly / Yearly controls; frontend source is untouched.

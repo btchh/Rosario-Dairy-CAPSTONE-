@@ -4,22 +4,29 @@ Run all app tests: python manage.py test inventory
 Run one class: python manage.py test inventory.tests.<TestClass>
 PostgreSQL is required for the concurrency and database-locking checks.
 """
+# Domain terms and deliberately artificial test fixture names.
+# cSpell:words FEFO YYMM TMCML ingredientbatch productbatch testpass
+# cSpell:ignore deleteadmin deletestaff visibilitystaff visibilityadmin stockalertadmin
+# cSpell:ignore inventoryauditadmin iconadmin iconstaff outflowstaff mergeimport
 
 import threading
 from datetime import date, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import IntegrityError, connections, transaction
-from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
-from rest_framework.test import APIClient
+
+from config.test_support import (
+    APIClient, APITestCase as TestCase, APITransactionTestCase as TransactionTestCase,
+)
 
 from config.data_cache import data_version
-from forecasting.data import source
+from forecasting.data import load_snapshot
 from inventory.models import (
     BatchSequence,
     Category,
@@ -91,7 +98,7 @@ class ConditionalDeleteAPITests(TestCase):
         self.assertEqual(response.data['deletion_type'], 'deactivated')
         category.refresh_from_db()
         self.assertFalse(category.is_active)
-        self.assertEqual(Product.objects.get(pk=product.pk).category_id, category.pk)
+        self.assertEqual(Product.objects.get(pk=product.pk).category.pk, category.pk)
         self.assertNotIn(category.pk, [row['id'] for row in self.client.get('/inventory/categories/').data])
         self.assertEqual(self.client.post(f'/inventory/categories/{category.pk}/reactivate/').status_code, 200)
         category.refresh_from_db()
@@ -379,7 +386,7 @@ class StockAlertQueryTests(TestCase):
         rows = list(BatchService.check_product_expiration())
 
         self.assertEqual(
-            [(row.batch_number, row.expiry_status) for row in rows],
+            [(row.batch_number, getattr(row, 'expiry_status')) for row in rows],
             [('PRD-CRITICAL', 'critical'), ('PRD-NEAR', 'near_expiry')],
         )
         response = APIClient()
@@ -845,7 +852,7 @@ class BatchQuantityPriceValidationTests(TestCase):
         })
         self.assertTrue(serializer.is_valid(), serializer.errors)
         batch = serializer.save()
-        self.assertIsNone(batch.unit_price)
+        self.assertIsNone(cast(ProductBatch, batch).unit_price)
 
     # --- IngredientBatch: quantity ---
 
@@ -1481,7 +1488,7 @@ class InventoryAuditRegressionTests(TestCase):
             expiration_date=self.today - timedelta(days=1), status='available',
         )
 
-        self.assertEqual(ProductSerializer(self.product).data['total_stock'], 0)
+        self.assertEqual(cast(dict[str, object], ProductSerializer(self.product).data)['total_stock'], 0)
         alert = next(
             item for item in BatchService.check_product_stock()
             if item['product'].pk == self.product.pk
@@ -1497,7 +1504,7 @@ class InventoryAuditRegressionTests(TestCase):
             expiration_date=self.today - timedelta(days=1), status='available',
         )
 
-        self.assertEqual(IngredientSerializer(self.ingredient).data['total_stock'], 0)
+        self.assertEqual(cast(dict[str, object], IngredientSerializer(self.ingredient).data)['total_stock'], 0)
         alert = next(
             item for item in BatchService.check_ingredient_stock()
             if item['ingredient'].pk == self.ingredient.pk
@@ -1570,8 +1577,8 @@ class InventoryAuditRegressionTests(TestCase):
         self.assertTrue(serializer.is_valid(), serializer.errors)
         batch = serializer.save()
 
-        self.assertEqual(batch.grade, 'A')
-        self.assertEqual(IngBatchSerializer(batch).data['grade'], 'A')
+        self.assertEqual(cast(IngredientBatch, batch).grade, 'A')
+        self.assertEqual(cast(dict[str, object], IngBatchSerializer(batch).data)['grade'], 'A')
 
     def test_terminal_batch_rejects_correction_without_creating_phantom_stock(self):
         batch = ProductBatch.objects.create(
@@ -1763,10 +1770,10 @@ class InventoryOutflowTests(TestCase):
             'reason': 'Inventory usage record', **extra}, format='json')
 
     def test_spoilage_complimentary_and_free_taste_are_distinct_inventory_records(self):
-        signature = source()[1]
+        signature = load_snapshot().revision
         version = data_version()
         for kind in ('spoilage', 'complimentary', 'free_taste'):
-            with self.captureOnCommitCallbacks(execute=True):
+            with self.capture_commit_callbacks(execute=True):
                 response = self.record(kind)
             self.assertEqual(response.status_code, 201, response.data)
             self.assertEqual(response.data['adjustment_type'], kind)
@@ -1777,16 +1784,16 @@ class InventoryOutflowTests(TestCase):
             self.assertTrue(response.data['created_at'])
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.remaining_quantity, Decimal('4'))
-        self.assertEqual(Decimal(str(ProductSerializer(self.product).data['total_stock'])), Decimal('4'))
+        self.assertEqual(Decimal(str(cast(dict[str, object], ProductSerializer(self.product).data)['total_stock'])), Decimal('4'))
         self.assertNotEqual(data_version(), version)
         self.assertEqual(StockAdjustment.objects.count(), 3)
         self.assertFalse(Transaction.objects.exists())
         self.assertFalse(Order.objects.exists())
-        self.assertEqual(source()[1], signature)
+        self.assertEqual(load_snapshot().revision, signature)
 
     def test_complimentary_and_free_taste_deplete_stock_and_spoilage_disposes_it(self):
         for kind, expected in (('complimentary', 'depleted'), ('free_taste', 'depleted'), ('spoilage', 'disposed')):
-            self.batch.remaining_quantity = 10
+            self.batch.remaining_quantity = Decimal('10')
             self.batch.status = 'available'
             self.batch.save()
             response = self.record(kind, quantity='10')
@@ -1899,17 +1906,17 @@ class ProductConsolidationTests(TestCase):
             quantity='2', unit_price='10', subtotal='20', discount_type='fixed',
             discount_value='3', discount_amount='3', total_amount='17',
             product_id_snapshot=self.duplicate.pk, product_name_snapshot=self.duplicate.name)
-        with self.captureOnCommitCallbacks(execute=True):
+        with self.capture_commit_callbacks(execute=True):
             consolidate_products()
         for obj in (sale, batch, item, line):
             obj.refresh_from_db()
         self.assertFalse(Product.objects.filter(pk=self.duplicate.pk).exists())
-        self.assertEqual(batch.product_id, self.original.pk)
+        self.assertEqual(batch.product.pk, self.original.pk)
         self.assertEqual(batch.remaining_quantity, 10)
         self.assertEqual(batch.initial_quantity, 12)
         self.assertEqual(batch.unit_price, 5)
-        self.assertEqual(item.product_id, self.original.pk)
-        self.assertEqual(line.product_batch_id, batch.pk)
+        self.assertEqual(item.product.pk, self.original.pk)
+        self.assertEqual(line.product_batch.pk, batch.pk)
         self.assertEqual(line.product_id_snapshot, self.original.pk)
         self.assertEqual(line.product_name_snapshot, 'BB300')
         self.assertEqual(line.source_product_label, 'BB 300')
@@ -1929,7 +1936,7 @@ class ProductConsolidationTests(TestCase):
         self.original.save()
         consolidate_products()
         self.original.refresh_from_db()
-        self.assertEqual(self.original.category_id, self.category.pk)
+        self.assertEqual(self.original.category.pk, self.category.pk)
         self.assertTrue(self.original.is_active)
 
     def test_failure_rolls_back_every_merge(self):
@@ -1941,7 +1948,7 @@ class ProductConsolidationTests(TestCase):
                 consolidate_products()
         self.assertEqual(Product.objects.count(), 2)
         batch.refresh_from_db()
-        self.assertEqual(batch.product_id, self.duplicate.pk)
+        self.assertEqual(batch.product.pk, self.duplicate.pk)
         self.assertEqual(batch.remaining_quantity, 5)
 
     def test_api_rejects_duplicate_names_but_accepts_different_size(self):

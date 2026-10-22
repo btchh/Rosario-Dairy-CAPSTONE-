@@ -11,6 +11,15 @@ from .feeding import feeding_report
 from .chart import chart_report
 from .weekly import weekly_report
 from .refresh_jobs import enqueue, launch_after_commit, lookup, payload
+from .prospective import evidence_report
+
+
+class ProjectionEvidenceView(APIView):
+    permission_classes = [IsAdmin]
+    throttle_classes = [ExpensiveReadRateThrottle]
+
+    def get(self, request):
+        return Response(evidence_report())
 
 
 class ForecastRefreshView(APIView):

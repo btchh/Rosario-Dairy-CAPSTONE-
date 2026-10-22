@@ -1,10 +1,16 @@
 # Backend verification
 
-Latest pre-push verification (2026-10-22): **420 tests passed** in 22.375 seconds,
-covering forecast chart/actual-only guards/feeding studies and existing sales,
-reports, inventory and config checks. Django system checks passed and the migration
-drift check found no changes. A fast password hasher was used only in the test
-process; production password settings are unchanged.
+Latest broad verification (2026-10-23): **599 tests passed** in 144.948 seconds,
+followed by **10 focused prospective-evidence tests** in 6.511 seconds. Django
+system checks passed and the migration drift check found no changes. A fast
+password hasher was used only in the test process; production password settings
+are unchanged.
+
+Generated previews, evaluation outputs, experiment caches and test logs were
+removed during artifact cleanup. Paths to those files in the historical entries
+below record earlier verification; they are no longer current downloads. SQL and
+recovery backups, source workbooks, audit records, automated tests and persisted
+forecast evidence were retained.
 
 ## Inventory test types and current frontend handoff — 2026-10-22
 
@@ -350,7 +356,7 @@ correction after that broader run. Fixtures remain confined to the test database
 
 Coverage includes asynchronous start after commit, status polling, admin/staff/
 anonymous access, rejection of user-selected scope/model arguments, start rate
-limits, duplicate-job reuse, shared manual/midnight processing, four-stage
+limits, duplicate-job reuse, shared manual/midnight processing, multi-stage
 progress, source-error/partial-result retention, abandoned-worker recovery,
 launch failure, database uniqueness and real cross-connection PostgreSQL advisory
 locking. The correction test runs the complete pipeline on test invoices: an
@@ -469,5 +475,32 @@ visually inspected. All three views have twelve forecast values and reconcile.
 Read [forecasting/LEARNING_VERIFICATION.md](forecasting/LEARNING_VERIFICATION.md)
 for the distinction between proven automatic retraining and unproven accuracy
 improvement. The primary monthly reviewed prospective lifecycle exists; equivalent
-prospective scoring for other rough paths remains required work. No future
+prospective scoring for other rough paths was subsequently added (see the
+prospective chart evidence section below). No future
 accuracy or automatic approval is promised by these new-data tests.
+
+## Prospective chart evidence — October 23, 2026
+
+Added `forecasting.test_prospective` for immutable first-origin issues across all
+nine paths, source-correction/refit reuse, missing/corrupted/stale artifacts,
+new origin buckets, midnight rollback, closed-period boundaries, mandatory
+segment coverage and explicit reviewed zeros, unresolved-entry rejection,
+combined component reconciliation, retained corrected scores, nonzero weekly/
+monthly/yearly outcomes, horizon-specific metrics, command behavior, and
+read-only admin API access. Maintenance tests now include the evidence stage.
+
+The broad suite passed **599 tests** in 144.948 seconds. The final focused suite
+passed **10 tests** in 6.511 seconds, including the added origin/midnight checks.
+System checks passed and no migration drift was detected. Logs:
+`/tmp/rosario-prospective-regression.log` and
+`/tmp/rosario-prospective-final-tests.log`.
+
+Migration 0011 was applied locally. A real actual-data issuance saved **81 future
+predictions across nine paths**, with **zero reviews and zero scores**. Repeating
+issuance created nothing. An authenticated admin request to `/evidence/` returned
+HTTP 200; every record remained pending its future outcome. The actual-sales
+source fingerprint was unchanged. No historical preview was backfilled, no
+coverage review was invented, and no dummy sales entered the evidence.
+
+See [forecasting/PROSPECTIVE_SCORING.md](forecasting/PROSPECTIVE_SCORING.md) for
+review commands, baseline definition, correction handling and interpretation.

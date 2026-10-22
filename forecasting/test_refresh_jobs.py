@@ -105,8 +105,10 @@ class ForecastRefreshWorkerTests(TestCase):
                 changed = run_maintenance()
             self.assertEqual(changed['status'], 'succeeded')
             self.assertEqual(training.call_count, 2)  # Only the two regular components changed.
-        for stage in STAGES:
+        for stage in STAGES[:-1]:
             self.assertTrue(changed['results'][stage]['created'])
+        # A correction must not replace predictions already issued this origin.
+        self.assertFalse(changed['results']['refresh_projection_evidence']['created'])
         self.assertNotEqual(changed['results']['refresh_provisional_forecasts']['model_id'], first_id)
         self.assertEqual(ProvisionalForecastRun.objects.get(pk=first_id).findings, frozen)
         self.assertEqual(MonthlyIssuedForecast.objects.count(), 0)

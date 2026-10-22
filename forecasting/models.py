@@ -161,3 +161,58 @@ class ForecastRefreshJob(models.Model):
         ordering = ['-pk']
         constraints = [models.UniqueConstraint(fields=['scope'], condition=models.Q(status__in=['queued', 'running']),
                                                name='one_active_forecast_refresh')]
+
+
+class ProjectionIssue(models.Model):
+    """First saved rough prediction per origin/target; never overwritten by refits."""
+    run = models.ForeignKey(ProvisionalForecastRun, on_delete=models.PROTECT, related_name='issues')
+    engine_version = models.CharField(max_length=60)
+    period = models.CharField(max_length=7)
+    view = models.CharField(max_length=8)
+    origin = models.DateField()
+    target = models.DateField()
+    horizon = models.PositiveIntegerField()
+    value = models.DecimalField(max_digits=20, decimal_places=2)
+    lower_bound = models.DecimalField(max_digits=20, decimal_places=2)
+    upper_bound = models.DecimalField(max_digits=20, decimal_places=2)
+    baseline_value = models.DecimalField(max_digits=20, decimal_places=2, null=True)
+    evidence = models.JSONField()
+    issued_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['engine_version', 'period', 'view', 'origin', 'target'],
+                                               name='projection_origin_target_unique'),
+                       models.CheckConstraint(condition=models.Q(value__gte=0, lower_bound__gte=0,
+                           lower_bound__lte=models.F('value'), upper_bound__gte=models.F('value'),
+                           target__gt=models.F('origin'), horizon__gte=1), name='projection_issue_valid_bounds')]
+
+
+class ProjectionCoverage(models.Model):
+    """Explicit reconciliation of a completed segment/period's exact source rows."""
+    period = models.CharField(max_length=7)
+    segment = models.CharField(max_length=7)
+    target = models.DateField()
+    actual_revision = models.CharField(max_length=64)
+    confirmed_zero = models.BooleanField(default=False)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+')
+    note = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['period', 'segment', 'target', 'actual_revision'],
+                                               name='projection_coverage_unique')]
+
+
+class ProjectionScore(models.Model):
+    """Append-only reviewed outcomes; ledger corrections retain prior scores."""
+    issued = models.ForeignKey(ProjectionIssue, on_delete=models.PROTECT, related_name='scores')
+    actual_revision = models.CharField(max_length=64)
+    actual = models.DecimalField(max_digits=20, decimal_places=2)
+    error = models.DecimalField(max_digits=20, decimal_places=2)
+    absolute_error = models.DecimalField(max_digits=20, decimal_places=2)
+    baseline_absolute_error = models.DecimalField(max_digits=20, decimal_places=2, null=True)
+    within_bounds = models.BooleanField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['issued', 'actual_revision'], name='projection_score_revision_unique')]

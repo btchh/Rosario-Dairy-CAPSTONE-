@@ -169,6 +169,7 @@ POST. Map stage names to user-facing text:
 | `refresh_forecast_models` | Updating monthly forecasts |
 | `refresh_weekly_forecasts` | Updating weekly forecasts |
 | `refresh_provisional_forecasts` | Updating forecast views |
+| `refresh_projection_evidence` | Checking forecast results |
 | `complete` | Forecast refreshed |
 
 Repeated accepted requests share the active job (`already_running: true`). Manual
@@ -213,6 +214,18 @@ README; no migration or maintenance command belongs in the frontend flow.
 The feeding
 history audit remains available from `/api/forecasting/feeding/`. Neither needs
 an additional panel for the requested three-tab line graph.
+
+## Accuracy labels on the existing graph
+
+Admin-only `GET /api/forecasting/evidence/` exposes prospective evidence for the
+provisional chart models. If showing accuracy in the existing graph's tooltip,
+match `period`, `view`, `horizon` and `engine_version`; do not combine horizons
+or substitute the primary monthly research score. `scored_count: 0` or a null
+`wape` means accuracy is not yet available, not zero error. Pending outcomes and
+unreviewed/corrected periods do not count as scored. This endpoint is read-only
+and does not refresh models. Keep the existing graph; no new panel or coverage
+review controls are needed. Provisional labels remain required regardless of
+scores; this evidence does not approve production forecasts.
 
 ## Reference
 

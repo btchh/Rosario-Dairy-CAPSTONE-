@@ -2,6 +2,10 @@
 
 See [learning verification and the 2026 preview](LEARNING_VERIFICATION.md) for
 new-data retraining evidence and the remaining prospective-scoring limits.
+See [prospective scoring for all nine chart paths](PROSPECTIVE_SCORING.md) for
+first-issued predictions, reviewed outcomes and the read-only `/evidence/` API.
+Midnight/manual maintenance now includes this evidence stage after projections;
+it does not change model selection or production approval.
 
 ## Actual invoices only
 
@@ -191,7 +195,8 @@ accuracy, feeding limitations and the next validation improvements.
 
 Admin `POST /api/forecasting/refresh/` with an empty body starts a background
 maintenance job and returns HTTP 202 with `job_id` and `status_url`. It runs
-patterns, monthly learning, weekly research and all-view provisional forecasts.
+patterns, monthly learning, weekly research, all-view provisional forecasts,
+and prospective issue/scoring maintenance.
 `GET /api/forecasting/refresh/` returns the latest job; `GET /api/forecasting/refresh/<id>/`
 returns its status/progress/results. Reads are uncached and never fit. Starts
 are limited to one per minute per account; status polling uses the existing

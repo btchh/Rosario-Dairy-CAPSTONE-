@@ -50,33 +50,30 @@ The primary monthly engine also requires a contiguous completed training span
 history gap do not automatically restore production eligibility. The provisional
 state-space paths can retain unknown internal observations without zero-filling.
 
-The reviewed prospective scoring/publication lifecycle currently covers **regular
-monthly** forecasts. Feeding, Combined, weekly and yearly rough paths do not yet
-have an equivalent automatic prospective accuracy/approval lifecycle. Their
+The reviewed production publication lifecycle currently covers **regular
+monthly** forecasts. All nine provisional chart paths now have a separate
+[prospective evidence lifecycle](PROSPECTIVE_SCORING.md): maintenance retains
+predictions before their targets start and scores reviewed completed outcomes.
+This adds monitoring, not automatic approval for these rough paths. Their
 availability is not proof that they improve over time. Retained validation/test
-scores are retrospective and must remain labelled as such. Feeding's sparse,
-concentrated invoice history is especially weak evidence for long horizons.
+scores remain retrospective. Feeding's sparse, concentrated invoice history is
+especially weak evidence for long horizons.
 
 To prove improvement, retain forecasts before outcomes arrive, score each horizon
 against later reviewed actuals and a declared baseline, and monitor error/bias and
-interval coverage across multiple forecast origins. The required next work is a
-prospective scorer for the additional paths, not a claim that adding rows alone
-guarantees accuracy. Operator coverage review is still needed; no attestations
+interval coverage across multiple forecast origins. The additional scorer keeps
+these horizons separate and preserves first-issued predictions through refits;
+it must accumulate real future outcomes before supporting improvement claims.
+Operator coverage review is still needed; no attestations
 have been manufactured. The computer/user maintenance service must actually run;
 the latest successful job and its model IDs are the operational evidence.
 
 ## 2026 graph generated from retained training
 
-Private artifacts: `backups/forecast-2026-preview-20261023/`:
-
-- `forecast-2026.png` / `.pdf`: all three monthly views, 2025 recorded values
-  followed by January–December 2026 predictions.
-- `forecast-2026.html`: standalone interactive three-tab graph with optional
-  uncalibrated estimate ranges, tooltips and CSV download.
-- `forecast-2026.csv`: twelve future monthly points for each view and its bounds.
-- `actual-monthly-2023-2025.csv`, `trained-models.json`, `graph-data.json`:
-  actual totals, portable saved model state and full provenance.
-- `build_preview.py`: read-only reproducible projection/plot script.
+The generated graph, HTML, CSV exports and one-off script formerly in
+`backups/forecast-2026-preview-20261023/` were removed during the requested
+artifact cleanup. The following records that preview's provenance. The database
+model runs and actual sales remain available to generate another preview.
 
 Regular uses the retained primary seasonal monthly SARIMA model **4**, fitted to
 36 months from January 2023 through December 2025. Feeding uses the saved

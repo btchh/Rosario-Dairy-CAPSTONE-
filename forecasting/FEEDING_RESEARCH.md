@@ -36,10 +36,16 @@ No extra model configurations were added to the production candidate pool.
 Review billing coverage and internal gaps before treating them as observed
 zeros. Do not pad the pre-program period to manufacture training history.
 New actual invoices supply future evidence. Feeding requires separate prospective
-forecast evaluation before approval; no current feeding forecast is published.
+forecast evaluation before approval; no current feeding forecast is approved.
+Rough feeding projections now appear separately in the chart API’s
+`provisional_forecast` arrays for weekly, monthly and yearly views. They use
+recorded invoices only, leave gaps unknown, and currently disable seasonal terms
+because the observed history is short. These are statistical revenue projections,
+not inferred delivery plans. See [forecasting documentation](README.md).
 
 The actual-history API refreshes as invoices arrive. The regular SARIMA model,
-actual source policy, maintenance worker and publication gates are unchanged.
+actual source policy and publication gates are unchanged; the maintenance worker
+now also refreshes the separate rough projections.
 Regular historical WAPE remains 10.6433%, with stale-data publication status.
 
 `investigate_feeding_sales --output <folder>` exports only actual monthly evidence

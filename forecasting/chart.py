@@ -8,6 +8,8 @@ from .benchmarks import score
 from .learning import shift_month, month_end
 from .seasonal import SARIMA_CONFIGS
 from .serving import model_context, issued_point
+from .weekly import weekly_snapshot, weekly_report
+from .provisional import report as provisional_report
 
 
 def _regular_backtest(run, snapshot, totals):
@@ -60,6 +62,10 @@ def chart_report(period='monthly'):
     if period not in PERIODS:
         raise ValueError('Unsupported chart period.')
     snapshot, run, latest, gate, issued, status = model_context()
+    weekly = None
+    if period == 'weekly':
+        snapshot = weekly_snapshot()
+        weekly = weekly_report(snapshot)
     totals = defaultdict(dict)
     period_totals = defaultdict(dict)
     period_counts = defaultdict(lambda: defaultdict(int))
@@ -94,8 +100,14 @@ def chart_report(period='monthly'):
         comparison_status = 'available_aggregated' if predictions else 'incomplete_monthly_predictions'
         prediction_basis = 'sum_of_12_monthly_rolling_predictions'
     else:
-        comparison_status = 'weekly_model_not_available'
-        prediction_basis = None
+        weekly_folds = weekly.get('test_rows', [])
+        predictions = {r['date']: r['predicted'] for r in weekly_folds}
+        comparison_status = 'available' if weekly_folds else 'weekly_model_not_available'
+        prediction_basis = 'weekly_one_step_backtest' if weekly_folds else None
+        if weekly_folds:
+            folds = weekly_folds
+        else:
+            folds = []
     views = {}
     for key, label in [('combined', 'Combined'), ('regular', 'Regular sales'), ('feeding', 'Milk feeding')]:
         history = []
@@ -120,19 +132,37 @@ def chart_report(period='monthly'):
                 'feeding': 'Recorded feeding history is available; a feeding SARIMA model has not been validated.'}[key]}
     if period == 'monthly' and folds:
         views['regular']['metrics'] = score(folds)
+    if period == 'weekly' and weekly.get('test_rows'):
+        views['regular'].update(metrics=weekly['metrics'], status=weekly['status'],
+            weekly_model_id=weekly['model_id'])
     if period != 'monthly':
         views['regular']['status_message'] = (
             'Yearly recorded sales and complete sums of monthly rolling predictions are shown; this is not a year-ahead forecast.'
             if period == 'yearly' else
-            'Weekly recorded sales are available. The monthly SARIMA model does not provide weekly predictions.')
+            'Weekly SARIMA comparisons are retrospective research; no live weekly prediction is approved.'
+            if weekly.get('test_rows') else
+            'Weekly recorded sales are available. Run offline weekly SARIMA research for a historical comparison.')
     if period == 'monthly' and status == 'ready' and run is not None and issued is not None:
         views['regular']['forecast'] = [issued_point(run, issued)]
-    default_range = ({'start_date': period_start(date.fromisoformat(folds[0]['month']), period).isoformat(),
-        'end_date': period_end(month_end(date.fromisoformat(folds[-1]['month'])), period).isoformat()} if folds else None)
+    date_field = 'date' if period == 'weekly' else 'month'
+    default_range = ({'start_date': period_start(date.fromisoformat(folds[0][date_field]), period).isoformat(),
+        'end_date': period_end(date.fromisoformat(folds[-1][date_field]), period).isoformat()} if folds else None)
     if period == 'yearly' and calendar:
         default_range = {'start_date': calendar[0].isoformat(),
                          'end_date': period_end(calendar[-1], period).isoformat()}
+    provisional = provisional_report(period)
+    for key, view in views.items():
+        projection = provisional.get('views', {}).get(key, {})
+        view['provisional_forecast'] = projection.get('points', [])
+        view['provisional_status'] = projection.get('status', provisional['status'])
+        view['provisional_metadata'] = {k: v for k, v in projection.items() if k != 'points'}
+        if view['provisional_forecast']:
+            view['status_message'] = 'Rough SARIMA projections are available separately; accuracy and uncertainty are not production approved.'
     return {'scope': 'real', 'period': period, 'available_periods': list(PERIODS),
+        'provisional_status': provisional['status'],
+        'provisional_model_id': provisional.get('model_id'),
+        'provisional_source_revisions': provisional.get('source_revisions'),
+        'provisional_targets': provisional.get('targets', []),
         'validated_forecast_periods': ['monthly'],
         'available_views': ['combined', 'regular', 'feeding'],
         'default_view': 'combined', 'source_revision': snapshot.revision,

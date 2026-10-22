@@ -103,3 +103,35 @@ invoices. Receipt and item/order net amounts reconcile, and historical reference
 batches are used without consuming current stock. Forecasting continues to
 exclude all reserved demo references regardless of their regular/feeding label;
 refreshing dummy sales must not alter the real-sales source revision.
+
+## Data-only SQL backup of 2023–2025
+
+```bash
+venv/bin/python manage.py backup_sales_history --start-year 2023 --end-year 2025 --output backups/actual-sales-sql-2023-2025-20261023
+```
+
+This read-only, repeatable-read export writes PostgreSQL INSERT statements for
+receipts in the requested completed **Asia/Manila business years**, their lines,
+linked orders/order lines, and the customer/catalogue/account rows needed by
+foreign keys and product/category snapshot references. It preserves voided,
+unclassified and null-customer/null-SI historical entries. Reserved dummy sales
+and out-of-range receipts are excluded. Referenced metadata is its current
+corrected version, not a reconstructed historical catalogue or permissions backup.
+
+The output contains `.sql`, `.sql.gz` and `manifest.json` with row fingerprints,
+file SHA256 hashes and the applied migration list. It is a **data-only dataset
+backup**, not a native pg_dump schema/roles/cluster backup. Restore only into an
+empty application database at the recorded schema; it contains no DROP/TRUNCATE
+or overwrite instructions. Identity sequences are advanced after explicit IDs.
+Keep the files private: referenced account records include credential hashes.
+
+Before marking completion, the exporter creates a uniquely named temporary
+PostgreSQL database, creates the current model schema with DDL only (no application
+data migrations), executes the SQL and compares every exported row fingerprint.
+It drops that temporary database afterward. Live application rows are not changed.
+Database creation privileges are therefore needed for the verification step.
+
+The October 23 export restored successfully: **4,827 receipts, 24,251 receipt
+lines, 4,822 orders and 24,239 order lines**, plus referenced dependencies. The
+scope deliberately excludes the small 2022 fragment and all 2026 transactions.
+Location: `backups/actual-sales-sql-2023-2025-20261023/`.

@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 
 from openpyxl import load_workbook
+from sales.customer_names import consolidated_name
 
 
 CENT = Decimal('0.01')
@@ -113,7 +114,8 @@ def canonical_customer(raw):
     if label.lower().startswith(('walk-in', 'walk in')):
         return 'Walk-in'
     label = re.sub(r'/\s*walk-in\b', '', label, flags=re.I).strip()
-    return CUSTOMER_ALIASES.get(label.casefold(), label)
+    return consolidated_name(CUSTOMER_ALIASES.get(label.casefold(),
+        CUSTOMER_ALIASES.get(label.casefold().rstrip('.'), label)))
 
 
 def customer_key(raw):

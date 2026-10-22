@@ -45,6 +45,10 @@ class ReportRefreshRateThrottle(AccountRateThrottle):
     scope = 'report_refresh'
 
 
+class ForecastRefreshRateThrottle(AccountRateThrottle):
+    scope = 'forecast_refresh'
+
+
 class ExpensiveReadRateThrottle(AccountRateThrottle):
     scope = 'expensive_read'
 

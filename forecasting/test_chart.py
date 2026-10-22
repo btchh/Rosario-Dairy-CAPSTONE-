@@ -36,7 +36,11 @@ def context(status='stale_data'):
 
 class ForecastChartDataTests(SimpleTestCase):
     def render(self, ctx=None, period='monthly'):
-        with patch('forecasting.chart.model_context', return_value=ctx or context()):
+        ctx = ctx or context()
+        with patch('forecasting.chart.model_context', return_value=ctx), \
+                patch('forecasting.chart.weekly_snapshot', return_value=ctx[0]), \
+                patch('forecasting.chart.provisional_report', return_value={'status': 'refresh_required', 'views': {}}), \
+                patch('forecasting.chart.weekly_report', return_value={'test_rows': []}):
             return chart_report(period=period)
 
     def test_all_periods_preserve_recorded_totals_and_three_view_calendar_alignment(self):

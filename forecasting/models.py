@@ -50,6 +50,22 @@ class ForecastExperiment(models.Model):
                                                name='forecast_experiment_revision_unique')]
 
 
+class WeeklyModelRun(models.Model):
+    """Retained actual-data weekly research; never a monthly deployment."""
+    engine_version = models.CharField(max_length=60)
+    source_revision = models.CharField(max_length=64)
+    cutoff = models.DateField()
+    trained_through = models.DateField(null=True)
+    status = models.CharField(max_length=40)
+    findings = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-pk']
+        constraints = [models.UniqueConstraint(fields=['engine_version', 'source_revision', 'cutoff'],
+                                               name='weekly_model_revision_unique')]
+
+
 class MonthlyCoverage(models.Model):
     """Operator attestation tied to the exact observed month's contents."""
     month = models.DateField()
@@ -113,3 +129,35 @@ class MonthlyPromotion(models.Model):
     reason = models.CharField(max_length=100)
     evidence = models.JSONField()
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class ProvisionalForecastRun(models.Model):
+    """Immutable actual-data projections, separate from approved forecast issues."""
+    engine_version = models.CharField(max_length=60)
+    source_revision = models.CharField(max_length=64)
+    findings = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['engine_version', 'source_revision'],
+                                               name='provisional_source_unique')]
+
+
+class ForecastRefreshJob(models.Model):
+    """Tracked manual/scheduled maintenance, with one active job database-wide."""
+    scope = models.CharField(max_length=20, default='all')
+    status = models.CharField(max_length=16, default='queued', choices=[
+        (s, s) for s in ('queued', 'running', 'succeeded', 'failed')])
+    trigger = models.CharField(max_length=16, choices=[('manual', 'manual'), ('scheduled', 'scheduled')])
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='+')
+    stage = models.CharField(max_length=50, default='queued')
+    results = models.JSONField(default=dict)
+    error_code = models.CharField(max_length=40, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True)
+    finished_at = models.DateTimeField(null=True)
+
+    class Meta:
+        ordering = ['-pk']
+        constraints = [models.UniqueConstraint(fields=['scope'], condition=models.Q(status__in=['queued', 'running']),
+                                               name='one_active_forecast_refresh')]

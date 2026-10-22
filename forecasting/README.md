@@ -1,5 +1,8 @@
 # SARIMA regular-dairy forecasting and ongoing learning
 
+See [learning verification and the 2026 preview](LEARNING_VERIFICATION.md) for
+new-data retraining evidence and the remaining prospective-scoring limits.
+
 ## Actual invoices only
 
 Forecasting and validation exclude dummy sales. The former synthetic experiment
@@ -23,6 +26,48 @@ validation/evaluation, issues immutable first-day shadow predictions when data i
 current, scores them after real outcomes arrive, and applies publication gates.
 Its target is **strictly below 15% monthly regular-revenue WAPE**, not an accuracy
 promise or a target for feeding, quantities, weekly totals or yearly totals.
+
+## Rough projections for every graph view and horizon
+
+`GET /api/forecasting/chart/?period=weekly|monthly|yearly` includes
+`views.combined|regular|feeding.provisional_forecast` independently of approved
+`forecast`. These actual-data estimates provide 13 future complete weeks,
+12 months, and 2 calendar years. They remain available with stale/limited history,
+explicitly marked provisional, never approved or promised below 15% error.
+
+`forecasting/provisional.py` fits four component models (two segments × weekly /
+monthly); annual values sum a single-origin twelve-month path and Combined sums
+matching component targets. Missing invoice periods are NaN observations in the
+state-space likelihood, not zeros; no pre-feeding padding is used. Only past
+classified actual dairy invoices enter fitting. No synthetic data or unclassified
+Toned Milk revenue is included.
+
+The small SARIMA family comprises local-level `(0,1,0)`, AR(1) `(1,0,0)` and,
+when at least two seasons of observed periods exist before validation,
+`(1,0,0)(1,0,0,s)` (`s=12` or `52`). The first two are nonseasonal SARIMA
+special cases for sparse data. Earlier validation selects a configuration; a
+later single-origin test is separate, never used to choose it. Candidate/fit
+failures are retained; fewer than six observed periods or no valid fit withholds
+the component rather than inventing values. No baseline replaces SARIMA.
+
+Portable model parameters and missing observations are retained in immutable
+`ProvisionalForecastRun` JSON. Source/target fingerprints and a checksum prevent
+serving mismatched or corrupt evidence. Refresh rechecks source identity under
+transaction locks before saving. The midnight Asia/Manila worker refreshes after monthly and
+weekly research; unchanged observations reuse states without optimization.
+
+```bash
+venv/bin/python manage.py migrate
+venv/bin/python manage.py refresh_provisional_forecasts --output backups/provisional-export
+```
+
+GET reads saved projections only. Conditional model intervals use nominal 90%
+bounds but are uncalibrated; annual and combined ranges sum component bounds
+and are not calibrated joint confidence intervals. Long stale-data gaps and
+unknown business/program changes make projections especially rough. Annual and
+combined error metrics remain null without genuine corresponding evaluation.
+Older approved-model research and publication gates remain separate and unchanged.
+See [frontend contract](../FRONTEND_HANDOFF.md) for graph fields and rendering.
 
 ## Current result and its limits
 
@@ -139,6 +184,55 @@ explicit activation/rollback must pass the same source, cutoff and accuracy
 checks. An old model cannot be activated against a different month's data. A
 retrospective score below 15% alone never approves a production forecast.
 
+See [the October 22 horizon investigation](INVESTIGATION.md) for multi-step
+accuracy, feeding limitations and the next validation improvements.
+
+## On-demand refresh API and background jobs
+
+Admin `POST /api/forecasting/refresh/` with an empty body starts a background
+maintenance job and returns HTTP 202 with `job_id` and `status_url`. It runs
+patterns, monthly learning, weekly research and all-view provisional forecasts.
+`GET /api/forecasting/refresh/` returns the latest job; `GET /api/forecasting/refresh/<id>/`
+returns its status/progress/results. Reads are uncached and never fit. Starts
+are limited to one per minute per account; status polling uses the existing
+expensive-read limit (30/minute). See the frontend handoff for button behavior.
+
+Apply migration `forecasting.0010_forecastrefreshjob`. After the job creation
+transaction commits, the backend starts its own venv Python in a detached child:
+
+```bash
+venv/bin/python manage.py run_forecast_refresh --job-id JOB_ID
+```
+
+This command is an internal runner; omit `--job-id` for a tracked scheduled/manual
+CLI maintenance pass. No shell strings or user-selected commands are executed.
+The child retains status in PostgreSQL and writes a private worker log under
+`backups/forecast-refresh/job-<id>.log`. The API does not run training in a request
+thread. The hosting process must permit child processes; launch failure is saved
+as a failed job, not silently reported as completed. A small daemon thread only
+reaps the child; it does not perform training.
+
+Manual and midnight maintenance share a PostgreSQL session advisory lock over
+all phases. A partial unique database constraint permits one queued/running job.
+Repeated starts reuse that job. Scheduled maintenance can adopt a queued manual
+job and skips when another worker owns the lock. Computation holds no long-lived
+SQL transaction/table lock; existing short source-checked commits remain intact.
+Job status retains partial completed results and safe error codes if a phase
+fails. Operators can inspect the private log for details.
+
+When no worker owns the lock, an abandoned running job becomes failed on the next
+status/start/maintenance check. A queued job that never launched times out after
+ten minutes; a retry creates a new job. A live worker is not expired simply
+because fitting takes a while. The midnight oneshot command uses the same tracked
+runner; it still runs only at the configured midnight time.
+
+A refresh fits/reuses **eligible completed-period actual data**, not the current
+partial week/month. Existing source/coverage signatures trigger new model versions
+after eligible data corrections; unchanged signatures reuse models. This does
+not force redundant fitting, include dummy data, overwrite issued predictions,
+attest ledger coverage or bypass publication gates. Source changes during a fit
+are handled by the existing revalidation checks; retry after data settles.
+
 ## Commands and automatic maintenance
 
 ```bash
@@ -146,12 +240,16 @@ venv/bin/python manage.py migrate
 venv/bin/python manage.py refresh_forecast_models --output backups/current-monthly-model
 venv/bin/python manage.py refresh_forecast_models --as-of 2025-07-01 --output backups/historical-model
 venv/bin/python manage.py watch_forecast_models --once
-venv/bin/python manage.py watch_forecast_models --interval 3600
+venv/bin/python manage.py watch_forecast_models
 ```
 
 The watch command refreshes descriptive studies and maintains trained models,
 shadow issues and actual-error scores. It reuses unchanged fits. Database/source
-races are reported and retried on the next interval. Future `--as-of` values are
+races are reported and retried at the next scheduled run. The default long-running
+watch command waits until 00:00 Asia/Manila before its first run and recalculates
+the next midnight after work finishes, avoiding interval drift. `--once` runs
+immediately for the timer or manual maintenance; an explicit `--interval` remains
+an operator override rather than the default schedule. Future `--as-of` values are
 rejected. Outputs include full model JSON, candidate comparisons, and selected
 validation/test prediction CSVs, stored privately.
 
@@ -166,7 +264,7 @@ venv/bin/python manage.py activate_forecast_model MODEL_ID
 No coverage attestations have been fabricated for the current dataset. Source
 review and genuine future real-sales outcomes are still needed for promotion.
 
-Hourly user-systemd service/timer files are in `forecasting/deploy/`. Their paths
+Daily midnight Asia/Manila user-systemd service/timer files are in `forecasting/deploy/`. Their paths
 match this workstation's `~/Documents/CodingProjects/SarimaHoes`; adjust them if
 installing elsewhere. The service uses the backend virtual environment and .env.
 
@@ -179,8 +277,10 @@ systemctl --user status rosario-forecast-learning.timer --no-pager
 journalctl --user -u rosario-forecast-learning.service -n 30 --no-pager
 ```
 
-The timer runs while the user systemd manager is available; `Persistent=true`
-handles missed calendar runs when that manager resumes. This does not enable
+The timer uses `OnCalendar=*-*-* 00:00:00 Asia/Manila`, one-second timer
+accuracy, no randomized delay and no boot trigger. `Persistent=false` avoids
+launching a missed run during daytime: the next run waits until midnight.
+The timer runs while the user systemd manager is available. This does not enable
 system-wide linger or guarantee operation while the workstation is powered off.
 Disable with `systemctl --user disable --now rosario-forecast-learning.timer`.
 
@@ -259,11 +359,61 @@ See `FRONTEND_HANDOFF.md` for the three-tab graph contract.
 The chart endpoint accepts `period=weekly|monthly|yearly` (default monthly), with
 all three sales tabs available for each period. Invoice dates determine recorded
 weekly (Monday–Sunday), monthly and annual sums. Cache requests by period. Null
-invoice periods remain gaps. Weekly predictions are unavailable until a separate
-weekly model exists; the monthly model is not split across weeks. Yearly regular
+invoice periods remain gaps. Weekly research predictions now use their own fitted model and saved
+past-only backtest; the monthly model is not split across weeks. Yearly regular
 predictions sum exactly twelve valid monthly rolling backtests where available;
 `prediction_basis` explicitly identifies this aggregation, not a year-ahead
-forecast. Weekly/yearly metrics remain null and no live monthly point is
-relabelled as another horizon. `validated_forecast_periods: [monthly]` describes
+forecast. Weekly metrics are computed from weekly backtests; yearly metrics remain null.
+No live monthly point is relabelled as another horizon. `validated_forecast_periods: [monthly]` describes
 model evidence; `available_periods` keeps all three history selectors visible.
 The legacy forecast/report endpoint's publication rules remain unchanged.
+
+## Actual-data weekly SARIMA research
+
+Migration `forecasting.0008_weeklymodelrun` retains weekly research separately
+from monthly deployment/coverage/issued scores. `regular-weekly-sarima-v1` uses
+actual regular dairy invoices only, before the current Monday. Edge weeks that
+cross the available source-month span are dropped, and missing weeks split the
+history rather than being filled with zeros. Feeding/unclassified/demo sales
+never become weekly regular labels.
+
+At least 130 consecutive full calendar weeks are required: 104 initial training,
+13 earlier validation and 13 later test weeks. The fixed primary pool is
+SARIMA(0,1,0), (1,0,0) and (0,1,1), each with seasonal (1,0,0,52). The AR(1) model
+has a constant; the differenced models do not. Each fold refits using only earlier
+weeks. Select SARIMA and, separately, one of previous-week, trailing-four-mean and
+52-week-lag baselines on earlier validation WAPE. Never reselect on test results
+or silently replace a failed selected SARIMA. The 52-week annual period is an
+approximation, not proof of a stable seasonal feeding schedule.
+
+The recorded source supplies 156 usable consecutive weeks (January 2, 2023–
+December 22, 2025). Initial research selects SARIMA(1,0,0)(1,0,0,52). Test WAPE is
+26.8135% over 13 weeks versus 20.2992% for the validation-selected comparator.
+The weekly model does not beat that baseline and is not approved for production.
+The monthly model's 10.6433% result and 15% research target are unchanged.
+
+```bash
+venv/bin/python manage.py refresh_weekly_forecasts --output backups/weekly-sarima-20261022/results
+```
+
+The existing nightly `watch_forecast_models` worker also refreshes weekly research.
+Unchanged revisions reuse saved results; changed cutoffs with identical weekly
+inputs reuse fitted parameters without optimization. New observations/corrections
+create retained revisions. Sources and cutoff are rechecked under short commit
+locks after fitting. Artifacts are portable JSON with checksums, never pickles.
+Read-side reconstruction uses filtering rather than optimization.
+
+Admin-only `GET /api/forecasting/weekly/` exposes the weekly evidence and a clearly
+non-live research point. `GET /api/forecasting/chart/?period=weekly` exposes matched
+historical weekly predictions for the Regular sales line. Both GETs only read;
+old revisions, invalid artifacts and inconsistent comparisons withhold predictions.
+Current actual history is stale, `production_ready` is false, and live weekly
+`forecast` remains empty. There is no weekly deployment or fabricated prospective
+acceptance record. Feeding and combined predictions remain unavailable.
+
+Backup/evaluation: `backups/weekly-sarima-20261022/`. Statsmodels' documented
+[`SARIMAXResults.forecast`](https://www.statsmodels.org/stable/generated/statsmodels.tsa.statespace.sarimax.SARIMAXResults.forecast.html)
+provides the next step from each fitted origin; local installed signatures and
+serialization were checked. This adds weekly research without changing the
+monthly fitting engine. Genuine year-ahead evaluation and feeding modelling
+remain further work; annual chart values are still sums of monthly predictions.

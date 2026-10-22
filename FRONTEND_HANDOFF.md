@@ -501,9 +501,13 @@ profile records.
 
 ## Frontend integration
 
-The React report card now describes monthly customer summaries and shows the
-effective default range. API helpers accept the range and include it in cache
-keys. A date-picker control can use these signatures:
+Frontend changes must be implemented in JayMark's repository by the frontend
+owner. This backend release provides the date-range API; it does not change the
+frontend. Add an exported `ReportDateRange` interface (`start_date: string`,
+`end_date: string`) and optional range arguments to the existing report service
+and preview hook. Forward both dates in preview/PDF request parameters and include
+them in query/download cache keys. The intended helper signatures are shown below;
+implement those helper extensions before using this example:
 
 ```ts
 import { reportsService, type ReportDateRange } from "@/features/reports/api/reports.service";

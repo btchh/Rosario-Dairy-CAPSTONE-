@@ -413,48 +413,21 @@ class Report:
 
     def forecast(self):
         d = self.data
-        status = d.get('status', 'unavailable')
-        combined = d.get('combined') or {}
-        ready = status == 'ready' and combined.get('predicted_revenue') is not None
+        regular = d.get('regular') or {}
+        ready = d.get('status') == 'ready' and regular.get('predicted_revenue') is not None
         self.cards([
-            ('Forecast status', label(status)),
-            ('Horizon', f"{d.get('horizon_days', 0)} days"),
-            ('Forecast', money(combined['predicted_revenue'], self.currency) if ready else 'Withheld'),
+            ('Forecast status', label(d.get('status', 'unavailable'))),
+            ('Requested horizon', f"{d.get('horizon_days', 0)} days"),
+            ('Regular dairy forecast', money(regular['predicted_revenue'], self.currency) if ready else 'Withheld'),
         ])
-        lines = [
-            'A forecast is shown only when the SARIMA holdout meets its quality gate and sales are current.' if ready
-            else 'No validated current forecast is available for this period; a withheld amount is not zero sales.',
-        ]
-        if d.get('status_message'):
-            lines.append(d['status_message'])
-        score = (d.get('metrics') or {}).get('combined') or {}
-        if score.get('wape_percent') is not None:
-            lines.append(f"2025 retrospective WAPE is {number(score['wape_percent'])}% across {score.get('rows', 0)} evaluated periods; the acceptance target is {d.get('accuracy_target_percent', 30)}% or lower.")
-        self.insights(lines)
-        self.section('2025 retrospective evaluation')
-        self.table(['Periods', 'WAPE', 'MAE', 'Range coverage'], [[
-            score.get('rows', 0),
-            f"{number(score['wape_percent'])}%" if score.get('wape_percent') is not None else 'N/A',
-            money(score['mae_pesos'], self.currency) if score.get('mae_pesos') is not None else 'N/A',
-            f"{number(score['coverage_percent'])}%" if score.get('coverage_percent') is not None else 'N/A',
-        ]], [.18, .22, .30, .30], numeric=(0, 1, 2, 3))
-        if d.get('baselines'):
-            self.section('Total-sales benchmarks')
-            self.table(['Method', 'Periods', 'WAPE'], [
-                [label(name), entry['metrics'].get('rows', 0),
-                 f"{number(entry['metrics']['wape_percent'])}%" if entry['metrics'].get('wape_percent') is not None else 'N/A']
-                for name, entry in d['baselines'].items()
-            ], [.50, .20, .30], numeric=(1, 2))
-        if d.get('forecast'):
-            self.section('Forecast period')
-            self.table(['From', 'To', 'Expected', 'Low–high'], [
-                [p['date'], p.get('end_date', p['date']), money(p['predicted_revenue'], self.currency),
-                 f"{money(p['lower_bound'], self.currency)} – {money(p['upper_bound'], self.currency)}"]
-                for p in d['forecast']
-            ], [.18, .18, .24, .40], numeric=(2, 3))
+        self.section('Forecasting status')
+        self.story.append(self.p(d.get('status_message') or 'No validated forecast is available.'))
+        if d.get('accuracy_target_percent') is not None:
+            self.note(f"Research target: below {number(d['accuracy_target_percent'])}% monthly WAPE for regular-sales revenue. This is a target, not achieved accuracy for total sales or feeding.")
         for warning in d.get('warnings', []):
             self.note(f'Note: {warning}')
-        self.note(d.get('limitations') or 'Forecasts are planning estimates, not guaranteed sales.')
+        if d.get('limitations'):
+            self.note(d['limitations'])
 
     def paginated_story(self):
         """Reserve a section heading plus the first meaningful content block.

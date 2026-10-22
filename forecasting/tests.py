@@ -1,426 +1,240 @@
-from copy import deepcopy
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
-from pathlib import Path
-from tempfile import TemporaryDirectory
+from io import StringIO
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
-import numpy as np
-import pandas as pd
 from django.contrib.auth import get_user_model
-from django.core.management import call_command
 from django.core.cache import cache
-from django.db import IntegrityError, connection, transaction
-from django.db.migrations.executor import MigrationExecutor
-from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
+from django.core.management import call_command
+from django.core.management.base import CommandError
+from django.test import TestCase, SimpleTestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from sales.models import Transaction
-from .contract import VERSION, Options, options, period_acceptance
-from .data import source
-from .daily_sarima import DailyModel, evaluate_period as evaluate_daily_period, fit_path, range_radius, specifications, walk
-from .models import ForecastRun, IssuedForecast
-from .rebuilt import aggregate, evaluate_period, next_forecast, period_end, split_periods
-from .sarima import Specification, candidates, forecast as sarima_forecast
-from .serving import report
+from forecasting.benchmarks import evaluate, predict, score
+from forecasting.data import load_snapshot
+from forecasting.jobs import refresh_patterns
+from forecasting.models import PatternStudy
+from forecasting.patterns import investigate
+from forecasting.serving import report
+from sales.models import Customer, Transaction, TransactionItem
+from inventory.models import Category, Product, ProductBatch
 
 
-class SarimaEvaluationTests(SimpleTestCase):
-    def daily(self):
-        dates = pd.date_range('2023-01-01', '2025-12-31')
-        return pd.Series(1000 + dates.month * 10, index=dates, dtype=float)
-
-    def test_unrecorded_days_are_zero_and_2022_is_not_training_history(self):
-        series = self.daily().iloc[[0, -1]]
-        series.loc[pd.Timestamp('2022-03-21')] = 500_000
-        months = aggregate(series, 'monthly')
-        self.assertEqual(months.index[0], pd.Timestamp('2023-01-01'))
-        self.assertEqual(months.loc['2023-02-01'], 0)
-        self.assertEqual(months.loc['2023-01-01'], 1010)
-
-    def test_2025_actuals_do_not_select_a_candidate(self):
-        first = self.daily()
-        changed = first.copy()
-        changed.loc['2025-01-01':] *= 100
-
-        def fake_forecast(history, spec, steps=1):
-            point = np.repeat(float(history.mean()), steps)
-            return point, point * .8, point * 1.2
-
-        with patch('forecasting.rebuilt.forecast', side_effect=fake_forecast):
-            original = evaluate_period(first, 'monthly')
-            altered = evaluate_period(changed, 'monthly')
-        self.assertEqual(original['method'], altered['method'])
-        self.assertEqual(original['validation_metrics'], altered['validation_metrics'])
-        self.assertNotEqual(original['metrics']['combined']['wape_percent'], altered['metrics']['combined']['wape_percent'])
-        self.assertTrue(all(row['trained_through'] < row['date'] for row in original['rows']))
-        self.assertEqual([row['predicted'] for row in original['fixed_origin_rows']],
-                         [row['predicted'] for row in altered['fixed_origin_rows']])
-        self.assertEqual({row['trained_through'] for row in original['fixed_origin_rows']}, {'2024-12-31'})
-        self.assertEqual(len(original['rows']), 12)
-
-    def test_new_year_crossing_week_cannot_influence_selection(self):
-        original = self.daily()
-        changed = original.copy()
-        changed.loc['2025-01-01':'2025-01-05'] *= 1000
-
-        def fake(history, spec, steps=1):
-            prediction = np.repeat(float(history.iloc[-1]), steps)
-            return prediction, prediction * .5, prediction * 1.5
-
-        with patch('forecasting.rebuilt.forecast', side_effect=fake):
-            first = evaluate_period(original, 'weekly')
-            second = evaluate_period(changed, 'weekly')
-        self.assertEqual(first['selection_signature'], second['selection_signature'])
-        self.assertEqual(first['selection'], second['selection'])
-        self.assertEqual(first['validation_end'], '2024-12-29')
-        self.assertNotIn('2024-12-30', first['selection']['validation_dates'])
-        self.assertEqual(first['rows'][0]['date'], '2025-01-06')
-        self.assertEqual(first['rows'][0]['trained_through'], '2025-01-05')
-        self.assertNotEqual(first['rows'][0]['predicted'], second['rows'][0]['predicted'])
-
-    def test_calendar_aggregation_excludes_partial_start_and_end_weeks(self):
-        weekly = aggregate(self.daily(), 'weekly')
-        self.assertEqual(str(weekly.index[0].date()), '2023-01-02')
-        self.assertEqual(str(period_end(weekly.index[-1], 'weekly').date()), '2025-12-28')
-        validation, test = split_periods(weekly, 'weekly', Options())
-        self.assertTrue((period_end(validation.index, 'weekly') < pd.Timestamp('2025-01-01')).all())
-        self.assertEqual(len(test), 51)
-
-    def test_a_new_sale_does_not_turn_unrecorded_live_months_into_zero_sales(self):
-        daily = self.daily()
-        daily.loc[pd.Timestamp('2026-10-01')] = 1000
-        with self.assertRaisesRegex(ValueError, 'Unverified sales coverage for 2026-01'):
-            aggregate(daily, 'monthly')
-
-    def test_broader_grid_is_built_from_training_prefix(self):
-        months = aggregate(self.daily(), 'monthly').loc[:'2024-06-01']
-        specs, evidence = candidates(months, 'monthly')
-        self.assertGreater(len(specs), 4)
-        self.assertTrue(any(spec.order[1] == 1 for spec in specs))
-        self.assertTrue(any(spec.order[2] == 1 for spec in specs))
-        self.assertTrue(any(spec.window == 12 for spec in specs))
-        self.assertFalse(any(spec.seasonal_order[-1] for spec in specs))
-        self.assertEqual([item['periods'] for item in evidence['seasonal_hypotheses']], [12])
-        self.assertEqual(evidence['training_observations'], 18)
-
-    def test_weekly_grid_does_not_invent_short_calendar_seasons(self):
-        weeks = aggregate(self.daily(), 'weekly').loc[:'2024-06-24']
-        specs, evidence = candidates(weeks, 'weekly')
-        self.assertFalse(any(spec.seasonal_order[-1] for spec in specs))
-        self.assertEqual([item['periods'] for item in evidence['seasonal_hypotheses']], [52])
-
-    def test_components_keep_all_revenue_in_total_error_and_baselines(self):
-        total = self.daily()
-        feeding = total * .8
-        other = total - feeding
-        spec = Specification((1, 0, 0))
-        with patch('forecasting.rebuilt.candidates', return_value=((spec,), {})), \
-             patch('forecasting.rebuilt.forecast', side_effect=lambda h, s, steps=1:
-                   tuple(np.repeat(float(h.mean()), steps) for _ in range(3))):
-            result = evaluate_period(total, 'monthly', components={'feeding': feeding, 'other_sales': other})
-            broken = {'feeding': feeding, 'other_sales': other * 2}
-            with self.assertRaisesRegex(ValueError, 'reconcile'):
-                evaluate_period(total, 'monthly', components=broken)
-        for index, item in enumerate(result['rows']):
-            component_actual = sum(rows[index]['actual'] for rows in result['component_comparison'].values())
-            self.assertAlmostEqual(item['actual'], component_actual, places=2)
-        self.assertEqual(result['baselines']['seasonal_naive']['matched_rows'], 12)
-        self.assertEqual(result['metrics']['combined']['attempted_rows'], 12)
-
-    def test_partial_current_week_does_not_skip_to_untested_two_step_horizon(self):
-        values = aggregate(self.daily(), 'weekly')
-        with patch('forecasting.rebuilt.forecast', side_effect=AssertionError('Skipped horizon')):
-            result = next_forecast({'total': values}, {'total': Specification((1, 0, 0))},
-                                   'weekly', pd.Timestamp('2025-12-31'), 'test')
-        self.assertEqual(result['status'], 'incomplete_current_period')
-
-    def test_real_sarima_fit_and_zero_series_return_finite_currency(self):
-        dates = pd.date_range('2023-01-02', periods=80, freq='W-MON')
-        history = pd.Series(50000 + np.sin(np.arange(80) * np.pi / 2) * 5000, index=dates)
-        point, low, high = sarima_forecast(history, Specification((1, 0, 0), (1, 0, 0, 4)), 3)
-        self.assertTrue(np.isfinite(point).all())
-        self.assertTrue((low <= high).all())
-        self.assertTrue((point > 1000).all())
-        zeros = sarima_forecast(history * 0, Specification((0, 1, 1)), 2)
-        self.assertTrue((zeros[0] == 0).all())
-
-    def test_target_needs_five_periods_and_no_more_than_30_percent_wape(self):
-        self.assertEqual(period_acceptance({'rows':12, 'wape_percent':30}), 'accepted')
-        self.assertEqual(period_acceptance({'rows':12, 'wape_percent':30.001}), 'rejected')
-        self.assertEqual(period_acceptance({'rows':1, 'wape_percent':10}), 'insufficient_evaluation')
-        self.assertEqual(period_acceptance({'rows':11, 'wape_percent':10, 'failed_rows':1}), 'model_unavailable')
-
-
-@override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
-class ForecastServingTests(TestCase):
+class PatternStudyTests(TestCase):
     def setUp(self):
         cache.clear()
-        self.user = get_user_model().objects.create_user(
-            username='forecast-admin', email='forecast@example.com', role='admin')
-        self.client = APIClient(HTTP_HOST='127.0.0.1')
-        self.client.force_authenticate(self.user)
-        self.end = timezone.localdate() - timedelta(days=1)
-        self.point = {'status':'ready', 'method':'sarima_level_ar', 'date':str(self.end + timedelta(days=1)),
-                      'end_date':str(self.end + timedelta(days=30)), 'trained_through':str(self.end),
-                      'days':30, 'bulk':{'status':'not_used'},
-                      'regular':{'predicted_revenue':100},
-                      'combined':{'predicted_revenue':100, 'lower_bound':80, 'upper_bound':120}}
-        self.result = {'selected_setup':'sarima', 'selection_trained_through':'2024-12-31',
-                       'configuration':{'model':'SARIMA'}, 'data_provenance':{'source':'transactions'},
-                       'setups':{'sarima':{'setup':'sarima', 'periods':{
-                           'monthly':self.period(40, 12), 'yearly':self.period(10, 1),
-                       }}}}
-        self.run = ForecastRun.objects.create(
-            scope='real', version=VERSION, configuration_signature=options().signature(),
-            source_signature='a' * 64, data_end=self.end, result=self.result)
+        self.user=get_user_model().objects.create_user(username='pattern-admin',email='patterns@example.test',role='admin')
+        self.customer=Customer.objects.create(name='Shop',created_by=self.user)
+        category=Category.objects.create(name='Pattern dairy')
+        self.product=Product.objects.create(name='FML',category=category,unit='L',shelf_life=7)
+        self.batch=ProductBatch.objects.create(product=self.product,batch_number='PATTERNS',
+                        initial_quantity=0,remaining_quantity=0,expiration_date=date(2030,1,1),is_historical_reference=True)
+        self.client=APIClient();self.client.force_authenticate(self.user)
 
-    def period(self, wape, rows):
-        metric = {'rows':rows, 'wape_percent':wape, 'mape_percent':wape,
-                  'mae_pesos':10, 'coverage_percent':50, 'interval_rows':rows}
-        return {'method':'sarima_level_ar', 'metrics':{'combined':metric, 'regular':metric,
-                'bulk':{}, 'combined_baselines':{}, 'regular_baselines':{}, 'bulk_baselines':{}},
-                'rows':[{'date':'2025-01-01', 'actual':100, 'predicted':80}],
-                'next_period':deepcopy(self.point)}
+    def sale(self,day,amount='100',**kwargs):
+        sale=Transaction.objects.create(handled_by=self.user,customer=self.customer,total_amount=Decimal(amount),**kwargs)
+        TransactionItem.objects.create(transaction=sale,product_batch=self.batch,quantity=1,
+                                        unit_price=Decimal(amount),total_amount=Decimal(amount))
+        stamp=datetime(day.year,day.month,day.day,12,tzinfo=ZoneInfo('Asia/Manila'))
+        Transaction.objects.filter(pk=sale.pk).update(created_at=stamp)
+        return sale
 
-    def test_rejected_and_under_evaluated_forecasts_keep_holdout_visible(self):
-        with patch('forecasting.serving.source', return_value=({self.end:Decimal('100')}, 'a' * 64, [])):
-            monthly = report(period='monthly')
-            yearly = report(period='yearly')
-        self.assertEqual(monthly['status'], 'rejected')
-        self.assertEqual(yearly['status'], 'insufficient_evaluation')
-        self.assertEqual(monthly['forecast'], [])
-        self.assertIn('40.00%', monthly['status_message'])
-        self.assertIn('large sales swings', monthly['status_message'])
-        self.assertIn('too few evaluated periods', yearly['status_message'])
-        self.assertEqual(monthly['historical_comparison'][0]['actual'], 100)
+    def test_only_actual_completed_non_voided_sales_enter_the_source(self):
+        self.sale(date(2024,1,1),'10',payment_status='pending')
+        self.sale(date(2024,1,2),'20',source_reference='2026:OCT:123')
+        self.sale(date(2024,1,3),'999',source_reference='2026:000001')
+        self.sale(date(2024,1,4),'999',is_voided=True)
+        self.sale(date(2024,1,5),'999')
+        self.sale(date(2024,1,6),'999')
+        snapshot=load_snapshot(date(2024,1,5))
+        self.assertEqual(sum(s.revenue for s in snapshot.sales),30)
+        self.assertEqual(snapshot.excluded_demo_count,1)
+        self.assertEqual(set(snapshot.daily),{date(2024,1,1),date(2024,1,2)})
 
-    def test_only_original_issued_forecast_is_served_and_never_fitted_on_get(self):
-        self.result['setups']['sarima']['periods']['monthly'] = self.period(20, 12)
-        self.run.result = self.result
-        self.run.save()
-        issued = deepcopy(self.point)
-        issued['combined']['predicted_revenue'] = 123
-        IssuedForecast.objects.create(scope='real', version=VERSION,
-            configuration_signature=options().signature(), setup='sarima', period='monthly',
-            date=issued['date'], trained_through=self.end, payload=issued)
-        with patch('forecasting.serving.source', return_value=({self.end:Decimal('100')}, 'a' * 64, [])), \
-             patch('forecasting.daily_sarima.fit_path', side_effect=AssertionError('HTTP fitting')):
-            payload = report(period='monthly')
-        self.assertEqual(payload['status'], 'ready')
-        self.assertEqual(payload['forecast'][0]['predicted_revenue'], 123)
+    def test_recorded_label_takes_precedence_for_feeding_classification(self):
+        self.customer.name='Milk Feeding';self.customer.save()
+        self.sale(date(2024,1,1),'10',source_customer_label='School canteen')
+        self.sale(date(2024,1,2),'20',source_customer_label='Milk Feedin Program')
+        self.sale(date(2024,1,3),'30')
+        data=investigate(load_snapshot(date(2024,2,1)))
+        self.assertEqual(data['regular_revenue'],'10.00')
+        self.assertEqual(data['monthly'][0]['feeding_revenue'],'50.00')
+        self.assertEqual(data['data_quality']['included_invoices'],3)
 
-    def test_changed_source_and_stale_sales_withhold_projection(self):
-        with patch('forecasting.serving.source', return_value=({self.end:Decimal('100')}, 'b' * 64, [])):
-            self.assertEqual(report()['status'], 'pending_update')
-        self.result['setups']['sarima']['periods']['monthly'] = self.period(20, 12)
-        self.run.result = self.result
-        self.run.data_end = self.end - timedelta(days=2)
-        self.run.save()
-        with patch('forecasting.serving.source', return_value=({self.end:Decimal('100')}, 'a' * 64, [])):
-            stale = report()
-        self.assertEqual(stale['status'], 'stale_data')
-        self.assertIn(str(self.end - timedelta(days=2)), stale['status_message'])
-        self.assertIn('historical backtest', stale['status_message'])
-        self.result['setups']['sarima']['periods']['monthly'] = self.period(40, 12)
-        self.run.result = self.result
-        self.run.save()
-        with patch('forecasting.serving.source', return_value=({self.end:Decimal('100')}, 'a' * 64, [])):
-            rejected_and_stale = report()
-        self.assertEqual(rejected_and_stale['status'], 'stale_data')
-        self.assertEqual(rejected_and_stale['quality_status'], 'rejected')
+    def test_payment_changes_do_not_change_revenue_revision_but_voids_do(self):
+        sale=self.sale(date(2024,1,1),payment_status='pending')
+        revision=load_snapshot().revision
+        Transaction.objects.filter(pk=sale.pk).update(payment_status='paid')
+        self.assertEqual(load_snapshot().revision,revision)
+        Transaction.objects.filter(pk=sale.pk).update(is_voided=True)
+        self.assertNotEqual(load_snapshot().revision,revision)
 
-    def test_api_pdf_and_scope_validation(self):
-        with patch('forecasting.serving.source', return_value=({self.end:Decimal('100')}, 'a' * 64, [])):
-            response = self.client.get('/api/reports/preview/?type=sarima_forecast&period=monthly')
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.data['data']['status'], 'rejected')
-            pdf = self.client.get('/api/reports/export-pdf/?type=sarima_forecast')
-            self.assertEqual(pdf.status_code, 200)
-            self.assertTrue(b''.join(pdf.streaming_content).startswith(b'%PDF'))
-            self.assertEqual(self.client.get('/api/reports/preview/?type=sarima_forecast&period=daily').status_code, 400)
-            self.assertEqual(self.client.get('/api/forecasting/forecast/?period=daily').status_code, 400)
-            self.assertEqual(self.client.get('/api/forecasting/forecast/?period=hourly').status_code, 400)
-            self.assertEqual(self.client.get('/api/forecasting/forecast/?scope=simulation').status_code, 400)
-            self.assertEqual(self.client.get('/api/forecasting/forecast/?scope=demo').status_code, 400)
-            self.assertEqual(self.client.get('/api/reports/preview/?type=sarima_forecast&scope=demo').status_code, 400)
-            self.assertEqual(self.client.get('/api/reports/export-pdf/?type=sarima_forecast&scope=demo').status_code, 400)
+    def test_unclassified_source_is_preserved_but_never_assumed_regular(self):
+        sale=self.sale(date(2024,1,1),'999',source_sales_segment='unclassified')
+        self.sale(date(2024,1,2),'10',source_sales_segment='regular')
+        self.sale(date(2024,1,3),'20',source_sales_segment='feeding')
+        findings=investigate(load_snapshot(date(2024,2,1)))
+        self.assertEqual(findings['regular_revenue'],'10.00')
+        self.assertEqual(findings['monthly'][0]['unclassified_revenue'],'999.00')
+        self.assertEqual(findings['data_quality']['feeding_invoices'],1)
+        self.assertEqual(findings['data_quality']['unclassified_invoices'],1)
+        revision=findings['source_revision']
+        Transaction.objects.filter(pk=sale.pk).update(source_sales_segment='feeding')
+        self.assertNotEqual(load_snapshot(date(2024,2,1)).revision,revision)
 
-    def test_replacement_removes_median_estimates_and_keeps_dated_audit_visible(self):
-        today = date(2026, 10, 3)
-        daily = {date(year, 1, 1) + timedelta(days=offset): Decimal('100')
-                 for year in (2023, 2024, 2025)
-                 for offset in range((date(year + 1, 1, 1) - date(year, 1, 1)).days)}
-        self.result['setups']['sarima']['periods']['weekly'] = self.period(40, 51)
-        self.run.result = self.result
-        self.run.data_end = date(2025, 12, 31)
-        self.run.save()
-        with patch('forecasting.serving.timezone.localdate', return_value=today), \
-             patch('forecasting.serving.source', return_value=(daily, 'a' * 64, [])):
-            results = {period: self.client.get(
-                f'/api/reports/preview/?type=sarima_forecast&period={period}').data['data']
-                for period in ('weekly', 'monthly', 'yearly')}
-        for period, result in results.items():
-            self.assertEqual(result['status'], 'stale_data')
-            self.assertEqual(result['forecast'], [])
-            self.assertEqual(result['historical_comparison'][0]['date'], '2025-01-01')
-            self.assertIsNone(result['planning_projection'])
+    def test_new_live_sales_follow_dairy_policy_and_refresh_after_item_corrections(self):
+        sweets=Product.objects.create(name='PDLX20',category=self.product.category,unit='unit',shelf_life=7)
+        batch=ProductBatch.objects.create(product=sweets,batch_number='SWEETS',initial_quantity=0,
+                        remaining_quantity=0,expiration_date=date(2030,1,1),is_historical_reference=True)
+        mixed=self.sale(date(2024,1,1),'180')
+        mixed.items.update(unit_price=100,total_amount=100)
+        TransactionItem.objects.create(transaction=mixed,product_batch=batch,quantity=1,unit_price=100,total_amount=100)
+        only_sweets=self.sale(date(2024,1,2),'999')
+        only_sweets.items.update(product_batch=batch)
+        snapshot=load_snapshot(date(2024,2,1))
+        self.assertEqual(snapshot.daily,{date(2024,1,1):Decimal('90.00')})
+        self.assertEqual(snapshot.excluded_non_dairy_count,1)
+        revision=snapshot.revision
+        mixed.items.filter(product_batch=self.batch).update(total_amount=300)
+        snapshot=load_snapshot(date(2024,2,1))
+        self.assertEqual(snapshot.daily[date(2024,1,1)],Decimal('135.00'))
+        self.assertNotEqual(snapshot.revision,revision)
 
-    def test_uncovered_years_do_not_become_zero_sales_estimates(self):
-        from .historical import period_projection
-        self.assertIsNone(period_projection(
-            {date(2025, 12, 31): Decimal('90')}, 'monthly', date(2026, 10, 3)))
+    def test_unknown_live_product_or_missing_lines_is_held_for_review(self):
+        sale=self.sale(date(2024,1,1),'100')
+        sale.items.update(product_name_snapshot='Unreviewed item')
+        no_lines=self.sale(date(2024,1,2),'200');no_lines.items.all().delete()
+        findings=investigate(load_snapshot(date(2024,2,1)))
+        self.assertEqual(findings['regular_revenue'],'0.00')
+        self.assertEqual(findings['data_quality']['unclassified_invoices'],2)
 
-    def test_completed_non_voided_transactions_are_the_only_sales_source(self):
-        stamp = timezone.make_aware(datetime.combine(self.end, time(12)))
-        ordinary = Transaction.objects.create(handled_by=self.user, total_amount=90)
-        voided = Transaction.objects.create(handled_by=self.user, total_amount=1000, is_voided=True)
-        Transaction.objects.filter(pk__in=[ordinary.pk, voided.pk]).update(created_at=stamp)
-        Transaction.objects.create(handled_by=self.user, total_amount=500)
-        daily, _, _ = source()
-        self.assertEqual(daily[self.end], Decimal('90'))
-        self.assertNotIn(timezone.localdate(), daily)
+    def test_zero_months_are_not_invented_and_all_customers_are_audited(self):
+        for index in range(13):
+            customer=Customer.objects.create(name=f'Buyer {index}',created_by=self.user,is_active=index!=0)
+            sale=self.sale(date(2024,1,1),'10')
+            Transaction.objects.filter(pk=sale.pk).update(customer=customer)
+        self.sale(date(2024,3,1),'20')
+        findings=investigate(load_snapshot(date(2024,4,1)))
+        self.assertEqual([row['month'] for row in findings['monthly']],['2024-01','2024-03'])
+        self.assertEqual(findings['regular_customers'],14)
+        self.assertEqual(sum(Decimal(row['revenue']) for row in findings['customers']),Decimal(findings['regular_revenue']))
+        self.assertFalse(findings['coverage_verified'])
+        self.assertFalse(findings['eligible_for_publication'])
 
-    def test_component_changes_invalidate_snapshot_even_when_daily_total_is_unchanged(self):
-        sale = Transaction.objects.create(handled_by=self.user, total_amount=100,
-                                          source_customer_label='Milk Feeding-Las Pinas')
-        Transaction.objects.filter(pk=sale.pk).update(created_at=timezone.make_aware(datetime.combine(self.end, time(12))))
-        daily, first_signature, _, parts = source(include_components=True)
-        self.assertEqual(parts['feeding'][self.end], daily[self.end])
-        Transaction.objects.filter(pk=sale.pk).update(source_customer_label='Outlet Sales')
-        unchanged, second_signature, _, parts = source(include_components=True)
-        self.assertEqual(daily, unchanged)
-        self.assertNotEqual(first_signature, second_signature)
-        self.assertEqual(parts['other_sales'][self.end], daily[self.end])
+    def test_cadence_uses_last_observed_day_instead_of_unknown_future_months(self):
+        for day in (1,8,15,22):self.sale(date(2024,1,day))
+        findings=investigate(load_snapshot(date(2025,1,1)))
+        customer=findings['customers'][0]
+        self.assertEqual(customer['median_gap_days'],7)
+        self.assertEqual(customer['gap_cv'],0)
+        self.assertEqual(customer['days_since_last_purchase'],0)
+        self.assertEqual(customer['activity_reference_date'],'2024-01-22')
+        self.assertFalse(customer['possible_historical_lapse'])
+        self.assertGreater(findings['data_quality']['days_since_latest_actual'],300)
 
-    def test_misspelled_feeding_label_stays_in_feeding_component(self):
-        sale = Transaction.objects.create(handled_by=self.user, total_amount=100,
-                                          source_customer_label='MILK FEEDIN-DSWD')
-        Transaction.objects.filter(pk=sale.pk).update(
-            created_at=timezone.make_aware(datetime.combine(self.end, time(12))))
-        daily, _, _, parts = source(include_components=True)
-        self.assertEqual(parts['feeding'][self.end], daily[self.end])
+    def test_source_revision_and_cutoff_make_refresh_incremental_and_retain_history(self):
+        self.sale(date(2024,1,1))
+        first,created=refresh_patterns(date(2024,2,1));self.assertTrue(created)
+        repeated,created=refresh_patterns(date(2024,2,1));self.assertFalse(created)
+        self.assertEqual(first.pk,repeated.pk)
+        self.sale(date(2024,1,2))
+        second,created=refresh_patterns(date(2024,2,1));self.assertTrue(created)
+        self.assertNotEqual(first.source_revision,second.source_revision)
+        self.assertEqual(PatternStudy.objects.count(),2)
+        first.refresh_from_db()
+        self.assertEqual(first.findings['data_quality']['included_invoices'],1)
+        self.assertEqual(second.findings['data_quality']['included_invoices'],2)
 
-    def test_issue_cannot_be_trained_on_target_day(self):
-        with self.assertRaises(IntegrityError), transaction.atomic():
-            IssuedForecast.objects.create(scope='real', version=VERSION,
-                configuration_signature=options().signature(), setup='sarima', period='monthly',
-                date=self.end, trained_through=self.end, payload={})
+    def test_ledger_race_does_not_save_an_inconsistent_study(self):
+        self.sale(date(2024,1,1))
+        original=load_snapshot(date(2024,2,1))
+        self.sale(date(2024,1,2))
+        changed=load_snapshot(date(2024,2,1))
+        with patch('forecasting.jobs.load_snapshot',side_effect=[original,changed]):
+            with self.assertRaisesMessage(ValueError,'Sales changed'):
+                refresh_patterns(date(2024,2,1))
+        self.assertEqual(PatternStudy.objects.count(),0)
 
+    def test_forecast_endpoint_withholds_predictions_and_reports_research_target(self):
+        self.sale(date(2024,1,1))
+        response=self.client.get('/api/forecasting/forecast/')
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.data['forecast'],[])
+        self.assertEqual(response.data['status'],'pending_update')
+        self.assertEqual(response.data['accuracy_target_percent'],15)
+        self.assertEqual(response.data['metrics'],{})
+        self.assertEqual(response.data['stage'],'pattern_investigation')
+        self.assertEqual(self.client.get('/api/forecasting/forecast/?period=invalid').status_code,400)
 
-class ForecastCommandTests(SimpleTestCase):
-    def test_private_export_is_opt_in(self):
-        from types import SimpleNamespace
-        from io import StringIO
-        result = {'selected_setup':'sarima', 'setups':{'sarima':{'periods':{
-            'monthly':{'method':'sarima_level_ar', 'validation_metrics':{'wape_percent':20},
-                       'metrics':{'combined':{'wape_percent':25, 'rows':12}}, 'status':'accepted'},
-        }}}}
-        with patch('forecasting.management.commands.evaluate_forecast.refresh',
-                   return_value=(SimpleNamespace(result=result), True)):
-            call_command('evaluate_forecast', stdout=StringIO())
-            with TemporaryDirectory() as directory:
-                folder = Path(directory) / 'audit'
-                call_command('evaluate_forecast', output=folder, stdout=StringIO())
-                self.assertTrue((folder / 'real.json').is_file())
-                self.assertTrue((folder / 'comparison.csv').is_file())
-                self.assertTrue((folder / 'protocol.json').is_file())
+    def test_patterns_endpoint_needs_offline_refresh_and_detects_new_ledger_data(self):
+        self.sale(date(2024,1,1))
+        self.assertEqual(self.client.get('/api/forecasting/patterns/').data['status'],'refresh_required')
+        with self.captureOnCommitCallbacks(execute=True):refresh_patterns()
+        data=self.client.get('/api/forecasting/patterns/').data
+        self.assertEqual(data['status'],'current')
+        self.assertEqual(data['findings']['data_quality']['included_invoices'],1)
+        with self.captureOnCommitCallbacks(execute=True):self.sale(date(2024,1,2))
+        self.assertEqual(self.client.get('/api/forecasting/patterns/').data['status'],'refresh_required')
 
+    def test_staff_and_anonymous_cannot_access_global_research(self):
+        staff=get_user_model().objects.create_user(username='pattern-staff',email='staff-patterns@example.test',role='staff')
+        for user,expected in ((staff,403),(None,401)):
+            self.client.force_authenticate(user)
+            for endpoint in ('patterns','forecast'):
+                self.assertEqual(self.client.get(f'/api/forecasting/{endpoint}/').status_code,expected)
 
-class DailySarimaTests(SimpleTestCase):
-    def daily(self):
-        dates = pd.date_range('2023-01-01', '2025-12-31')
-        return pd.Series(1000. + dates.dayofweek * 100, index=dates)
-
-    def fake_path(self, history, spec, steps):
-        return np.full(steps, history.iloc[-spec.window:].mean())
-
-    def test_every_candidate_has_real_weekday_seasonality(self):
-        self.assertTrue(all(spec.seasonal_order[3] == 7 for spec in specifications()))
-        self.assertEqual({spec.transform for spec in specifications()}, {'level', 'log_mean'})
-
-    def test_test_actuals_cannot_change_models_strategy_or_range(self):
-        daily = self.daily()
-        altered = daily.copy()
-        altered.loc['2025-01-01':] *= 100
-        with patch('forecasting.daily_sarima.fit_path', side_effect=self.fake_path):
-            first = evaluate_daily_period(daily, 'monthly', components={'feeding': daily*.2, 'other_sales': daily*.8})
-            second = evaluate_daily_period(altered, 'monthly', components={'feeding': altered*.2, 'other_sales': altered*.8})
-        self.assertEqual(first['selection_signature'], second['selection_signature'])
-        self.assertEqual(first['selection'], second['selection'])
-        self.assertEqual([item['predicted'] for item in first['fixed_origin_rows']],
-                         [item['predicted'] for item in second['fixed_origin_rows']])
-        self.assertNotEqual(first['metrics'], second['metrics'])
-        self.assertEqual(len(first['rows']), 12)
-        self.assertTrue(all(item['trained_through'] < item['date'] for item in first['rows']))
-        self.assertEqual(first['next_period']['days'], 31)
-
-    def test_target_horizon_matches_calendar_and_crossing_week_is_excluded(self):
-        calls = []
-        def path(history, spec, steps):
-            calls.append((history.index[-1], steps))
-            return np.ones(steps)
-        from .rebuilt import aggregate
-        daily = self.daily()
-        with patch('forecasting.daily_sarima.fit_path', side_effect=path):
-            months = walk(daily, aggregate(daily, 'monthly').loc['2025-01-01':'2025-03-01'], DailyModel(91, 'level'), 'monthly')
-            weekly = evaluate_daily_period(daily, 'weekly')
-        self.assertEqual([item['predicted'] for item in months], [31., 28., 31.])
-        self.assertEqual(calls[:3], [(pd.Timestamp('2024-12-31'), 31), (pd.Timestamp('2025-01-31'), 28), (pd.Timestamp('2025-02-28'), 31)])
-        self.assertEqual(weekly['validation_end'], '2024-12-29')
-        self.assertNotIn('2024-12-30', weekly['selection']['validation_dates'])
-        self.assertEqual(weekly['next_period']['status'], 'incomplete_current_period')
-
-    def test_reconciliation_rejects_missing_or_extra_revenue(self):
-        daily = self.daily()
-        with self.assertRaisesRegex(ValueError, 'reconcile'):
-            evaluate_daily_period(daily, 'monthly', components={'feeding': daily*.3, 'other_sales': daily*.8})
-
-    def test_range_uses_absolute_period_errors_and_requires_samples(self):
-        rows = [{'actual': i, 'predicted': 0.} for i in range(1, 7)]
-        self.assertEqual(range_radius(rows), 5.)
-        with self.assertRaises(ValueError):
-            range_radius(rows[:4])
-
-    def test_actual_seasonal_fit_is_finite_in_currency_and_zeros_are_preserved(self):
-        history = self.daily().iloc[:120] + np.random.default_rng(42).normal(0, 50, 120)
-        for transform in ('level', 'log_mean'):
-            path = fit_path(history, DailyModel(91, transform), 31)
-            self.assertTrue(np.isfinite(path).all())
-            self.assertTrue((path >= 0).all())
-            self.assertGreater(path.sum(), 10000)
-            self.assertTrue((fit_path(history*0, DailyModel(91, transform), 7) == 0).all())
-        with self.assertRaises(ValueError):
-            fit_path(history.iloc[:14], DailyModel(91, 'level'), 7)
+    def test_commands_are_repeatable_and_do_not_publish_forecasts(self):
+        self.sale(date(2024,1,1))
+        output=StringIO()
+        call_command('refresh_forecast_patterns',stdout=output)
+        call_command('watch_forecast_patterns',once=True,stdout=output)
+        self.assertEqual(PatternStudy.objects.count(),1)
+        self.assertEqual(report()['forecast'],[])
+        with self.assertRaises(CommandError):
+            call_command('watch_forecast_patterns',interval=1,once=True,stdout=output)
+        with self.assertRaises(CommandError):
+            call_command('refresh_forecast_patterns',as_of=timezone.localdate()+timedelta(days=1),stdout=output)
 
 
-class ExperimentCleanupMigrationTests(TransactionTestCase):
-    def test_migration_removes_experiments_and_preserves_production(self):
-        executor = MigrationExecutor(connection)
-        before = [('forecasting', '0002_simulationrun_simulatedsalesday')]
-        after = [('forecasting', '0003_remove_experiment_storage')]
-        executor.migrate(before)
-        try:
-            apps = executor.loader.project_state(before).apps
-            runs = apps.get_model('forecasting', 'ForecastRun').objects
-            common = dict(configuration_signature='config', source_signature='source',
-                          data_end=date(2025, 12, 31), result={})
-            production = runs.create(scope='real', version='daily-sarima-v1', **common)
-            for version in ('segmented-sarima-v1', 'tuned-sarima-v1', 'customer-sarima-v1'):
-                runs.create(scope='real', version=version, **common)
-            simulation = apps.get_model('forecasting', 'SimulationRun').objects.create(
-                target_year=2026, seed=2026, method='test', source_signature='source', metadata={})
-            apps.get_model('forecasting', 'SimulatedSalesDay').objects.create(
-                run=simulation, date=date(2026, 1, 1), feeding_revenue=10, other_sales_revenue=20)
+class ResearchBenchmarkTests(SimpleTestCase):
+    def months(self,count=36):
+        return [{'month':f'{2020+i//12:04}-{i%12+1:02}', 'regular_revenue':str(100+i)} for i in range(count)]
 
-            executor = MigrationExecutor(connection)
-            executor.migrate(after)
-            apps = executor.loader.project_state(after).apps
-            self.assertEqual(list(apps.get_model('forecasting', 'ForecastRun').objects.values_list(
-                'pk', flat=True)), [production.pk])
-            tables = connection.introspection.table_names()
-            self.assertNotIn('forecasting_simulationrun', tables)
-            self.assertNotIn('forecasting_simulatedsalesday', tables)
-        finally:
-            MigrationExecutor(connection).migrate(after)
+    def test_research_uses_chronological_windows_and_not_test_selected_winners(self):
+        months=self.months()
+        result=evaluate(months)
+        self.assertEqual(result['test_start'],'2022-01')
+        self.assertEqual(result['validation_start'],'2021-07')
+        expected=min(result['benchmarks'],key=lambda name:(result['benchmarks'][name]['validation']['wape_percent'],name))
+        self.assertEqual(result['selected_benchmark'],expected)
+        for candidate in result['benchmarks'].values():
+            for row in candidate['validation_rows']+candidate['test_rows']:
+                self.assertLess(row['trained_through'],row['month'])
+        for row in months[-12:]:row['regular_revenue']='100000'
+        self.assertEqual(evaluate(months)['selected_benchmark'],result['selected_benchmark'])
+
+    def test_new_month_advances_windows_without_hardcoded_test_year(self):
+        before=evaluate(self.months(36));after=evaluate(self.months(37))
+        self.assertEqual(before['test_start'],'2022-01')
+        self.assertEqual(after['test_start'],'2022-02')
+        self.assertEqual(after['test_end'],'2023-01')
+
+    def test_gap_does_not_become_a_zero_month_for_backtesting(self):
+        rows=self.months();del rows[20]
+        result=evaluate(rows)
+        self.assertEqual(result['status'],'insufficient_history')
+        self.assertEqual(result['available_contiguous_months'],15)
+
+    def test_zero_actuals_have_no_fabricated_accuracy(self):
+        self.assertIsNone(score([{'actual':0,'predicted':1}])['wape_percent'])
+        rows=self.months()
+        for row in rows:row['regular_revenue']='0'
+        self.assertIsNone(evaluate(rows)['selected_benchmark'])
+        self.assertIsNone(evaluate(rows)['selected_test'])
+
+    def test_each_benchmark_uses_only_its_available_history(self):
+        self.assertEqual(predict(list(range(1,13)),'same_month_last_year'),1)
+        self.assertEqual(predict([1,2,3,4],'trailing_3_mean'),3)
+        self.assertEqual(predict([1,100,3],'trailing_3_median'),3)

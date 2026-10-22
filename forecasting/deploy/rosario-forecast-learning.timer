@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Rosario Dairy model maintenance hourly
+
+[Timer]
+OnCalendar=hourly
+OnBootSec=5min
+Persistent=true
+AccuracySec=1min
+Unit=rosario-forecast-learning.service
+
+[Install]
+WantedBy=timers.target

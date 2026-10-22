@@ -1,0 +1,1315 @@
+{
+  "version": "dairy-source-policy-v1",
+  "products": {
+    "12in1": {
+      "name": "12 in 1",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "adobosauce": {
+      "name": "Adobo Sauce",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "atsaranglabanos": {
+      "name": "Atsarang Labanos",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "atsarangpapaya": {
+      "name": "Atsarang Papaya",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "atsarangsuka": {
+      "name": "Atsarang Suka",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "atsarangsukaspicy": {
+      "name": "Atsarang Suka Spicy",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "atsarangsukasweet": {
+      "name": "Atsarang Suka sweet",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "atsarangubod": {
+      "name": "Atsarang Ubod",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "atsaraspicy": {
+      "name": "Atsara Spicy",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "b.chips100g": {
+      "name": "B.chips 100g",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "b.chips300g": {
+      "name": "B.chips 300g",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "backfat": {
+      "name": "Backfat",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "bagnet": {
+      "name": "Bagnet",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "bananachips": {
+      "name": "Banana Chips",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "bananachips100g": {
+      "name": "Banana Chips 100g",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "bananachips150g": {
+      "name": "Banana Chips 150g",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "bananachips200g": {
+      "name": "Banana Chips 200g",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "bananachips300g": {
+      "name": "Banana Chips 300g",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "bananastrips": {
+      "name": "Banana Strips",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "barquillos": {
+      "name": "Barquillos",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "barquillospolvoron": {
+      "name": "Barquillos Polvoron",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "bb": {
+      "name": "BB",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "bb200": {
+      "name": "BB200",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "bb300": {
+      "name": "BB300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "bb500": {
+      "name": "BB500",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "bbl": {
+      "name": "BBL",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "bottle1l": {
+      "name": "BOTTLE 1L",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "bottle1ltr": {
+      "name": "BOTTLE 1LTR",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "bottle200ml": {
+      "name": "Bottle 200ml",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "bottles/lids": {
+      "name": "Bottles/Lids",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "butcheron": {
+      "name": "Butcheron",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "cara1l": {
+      "name": "Cara 1L",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "cara200": {
+      "name": "CARA200",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "cara200ml": {
+      "name": "Cara 200ml",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "cara300ml": {
+      "name": "Cara 300ml",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "cara500": {
+      "name": "Cara 500",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "caral": {
+      "name": "CaraL",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "card300": {
+      "name": "Card 300",
+      "decision": "review",
+      "reason": "Product identity or dairy status is unconfirmed; excluded pending review."
+    },
+    "card500": {
+      "name": "Card 500",
+      "decision": "review",
+      "reason": "Product identity or dairy status is unconfirmed; excluded pending review."
+    },
+    "cheesecorn100g": {
+      "name": "Cheese Corn 100g",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "chicharonbackfat": {
+      "name": "Chicharon Backfat",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "chocmet": {
+      "name": "Chocmet",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "chocmetlava": {
+      "name": "Chocmet Lava",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "chocoballs": {
+      "name": "Choco Balls",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "chocol": {
+      "name": "Choco L",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "chocoltr": {
+      "name": "Choco LTR",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "chocomilktm": {
+      "name": "Choco Milk TM",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "chocopouch": {
+      "name": "Choco Pouch",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "chocovron": {
+      "name": "Chocovron",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "chzcorn": {
+      "name": "Chz Corn",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "cm100": {
+      "name": "CM100",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "cm200": {
+      "name": "CM200",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "cm300": {
+      "name": "CM300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "cm3500": {
+      "name": "CM3500",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "cm500": {
+      "name": "CM500",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "cml": {
+      "name": "CML",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "cml-tm": {
+      "name": "CML-TM",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "cml300": {
+      "name": "CML300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "cmlpcc": {
+      "name": "CMLPCC",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "cmpcc": {
+      "name": "CMPCC",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "cmpouch": {
+      "name": "CMPOUCH",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "cmtm": {
+      "name": "CMTM",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "cmtm1000ml": {
+      "name": "CMTM1000ml",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "cmtm200": {
+      "name": "CMTM200",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "cmtm200ml": {
+      "name": "CMTM200ML",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "cmtm300": {
+      "name": "CMTM300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "cmtml": {
+      "name": "CMTML",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "coatedpeanut": {
+      "name": "Coated Peanut",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "coatedpeanut100g": {
+      "name": "Coated peanut 100g",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "coatedpeanut200g": {
+      "name": "Coated peanut 200g",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "coatedsugar": {
+      "name": "Coated Sugar",
+      "decision": "review",
+      "reason": "Product identity or dairy status is unconfirmed; excluded pending review."
+    },
+    "coatedsugar100g": {
+      "name": "Coated Sugar 100g",
+      "decision": "review",
+      "reason": "Product identity or dairy status is unconfirmed; excluded pending review."
+    },
+    "coatedsugar200g": {
+      "name": "Coated Sugar 200g",
+      "decision": "review",
+      "reason": "Product identity or dairy status is unconfirmed; excluded pending review."
+    },
+    "coco-oat": {
+      "name": "Coco-oat",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "conebite": {
+      "name": "Cone bite",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "cornick": {
+      "name": "Cornick",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "crispyisaw": {
+      "name": "Crispy Isaw",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "crispymushroom": {
+      "name": "Crispy Mushroom",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "dc": {
+      "name": "DC",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "driedmango": {
+      "name": "Dried Mango",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "f": {
+      "name": "f",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "fm200": {
+      "name": "FM200",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "fm300": {
+      "name": "FM300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "fm500": {
+      "name": "FM500",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "fml": {
+      "name": "FML",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "fmlpouch": {
+      "name": "FML Pouch",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "fmpouch": {
+      "name": "FMPouch",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "freshmilk": {
+      "name": "freshmilk",
+      "decision": "dairy",
+      "reason": "Explicit milk product label for live/manual sales."
+    },
+    "ginger": {
+      "name": "Ginger",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "gingerbrew": {
+      "name": "Ginger Brew",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "gingersalabat": {
+      "name": "Ginger Salabat",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "honey": {
+      "name": "Honey",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "ice": {
+      "name": "ICE",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "icecandy": {
+      "name": "Ice Candy",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "kalaboy": {
+      "name": "Kalaboy",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "kalaboy/girl": {
+      "name": "Kalaboy/Girl",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "kalagirlkeychain": {
+      "name": "Kalagirl Keychain",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "kamotechips": {
+      "name": "Kamote Chips",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "kangkongchips": {
+      "name": "Kangkong Chips",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "kapengbarako": {
+      "name": "Kapeng Barako",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "karet": {
+      "name": "Karet",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "katsa": {
+      "name": "Katsa",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "keychain": {
+      "name": "Keychain",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "keychaintulip": {
+      "name": "Keychain Tulip",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "lava": {
+      "name": "Lava",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "lowfat300ml": {
+      "name": "Low Fat 300ml",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "lowfatl": {
+      "name": "Low Fat L",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "m200": {
+      "name": "M200",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "m300": {
+      "name": "M300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "m500": {
+      "name": "M500",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "mazapan": {
+      "name": "Mazapan",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "mdl": {
+      "name": "MDL",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "mebn300": {
+      "name": "Mebn 300",
+      "decision": "review",
+      "reason": "Product identity or dairy status is unconfirmed; excluded pending review."
+    },
+    "melon200": {
+      "name": "MELON200",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "melon200ml": {
+      "name": "Melon 200ml",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "melon300": {
+      "name": "Melon 300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "melon300ml": {
+      "name": "Melon 300ml",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "melonl": {
+      "name": "MelonL",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "melonpouch": {
+      "name": "Melon Pouch",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "milk": {
+      "name": "milk",
+      "decision": "dairy",
+      "reason": "Explicit milk product label for live/manual sales."
+    },
+    "mixeddriedfruits": {
+      "name": "Mixed Dried Fruits",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "mixedfriedfruits": {
+      "name": "Mixed Fried Fruits",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "mixedfruits": {
+      "name": "Mixed Fruits",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "mixednuts": {
+      "name": "Mixed Nuts",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "ml": {
+      "name": "ML",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "mm200": {
+      "name": "MM200",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "mm300": {
+      "name": "MM300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "mm500": {
+      "name": "MM500",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "mml": {
+      "name": "MmL",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "mog": {
+      "name": "MOG",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "mogtub": {
+      "name": "MOG Tub",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "mozza": {
+      "name": "Mozza",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "mozza1kg": {
+      "name": "Mozza 1kg",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "mozza200g": {
+      "name": "Mozza 200g",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "mozza2kg": {
+      "name": "Mozza 2kg",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "mozzarella": {
+      "name": "Mozzarella",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "mushroom": {
+      "name": "Mushroom",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "mushroomchicharon": {
+      "name": "Mushroom Chicharon",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "p200": {
+      "name": "P200",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "p300": {
+      "name": "P300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "p500": {
+      "name": "P500",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "pandan200": {
+      "name": "Pandan200",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "pandan200ml": {
+      "name": "Pandan 200ml",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "pandan300": {
+      "name": "Pandan300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "pandan300ml": {
+      "name": "Pandan 300ml",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "pandan500": {
+      "name": "Pandan 500",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "pandanl": {
+      "name": "PandanL",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "paneer1.30kg": {
+      "name": "Paneer 1.30kg",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "paneer1.4kg": {
+      "name": "Paneer 1.4kg",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "pasteurizedmilk200ml": {
+      "name": "Pasteurized Milk 200ml",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "pastilas50g": {
+      "name": "Pastilas 50g",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pastillas": {
+      "name": "Pastillas",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pastillas50g": {
+      "name": "Pastillas 50g",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pastillasplain": {
+      "name": "Pastillas plain",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pastillasyema": {
+      "name": "Pastillas yema",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pastiroll": {
+      "name": "Pastiroll",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "patis": {
+      "name": "Patis",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "pdl": {
+      "name": "PDL",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdl100g": {
+      "name": "Pdl100g",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdl250g": {
+      "name": "Pdl250g",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdlby16": {
+      "name": "PDL by 16",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdlby20": {
+      "name": "PDL by 20",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdlchz": {
+      "name": "Pdl chz",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdlplain": {
+      "name": "Pdl Plain",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdlube": {
+      "name": "PDL ube",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdlx13": {
+      "name": "PDLX13",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdlx15": {
+      "name": "PDLX15",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdlx16": {
+      "name": "PDLX16",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdlx16chz": {
+      "name": "PDLX16 CHZ",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdlx16tub": {
+      "name": "PDLX16 Tub",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdlx2": {
+      "name": "PDLX2",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdlx20": {
+      "name": "PDLX20",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdlx20cheese": {
+      "name": "PDLx20 Cheese",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdlx20chz": {
+      "name": "PdlX20 Chz",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdlx20p": {
+      "name": "PDLX20 P",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdlx20plain": {
+      "name": "PDLx20 plain",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdlx20ube": {
+      "name": "PDLx20 Ube",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdlx250": {
+      "name": "PDLX250",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pdlx250g": {
+      "name": "PDLX250g",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pickledubod": {
+      "name": "Pickled Ubod",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "plain300": {
+      "name": "PLAIN300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "pm200": {
+      "name": "PM200",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "pm300": {
+      "name": "PM300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "pm500": {
+      "name": "PM500",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "pml": {
+      "name": "PmL",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "polvoron": {
+      "name": "Polvoron",
+      "decision": "non_dairy",
+      "reason": "Excluded from the dairy dataset by user: non-dairy products or sweets (including pastillas/PDL, Pastiroll, and Polvoron)."
+    },
+    "pouch": {
+      "name": "Pouch",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "pureturmeric": {
+      "name": "Pure Turmeric",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "pyl": {
+      "name": "PYL",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "r.peanut100g": {
+      "name": "R.Peanut 100g",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "raw": {
+      "name": "RAW",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "raw300": {
+      "name": "Raw 300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "raw300ml": {
+      "name": "Raw300ml",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "rawmilk1l": {
+      "name": "Raw Milk 1L",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "rawmilk200ml": {
+      "name": "Raw Milk 200ml",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "rawmilk300": {
+      "name": "Raw Milk300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "rawmilk300ml": {
+      "name": "Raw Milk 300ml",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "refmagnet": {
+      "name": "Ref Magnet",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "ricoa": {
+      "name": "RICOA",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "roasted": {
+      "name": "Roasted",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "roastedpeanut": {
+      "name": "Roasted Peanut",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "roastedpeanut100g": {
+      "name": "Roasted Peanut 100g",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "roastepeanut": {
+      "name": "Roaste Peanut",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "sampaloc": {
+      "name": "Sampaloc",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "sampalocsweet&spicy": {
+      "name": "Sampaloc sweet&spicy",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "sb200": {
+      "name": "SB200",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "sb300": {
+      "name": "SB300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "sb500": {
+      "name": "SB500",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "sbl": {
+      "name": "SBL",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "sd200": {
+      "name": "SD200",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "sd300": {
+      "name": "SD300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "sd400": {
+      "name": "SD400",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "sdl": {
+      "name": "SDL",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "sm300": {
+      "name": "SM300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "spicedpatis": {
+      "name": "Spiced Patis",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "spicysuka": {
+      "name": "Spicy Suka",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "stingleesshoney": {
+      "name": "Stingleess Honey",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "stinglessbee": {
+      "name": "Stingless Bee",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "styro": {
+      "name": "Styro",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "styrobox": {
+      "name": "Styro Box",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "sukangbawang": {
+      "name": "Sukang Bawang",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "sukangtaba": {
+      "name": "Sukang Taba",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "sukangtuba": {
+      "name": "Sukang Tuba",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "sweetcorn": {
+      "name": "Sweetcorn",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "sweetcorn100g": {
+      "name": "Sweet Corn 100g",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "tamarind": {
+      "name": "Tamarind",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "tamarindballs": {
+      "name": "Tamarind Balls",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "tm": {
+      "name": "TM",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "tm-cml": {
+      "name": "TM-CML",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "tm1000ml": {
+      "name": "TM1000ml",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "tm200": {
+      "name": "TM200",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "tm200ml": {
+      "name": "TM200ml",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "tm300": {
+      "name": "TM300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "tmchoco": {
+      "name": "TMCHOCO",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "tml": {
+      "name": "TML",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "tmpouch": {
+      "name": "TM pouch",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "tonedmilk": {
+      "name": "Toned Milk",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "tonedmilk200ml": {
+      "name": "Toned Milk 200ml",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "tonemilk": {
+      "name": "Tone Milk",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "transpo": {
+      "name": "TRANSPO",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "tulipskeychain": {
+      "name": "Tulips Keychain",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "turmeric": {
+      "name": "Turmeric",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "turmericpowder": {
+      "name": "Turmeric Powder",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "ube300": {
+      "name": "UBE300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "ube300ml": {
+      "name": "Ube 300ml",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "ubel": {
+      "name": "Ube L",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "ubepouch": {
+      "name": "Ube Pouch",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "um300": {
+      "name": "UM300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "un300": {
+      "name": "UN300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "uns.": {
+      "name": "UNS.",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "uns.l": {
+      "name": "UNS.L",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "uns200": {
+      "name": "UNS200",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "uns300": {
+      "name": "UnS 300",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "uns300ml": {
+      "name": "UNS 300ml",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "unsl": {
+      "name": "Uns L",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "vegetable": {
+      "name": "Vegetable",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "vegetablechips": {
+      "name": "Vegetable Chips",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "veggiechicharon": {
+      "name": "Veggie Chicharon",
+      "decision": "non_dairy",
+      "reason": "Non-dairy food, packaging, transport, or merchandise (previous catalog audit)."
+    },
+    "wc": {
+      "name": "wc",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "wc1.60kg": {
+      "name": "WC 1.60kg",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "wc150g": {
+      "name": "WC150g",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    },
+    "wc1kg": {
+      "name": "Wc 1kg",
+      "decision": "dairy",
+      "reason": "Identified milk drink, yogurt, cheese, pastillas, or Milk-o-gel product."
+    }
+  }
+}

@@ -38,8 +38,15 @@ class Transaction(models.Model):
   delivery_status = models.CharField(max_length=50, blank=True, null=True)
   is_voided = models.BooleanField(default=False)
   source_reference = models.CharField(max_length=100, unique=True, null=True, blank=True)
-  source_invoice_number = models.CharField(max_length=50, blank=True)
+  source_invoice_number = models.CharField(max_length=50, blank=True, null=True, default=None)
   source_customer_label = models.CharField(max_length=255, blank=True)
+  # Empty retains legacy/live classification. Workbook refreshes explicitly
+  # hold entries with unresolved identity/date out of either training segment.
+  source_sales_segment = models.CharField(
+    max_length=12, blank=True, default='', editable=False,
+    choices=[('regular', 'Regular'), ('feeding', 'Feeding'),
+             ('unclassified', 'Needs source review')],
+  )
   source_note = models.TextField(blank=True)
   created_at = models.DateTimeField(auto_now_add=True)
   # created_at is the effective sales date used throughout reports/history.

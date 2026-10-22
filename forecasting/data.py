@@ -1,56 +1,109 @@
-"""Read completed, non-voided transaction revenue for forecasting."""
-from datetime import datetime, time
+"""Actual completed sales snapshots; no forecast code or fitted-model reuse."""
+from dataclasses import dataclass
+from collections import defaultdict
+from datetime import date, datetime, time
+from decimal import Decimal, ROUND_HALF_UP
 from hashlib import sha256
 import json
+import re
 
-from decimal import Decimal
-
-from django.db.models import Case, CharField, Q, Sum, Value, When
-from django.db.models.functions import TruncDate
 from django.utils import timezone
-from sales.models import Transaction
+from sales.models import Transaction, TransactionItem
+from sales.importers.refresh_annual_sales import POLICY_PATH, product_key
+
+SOURCE_POLICY = 'actual-dairy-sales-pattern-study-v2'
+DEMO_REFERENCE = re.compile(r'^2026:[0-9]{6}$')
 
 
-def feeding_filter():
-    return Q(source_customer_label__icontains='feedin') | (
-        Q(source_customer_label='') & Q(customer__name__icontains='feedin'))
+@dataclass(frozen=True)
+class RecordedSale:
+    id: int
+    day: date
+    customer_key: str
+    customer_name: str
+    segment: str
+    revenue: Decimal
 
 
-def source(scope='real', include_components=False):
-    if scope != 'real':
-        raise ValueError('Only real sales are supported')
-    cutoff = timezone.make_aware(datetime.combine(timezone.localdate(), time.min))
-    # Imported labels are sale-time evidence. Live sales use their linked
-    # customer name only when there is no imported label.
-    # The source workbook contains both "feeding" and "feedin" labels.
-    feeding = feeding_filter()
-    rows = Transaction.objects.filter(is_voided=False, created_at__lt=cutoff).annotate(
-        day=TruncDate('created_at', tzinfo=timezone.get_current_timezone()),
-        segment=Case(When(feeding, then=Value('feeding')), default=Value('other_sales'), output_field=CharField()),
-    ).values('day', 'segment').annotate(revenue=Sum('total_amount')).order_by('day', 'segment')
-    daily = {}
-    components = {'feeding': {}, 'other_sales': {}}
+@dataclass(frozen=True)
+class SalesSnapshot:
+    as_of: date
+    revision: str
+    sales: tuple[RecordedSale, ...]
+    excluded_demo_count: int
+    excluded_non_dairy_count: int = 0
+
+    @property
+    def daily(self):
+        result = {}
+        for sale in self.sales:
+            result[sale.day] = result.get(sale.day, Decimal('0')) + sale.revenue
+        return result
+
+
+def load_snapshot(as_of=None):
+    """as_of is exclusive: today's partial invoices are never training data.
+
+    A historical extraction is corrected ledger history, not proof of what was
+    known at that historical date. Saved studies retain the observed revision.
+    """
+    as_of = as_of or timezone.localdate()
+    if not isinstance(as_of, date) or isinstance(as_of, datetime):
+        raise ValueError('as_of must be a date')
+    cutoff = timezone.make_aware(datetime.combine(as_of, time.min))
+    rows = list(Transaction.objects.filter(is_voided=False, created_at__lt=cutoff).order_by('pk').values(
+        'pk', 'created_at', 'customer_id', 'customer__name',
+        'source_customer_label', 'source_reference', 'source_sales_segment', 'total_amount',
+    ))
+    policy = json.loads(POLICY_PATH.read_text())
+    # Refreshed history already contains only approved dairy lines. New manual
+    # sales/checkouts must follow the same product policy as the data grows.
+    live_ids = [r['pk'] for r in rows if not r['source_sales_segment'] and not DEMO_REFERENCE.fullmatch(r['source_reference'] or '')]
+    live_lines = defaultdict(list)
+    for item in TransactionItem.objects.filter(transaction_id__in=live_ids).values(
+            'transaction_id', 'product_name_snapshot', 'product_batch__product__name',
+            'total_amount', 'source_line_total', 'quantity', 'unit_price'):
+        live_lines[item['transaction_id']].append(item)
+    sales, excluded, excluded_non_dairy = [], 0, []
     for row in rows:
-        day, revenue = row['day'], row['revenue']
-        daily[day] = daily.get(day, Decimal('0.00')) + revenue
-        components[row['segment']][day] = revenue
-    warnings = []
-    signature = sha256(json.dumps({
-        'scope': scope,
-        'timezone': timezone.get_current_timezone_name(),
-        'daily': [(str(day), str(revenue)) for day, revenue in sorted(daily.items())],
-        'components': {key: [(str(day), str(value)) for day, value in sorted(values.items())]
-                       for key, values in components.items()},
-    }, sort_keys=True, default=str).encode()).hexdigest()
-    if include_components:
-        return daily, signature, warnings, components
-    return daily, signature, warnings
-
-
-def as_series(daily):
-    import pandas as pd
-    return pd.Series(
-        [float(value) for _, value in sorted(daily.items())],
-        index=pd.DatetimeIndex([day for day, _ in sorted(daily.items())]),
-        dtype=float,
-    )
+        if DEMO_REFERENCE.fullmatch(row['source_reference'] or ''):
+            excluded += 1
+            continue
+        source_label = row['source_customer_label'].strip()
+        customer_name = source_label or row['customer__name'] or 'Walk-in'
+        key = (f"customer:{row['customer_id']}" if row['customer_id'] is not None
+               else f"label:{' '.join(source_label.casefold().split())}" if source_label else 'walk-in')
+        segment = row['source_sales_segment'] or ('feeding' if 'feedin' in customer_name.casefold() else 'regular')
+        revenue = row['total_amount']
+        if not row['source_sales_segment']:
+            lines = live_lines[row['pk']]
+            gross, dairy, decisions = Decimal('0'), Decimal('0'), []
+            for item in lines:
+                label = item['product_name_snapshot'] or item['product_batch__product__name']
+                decision = policy['products'].get(product_key(label), {}).get('decision', 'review')
+                decisions.append(decision)
+                amount = item['total_amount']
+                if amount is None: amount = item['source_line_total']
+                if amount is None: amount = item['quantity'] * item['unit_price']
+                gross += amount
+                if decision == 'dairy': dairy += amount
+            if lines and all(d == 'non_dairy' for d in decisions):
+                excluded_non_dairy.append(row['pk'])
+                continue
+            if not lines or 'review' in decisions or gross <= 0:
+                segment = 'unclassified'
+            else:
+                revenue = (revenue * dairy / gross).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        sales.append(RecordedSale(
+            id=row['pk'], day=timezone.localtime(row['created_at']).date(),
+            customer_key=key, customer_name=customer_name,
+            segment=segment, revenue=revenue,
+        ))
+    # Payment status is intentionally absent: this is revenue, not collections.
+    revision = sha256(json.dumps({
+        'policy': SOURCE_POLICY, 'timezone': timezone.get_current_timezone_name(),
+        'product_policy': sha256(json.dumps(policy, sort_keys=True).encode()).hexdigest(),
+        'excluded_non_dairy_ids': excluded_non_dairy,
+        'sales': [(s.id, s.day.isoformat(), s.customer_key, s.customer_name, s.segment, str(s.revenue)) for s in sales],
+    }, sort_keys=True).encode()).hexdigest()
+    return SalesSnapshot(as_of, revision, tuple(sales), excluded, len(excluded_non_dairy))

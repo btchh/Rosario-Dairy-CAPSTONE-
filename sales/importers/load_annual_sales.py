@@ -110,7 +110,7 @@ def load(result, admin_username):
                 discount_value=discount, discount_amount=discount,
                 total_amount=ticket.amount, payment_method='unknown',
                 source_reference=ticket.reference,
-                source_invoice_number=ticket.invoice_number,
+                source_invoice_number=ticket.invoice_number or None,
                 source_customer_label=ticket.customer_label,
                 source_note='; '.join(notes),
             ))

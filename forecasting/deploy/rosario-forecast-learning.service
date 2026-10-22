@@ -1,0 +1,9 @@
+[Unit]
+Description=Rosario Dairy monthly model learning and forecast scoring
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Documents/CodingProjects/SarimaHoes
+ExecStart=%h/Documents/CodingProjects/SarimaHoes/venv/bin/python manage.py watch_forecast_models --once
+TimeoutStartSec=600
+UMask=0077

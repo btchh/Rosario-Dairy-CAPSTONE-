@@ -34,7 +34,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import Users
 from config.data_cache import data_version
-from forecasting.data import source as forecast_source
+from forecasting.data import load_snapshot
 from inventory.models import Category, FEFOConf, Product, ProductBatch
 from inventory.serializers import ProdBatchSerializer
 from sales.importers.annual_sales import (
@@ -1422,7 +1422,7 @@ class StaffEncodingTests(TestCase):
         self.assertEqual(order.items.get().total_amount, sale.total_amount)
 
     def test_existing_transaction_customer_order_report_and_forecast_consumers_see_same_sale(self):
-        _, old_signature, _ = forecast_source()
+        old_signature = load_snapshot().revision
         self.assertEqual(self.client.get('/sales/encoding/').data['count'], 0)
         version = data_version()
         with self.captureOnCommitCallbacks(execute=True):
@@ -1448,7 +1448,8 @@ class StaffEncodingTests(TestCase):
         self.assertEqual(rows[0]['total'], Decimal('300'))
         self.assertEqual(list(SalesService.get_best_sellers())[0]['total_sold'], Decimal('2'))
         self.assertEqual(list(SalesService.get_sales_by_category())[0]['total_sold'], Decimal('2'))
-        daily, signature, _ = forecast_source()
+        snapshot = load_snapshot()
+        daily, signature = snapshot.daily, snapshot.revision
         self.assertEqual(daily[self.day], Decimal('300'))
         self.assertNotEqual(signature, old_signature)
 
@@ -1547,7 +1548,7 @@ class StaffEncodingTests(TestCase):
         self.assertEqual(self.client.get('/sales/encoding/').data['count'], 0)
         included = self.client.get('/sales/encoding/', {'include_voided': 'true'})
         self.assertTrue(included.data['results'][0]['is_voided'])
-        self.assertNotIn(self.day, forecast_source()[0])
+        self.assertNotIn(self.day, load_snapshot().daily)
 
     def test_invalid_request_id_missing_date_and_unauthenticated_requests(self):
         self.assertEqual(self.post(self.payload(request_id='invalid')).status_code, 400)
@@ -1651,7 +1652,7 @@ class EncodingPaymentTests(TestCase):
         sale = Transaction.objects.get(pk=sale_id)
         source_dates = sale.created_at, sale.encoded_at
         item_rows = list(sale.items.values())
-        signature = forecast_source()[1]
+        signature = load_snapshot().revision
         # Warm shared history before changing payment state.
         self.assertEqual(self.client.get(f'/sales/customers/{self.customer.pk}/transactions/').data['results'][0]['payment_status'], 'pending')
         version = data_version()
@@ -1668,7 +1669,7 @@ class EncodingPaymentTests(TestCase):
         self.assertEqual((sale.created_at, sale.encoded_at), source_dates)
         self.assertEqual(list(sale.items.values()), item_rows)
         self.assertEqual(sale.total_amount, Decimal('300'))
-        self.assertEqual(forecast_source()[1], signature)
+        self.assertEqual(load_snapshot().revision, signature)
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.remaining_quantity, 98)
         self.assertEqual(Transaction.objects.count(), 1)
@@ -2141,7 +2142,7 @@ class Populate2026SalesTests(TestCase):
         owner = Users.objects.create_user(username='owner2026', role='admin')
         self.customer = Customer.objects.create(name='Regular customer', created_by=owner)
         category = Category.objects.create(name='Milk')
-        product = Product.objects.create(name='Milk 1L', category=category, unit='L',
+        product = Product.objects.create(name='FML', category=category, unit='L',
                                           shelf_life=7)
         self.batch = ProductBatch.objects.create(
             product=product, batch_number='HIST-TEST', initial_quantity=0, remaining_quantity=0,
@@ -2150,6 +2151,7 @@ class Populate2026SalesTests(TestCase):
         for year in (2024, 2025):
             sale = Transaction.objects.create(
                 customer=self.customer, handled_by=owner, subtotal=Decimal('125.00'),
+                source_reference=f'{year}:FEBRUARY:4', source_sales_segment='regular',
                 discount_type='fixed', discount_amount=Decimal('5.00'),
                 discount_value=Decimal('5.00'), total_amount=Decimal('120.00'))
             stamp = timezone.make_aware(datetime.combine(date(year, 2, 15), time(12)))
@@ -2175,11 +2177,12 @@ class Populate2026SalesTests(TestCase):
         order = Order.objects.get(transaction=sale)
         self.assertEqual(order.created_at, sale.created_at)
         self.assertEqual(order.customer_id, sale.customer_id)
-        self.assertEqual(sum(item.subtotal for item in order.items.all()), sale.total_amount)
+        self.assertEqual(sum(item.total_amount for item in order.items.all()), sale.total_amount)
+        self.assertEqual(sum(item.subtotal for item in order.items.all()), sale.subtotal)
         self.assertEqual(order.discount_value, sale.discount_amount)
         self.assertEqual(OrderItem.objects.count(), 2)
-        self.assertEqual(sale.source_note, '')
-        self.assertEqual(sale.source_invoice_number, '')
+        self.assertIn('Demonstration data only', sale.source_note)
+        self.assertIsNone(sale.source_invoice_number)
         self.assertEqual(self.original, list(Transaction.objects.exclude(pk=sale.pk).order_by('id').values()))
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.remaining_quantity, 0)
@@ -2212,6 +2215,76 @@ class Populate2026SalesTests(TestCase):
         self.batch.save()
         with self.assertRaisesRegex(CommandError, 'live inventory'):
             build_plan(2026)
+
+    def test_only_classified_imported_history_is_used(self):
+        original = Transaction.objects.get(source_reference='2025:FEBRUARY:4')
+        for reference, segment, customer in (
+            ('2025:JANUARY:645', 'unclassified', None),
+            (None, '', self.customer),
+        ):
+            sale = Transaction.objects.create(
+                handled_by=original.handled_by, customer=customer,
+                source_reference=reference, source_sales_segment=segment,
+                total_amount=Decimal('2087137'))
+            Transaction.objects.filter(pk=sale.pk).update(created_at=original.created_at)
+        plan = build_plan(2026)
+        self.assertEqual([entry['source'].pk for entry in plan], [original.pk])
+
+    def test_stale_non_dairy_baskets_require_source_refresh(self):
+        product = self.batch.product
+        product.name = 'PDLX20'; product.save()
+        with self.assertRaisesRegex(CommandError, 'non-dairy/unreviewed'):
+            build_plan(2026)
+
+    def test_replace_demo_preserves_actual_sales_stock_and_forecasting_source(self):
+        insert_plan(build_plan(2026))
+        old_demo = Transaction.objects.get(source_reference='2026:000001')
+        actual = Transaction.objects.create(
+            handled_by=old_demo.handled_by, customer=self.customer,
+            source_reference='2026:OCT:123', encoded_at=timezone.now(),
+            source_invoice_number='SI-ACTUAL', total_amount=Decimal('888'))
+        before = list(Transaction.objects.exclude(pk=old_demo.pk).order_by('pk').values())
+        revision = load_snapshot().revision
+        with TemporaryDirectory() as root, self.settings(BASE_DIR=Path(root)):
+            output = io.StringIO()
+            call_command('populate_2026_sales', apply=True, replace_demo=True, stdout=output)
+            result = json.loads(output.getvalue())
+            manifest = json.loads((Path(result['backup']).parent / 'manifest.json').read_text())
+            self.assertTrue(manifest['completed'])
+            self.assertTrue(manifest['protected_verified'])
+        replacement = Transaction.objects.get(source_reference='2026:000001')
+        self.assertNotEqual(replacement.pk, old_demo.pk)
+        self.assertFalse(Transaction.objects.filter(pk=old_demo.pk).exists())
+        self.assertTrue(Transaction.objects.filter(pk=actual.pk).exists())
+        self.assertEqual(before, list(Transaction.objects.exclude(pk=replacement.pk).order_by('pk').values()))
+        self.assertEqual(load_snapshot().revision, revision)
+        self.batch.refresh_from_db()
+        self.assertEqual(self.batch.remaining_quantity, 0)
+
+    def test_replace_demo_refuses_live_inventory_and_rolls_back_failed_inserts(self):
+        insert_plan(build_plan(2026))
+        demo = Transaction.objects.get(source_reference='2026:000001')
+        Transaction.objects.filter(pk=demo.pk).update(encoded_at=timezone.now())
+        with TemporaryDirectory() as root, self.settings(BASE_DIR=Path(root)):
+            with self.assertRaisesRegex(CommandError, 'manually encoded'):
+                call_command('populate_2026_sales', apply=True, replace_demo=True, stdout=io.StringIO())
+        Transaction.objects.filter(pk=demo.pk).update(encoded_at=None)
+        live_batch = ProductBatch.objects.create(
+            product=self.batch.product, batch_number='DEMO-GUARD-LIVE', initial_quantity=100,
+            remaining_quantity=100, expiration_date=date(2026, 12, 31))
+        demo.items.update(product_batch=live_batch)
+        with TemporaryDirectory() as root, self.settings(BASE_DIR=Path(root)):
+            with self.assertRaisesRegex(CommandError, 'live inventory'):
+                call_command('populate_2026_sales', apply=True, replace_demo=True, stdout=io.StringIO())
+        demo.items.update(product_batch=self.batch)
+        before = list(Transaction.objects.order_by('pk').values())
+        item_ids = list(demo.items.values_list('pk', flat=True))
+        with TemporaryDirectory() as root, self.settings(BASE_DIR=Path(root)):
+            with patch('sales.management.commands.populate_2026_sales.insert_plan', side_effect=ValueError('simulated insert failure')):
+                with self.assertRaisesRegex(ValueError, 'simulated insert failure'):
+                    call_command('populate_2026_sales', apply=True, replace_demo=True, stdout=io.StringIO())
+        self.assertEqual(before, list(Transaction.objects.order_by('pk').values()))
+        self.assertEqual(item_ids, list(demo.items.values_list('pk', flat=True)))
 
 
 # Recorded transaction numbers

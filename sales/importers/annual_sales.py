@@ -188,6 +188,7 @@ class SourceTicket:
     adjustments: list[Decimal] = field(default_factory=list)
     reported_total: Decimal | None = None
     duplicate_of: str | None = None
+    quality_flags: list[str] = field(default_factory=list)
 
     @property
     def reference(self):
@@ -235,7 +236,7 @@ class ParseResult:
         }
 
 
-def parse_workbooks(source_dir):
+def parse_workbooks(source_dir, *, separate_unlabelled_totals=False):
     result = ParseResult()
     paths = sorted(Path(source_dir).glob('SALES REPORT JAN-DEC *.xlsx'))
     if len(paths) != 3:
@@ -243,6 +244,7 @@ def parse_workbooks(source_dir):
     for path in paths:
         workbook_year = int(path.stem[-4:])
         workbook = load_workbook(path, read_only=True, data_only=True)
+        formulas = load_workbook(path, read_only=True, data_only=False) if separate_unlabelled_totals else None
         if len(workbook.worksheets) != 12:
             raise ValueError(f'{path.name} must have 12 monthly sheets.')
         for month, sheet in enumerate(workbook.worksheets, 1):
@@ -250,7 +252,12 @@ def parse_workbooks(source_dir):
             active_date = None
             sheet_tickets = []
             monthly_reported = None
+            active_date_flags = []
+            closed_invoice = False
+            formula_rows = iter(formulas.worksheets[month - 1].iter_rows(min_row=4, values_only=True)) if formulas else None
             for row_number, row in enumerate(sheet.iter_rows(min_row=4, values_only=True), 4):
+                formula_row = list(next(formula_rows, ())) if formula_rows else []
+                formula_total = str((formula_row + [None] * 8)[7] or '')
                 padded = list(row) + [None] * max(0, 8 - len(row))
                 raw_date, raw_customer, raw_invoice, raw_product, raw_quantity, raw_price, raw_amount, raw_daily = padded[:8]
                 if isinstance(raw_date, str) and raw_date.strip().upper() == 'TOTAL':
@@ -261,15 +268,26 @@ def parse_workbooks(source_dir):
                     result.issue(date_issue, str(workbook_year), sheet.title.strip(), row_number, str(raw_date))
                 if parsed_date:
                     active_date = parsed_date
+                    active_date_flags = ['date_sheet_mismatch'] if date_issue == 'sheet_mismatch' else []
                 customer = clean_label(raw_customer)
                 invoice = clean_label(raw_invoice)
                 product = clean_label(raw_product)
                 if not any((customer, invoice, product)):
                     continue
                 repeated_invoice = invoice and current and invoice == current.invoice_number and not customer and active_date == current.sale_date
-                new_ticket = current is None or (bool(invoice) and not repeated_invoice) or bool(customer) or (parsed_date is not None and current.sale_date != parsed_date)
+                # A completed explicit SUM for this invoice followed by a separately
+                # totalled, unlabelled row is not evidence of the same customer/SI.
+                # Other subtotal groups (notably feeding batches) remain together.
+                independent = (closed_invoice and not customer and not invoice and product
+                               and re.fullmatch(rf'=\$?G\$?{row_number}', formula_total, re.I))
+                new_ticket = current is None or independent or (bool(invoice) and not repeated_invoice) or bool(customer) or (parsed_date is not None and current.sale_date != parsed_date)
                 if new_ticket:
                     current = SourceTicket(str(workbook_year), sheet.title.strip(), row_number, active_date, customer, invoice)
+                    current.quality_flags.extend(active_date_flags)
+                    closed_invoice = False
+                    if independent:
+                        current.quality_flags.append('unlabelled_separate_total')
+                        result.issue('unlabelled_separate_total', current.workbook, current.sheet, row_number, product)
                     result.tickets.append(current)
                     sheet_tickets.append(current)
                     if active_date is None:
@@ -312,6 +330,9 @@ def parse_workbooks(source_dir):
                         current.lines.append(SourceLine(row_number, product, quantity, unit_price, amount))
                 if isinstance(raw_daily, (int, float, Decimal)):
                     current.reported_total = money(raw_daily)
+                if formulas and current.lines:
+                    start = current.lines[0].row
+                    closed_invoice = bool(re.fullmatch(rf'=SUM\(\$?G\$?{start}:\$?G\$?{row_number}\)', formula_total, re.I))
                 for extra in padded[7:]:
                     if isinstance(extra, str) and extra.strip():
                         current.notes.append(extra.strip())
@@ -331,6 +352,8 @@ def parse_workbooks(source_dir):
                 parsed = sum(daily_sums.values(), Decimal('0.00'))
                 result.monthly_checks.append({'source': f'{workbook_year}:{sheet.title.strip()}', 'reported': str(monthly_reported), 'parsed': str(parsed), 'difference': str(parsed - monthly_reported)})
         workbook.close()
+        if formulas:
+            formulas.close()
     by_invoice = defaultdict(list)
     for ticket in result.tickets:
         if ticket.invoice_number:

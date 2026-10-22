@@ -1,108 +1,118 @@
-"""Serve frozen SARIMA evaluations without fitting during requests."""
-from datetime import timedelta
-
+"""Read saved fits/issues only. HTTP requests never train a model."""
 from django.utils import timezone
-
-from .contract import VERSION, TARGET_PERCENT, LIMITATIONS, options, period_acceptance
-from .data import source
-from .models import ForecastRun, IssuedForecast
-
-PERIODS = ('weekly', 'monthly', 'yearly')
-
-
-def quality_message(status, metrics):
-    if status == 'rejected':
-        return (f'Total-sales SARIMA forecast withheld: 2025 retrospective WAPE is '
-                f'{metrics["wape_percent"]:.2f}%, above the {TARGET_PERCENT:g}% target. '
-                'The available sales history has not supported reliable prediction of large sales swings.')
-    if status == 'insufficient_evaluation':
-        return 'Total-sales SARIMA forecast withheld: too few evaluated periods to establish accuracy.'
-    if status == 'model_unavailable':
-        return 'Total-sales SARIMA forecast withheld: some backtest predictions could not be fitted.'
-    return ''
+from .data import load_snapshot
+from .models import PatternStudy, MonthlyModelRun, MonthlyDeployment, MonthlyIssuedForecast
+from .patterns import ANALYZER_VERSION, TARGET_WAPE_PERCENT
+from .learning import ENGINE_VERSION, month_end, month_start
+from .lifecycle import _snapshot, valid_coverage, coverage_revision, quality_gate
 
 
-def report(scope='real', period='monthly'):
-    if period not in PERIODS:
-        raise ValueError('Invalid forecast period')
-    daily, signature, warnings = source(scope)
-    payload = {
-        'generated_at': timezone.now(), 'horizon_days': {'weekly':7, 'monthly':30, 'yearly':365}[period],
-        'method':'unavailable', 'is_placeholder':False, 'forecast':[], 'status':'pending_update',
-        'period':period, 'available_periods':list(PERIODS), 'scope':scope,
-        'status_message':'Forecast evaluation is pending.',
-        'accuracy_target_percent':TARGET_PERCENT, 'accuracy_metric':'2025_retrospective_wape',
-        'regular':{}, 'bulk':{'status':'not_used'}, 'combined':{}, 'cutoff':{},
-        'metrics':{}, 'baselines':{}, 'historical_comparison':[],
-        'limitations':LIMITATIONS, 'warnings':warnings,
-        'planning_projection': None,
+def model_context():
+    snapshot = _snapshot()
+    coverage = valid_coverage(snapshot)
+    run = MonthlyModelRun.objects.filter(engine_version=ENGINE_VERSION, source_revision=snapshot.revision,
+        coverage_revision=coverage_revision(coverage), cutoff=snapshot.as_of).first()
+    latest = run or MonthlyModelRun.objects.filter(engine_version=ENGINE_VERSION).first()
+    gate = quality_gate(run, snapshot, coverage) if run else None
+    deployment = MonthlyDeployment.objects.filter(scope='regular-monthly').first()
+    issued = (MonthlyIssuedForecast.objects.filter(model_run=run, target_month=month_start(timezone.localdate())).first()
+              if run else None)
+    if run is None:
+        status = 'refresh_required' if latest else 'training_required'
+    elif run.status != 'research_candidate':
+        status = run.status
+    elif 'stale_training_data' in gate['reasons']:
+        status = 'stale_data'
+    elif gate['eligible'] and deployment and deployment.model_run_id == run.pk and issued:
+        status = 'ready'
+    else:
+        status = 'research_only'
+    return snapshot, run, latest, gate, issued, status
+
+
+def models_report():
+    snapshot, run, latest, gate, issued, status = model_context()
+    findings = latest.findings if latest else {}
+    return {
+        'status': status, 'stage': 'monthly_model_learning', 'source_revision': snapshot.revision,
+        'cutoff': snapshot.as_of, 'model_id': latest.pk if latest else None,
+        'engine_version': ENGINE_VERSION, 'model_is_current': run is not None,
+        'selected_candidate': findings.get('selected_candidate'),
+        'model_family': findings.get('model_family'),
+        'sarima': {k: findings.get('artifact', {}).get(k) for k in
+                   ('order', 'seasonal_order', 'trend', 'converged', 'statsmodels_version',
+                    'optimization_attempts', 'fit_warnings')},
+        'trained_through': latest.trained_through if latest else None,
+        'artifact_sha256': findings.get('artifact_sha256'),
+        'research_forecast': findings.get('next_month'),
+        'research_forecast_is_live': False,
+        'evaluation': {k: findings.get(k) for k in ('selection_basis', 'validation_start', 'validation_end',
+                    'test_start', 'test_end', 'selected_test', 'selected_baseline', 'baseline_test', 'retrospective_gate')},
+        'candidates': {name: {k: v for k, v in candidate.items() if k not in ('validation_rows', 'test_rows')}
+                       for name, candidate in findings.get('candidates', {}).items()},
+        'quality_gate': gate, 'issued_forecast_id': issued.pk if issued else None,
+        'limitations': findings.get('limitations', []),
+        'versions': list(MonthlyModelRun.objects.values(
+            'id', 'engine_version', 'status', 'cutoff', 'trained_through', 'source_revision', 'created_at')),
     }
-    fingerprint = options(scope).signature()
-    run = ForecastRun.objects.filter(scope=scope, version=VERSION,
-        configuration_signature=fingerprint, source_signature=signature).first()
-    if not run:
+
+
+def report(scope='real',period='monthly'):
+    if scope!='real' or period not in ('weekly','monthly','yearly'):
+        raise ValueError('Invalid forecast scope or period')
+    snapshot, run, latest, gate, issued, model_status = model_context()
+    through=max((s.day for s in snapshot.sales),default=None)
+    payload = {
+        'generated_at':timezone.now(),'horizon_days':{'weekly':7,'monthly':30,'yearly':365}[period],
+        'method':'unavailable','is_placeholder':False,'forecast':[],'status':'pending_update',
+        'period':period,'scope':scope,'available_periods':['weekly','monthly','yearly'],
+        'status_message':'The previous engine has been retired. The replacement is investigating regular-sales patterns; no new prediction model has been validated.',
+        'accuracy_target_percent':TARGET_WAPE_PERCENT,'accuracy_metric':'monthly_regular_revenue_wape',
+        'regular':{'status':'not_evaluated'},'bulk':{'status':'not_evaluated'},'combined':{},
+        'metrics':{},'baselines':{},'historical_comparison':[],'planning_projection':None,
+        'data_end':through,'stage':'pattern_investigation',
+        'limitations':'The below-15% target applies to regular monthly revenue, not total sales or feeding. No replacement accuracy has been established.',
+        'warnings':['Historical ledger coverage must be reviewed before production publication.',
+                    f'{snapshot.excluded_demo_count} generated demonstration invoices excluded.'],
+    }
+    if latest is None:
         return payload
-    result = run.result
-    setup = result.get('setups', {}).get(result.get('selected_setup'))
-    if not setup:
+    findings = latest.findings
+    payload.update(stage='monthly_model_learning', model_id=latest.pk,
+        status=model_status, quality_status='approved' if model_status=='ready' else 'withheld',
+        model_status=model_status, method=findings.get('selected_candidate','unavailable'),
+        model_family=findings.get('model_family'),
+        available_periods=['monthly'], quality_gate=gate or {},
+        metrics={'retrospective_regular_monthly':findings.get('selected_test', {}),
+                 'prospective_regular_monthly':gate['prospective']['metrics'] if gate else {}},
+        baselines={'selected':findings.get('selected_baseline'), 'retrospective_test':findings.get('baseline_test',{})},
+        regular={'status':model_status}, bulk={'status':'not_modelled'},
+        data_provenance={'model_cutoff':latest.cutoff,'model_source_revision':latest.source_revision,
+                         'current_source_revision':snapshot.revision,'trained_through':latest.trained_through},
+        limitations='One-month-ahead regular dairy revenue only. Historical scores are retrospective research; feeding and longer horizons are not validated. Error bands are not calibrated probability intervals.')
+    messages = {
+        'stale_data':'A SARIMA research model is fitted, but actual sales stop before the month needed for a current forecast. Demo data is excluded.',
+        'refresh_required':'Actual sales or coverage changed; run offline model maintenance before using a forecast.',
+        'research_only':'A fitted research model is available; coverage and prospective accuracy gates have not cleared publication.',
+        'ready':'Approved one-month-ahead forecast for regular dairy revenue; feeding is excluded.',
+    }
+    payload['status_message']=messages.get(model_status,'More complete regular-sales history is required to train a validated model.')
+    payload['warnings'].extend(gate['reasons'] if gate else ['Offline retraining required.'])
+    if period != 'monthly':
+        payload.update(status='unsupported_horizon',status_message='The replacement currently evaluates monthly regular revenue only. Weekly and yearly forecasts are withheld.')
         return payload
-    evaluation = setup.get('periods', {}).get(period)
-    if not evaluation:
-        payload['status'] = 'insufficient_history'
-        payload['status_message'] = 'Not enough sales history is available to evaluate this period.'
-        return payload
-    metrics = evaluation['metrics']
-    quality = period_acceptance(metrics['combined'])
-    point = evaluation['next_period']
-    payload.update(
-        generated_at=run.created_at, data_end=run.data_end, method=evaluation['method'], status=quality,
-        status_message=quality_message(quality, metrics['combined']),
-        quality_status=quality, metrics=metrics, historical_comparison=evaluation['rows'],
-        fixed_origin_comparison=evaluation.get('fixed_origin_rows', []),
-        fixed_origin_metrics=evaluation.get('fixed_origin_metrics'),
-        regular={'status':quality, 'metrics':metrics['combined'], 'aggregation':period},
-        baselines=evaluation.get('baselines', {}),
-        component_metrics=evaluation.get('component_metrics', {}),
-        component_comparison=evaluation.get('component_comparison', {}),
-        evaluation_details={'strategy':evaluation.get('strategy'),
-                            'validation_end':evaluation.get('validation_end'),
-                            'selection_signature':evaluation.get('selection_signature'),
-                            'models':{name: selection['model'] for name, selection in
-                                      evaluation.get('selection', {}).get('models', {}).items()}},
-        cutoff={'selected_setup':result['selected_setup'],
-                'selection_trained_through':result['selection_trained_through'],
-                'configuration':result['configuration']},
-        data_provenance=result.get('data_provenance', {}),
-    )
-    if run.data_end != timezone.localdate() - timedelta(days=1):
-        payload['warnings'] = [*warnings, 'Sales have not been recorded through yesterday; current projections are withheld.']
-        payload['status'] = 'stale_data'
-        # Historical comparisons remain explicitly dated 2025. Stale data
-        # blocks publication, but must not hide the replacement's audit.
-        payload['status_message'] = (
-            f'No current forecast is available. The latest recorded sale is {run.data_end:%Y-%m-%d}; '
-            'the 2025 WAPE is a historical backtest, not a forecast for today.'
-        )
-        return payload
-    if quality != 'accepted':
-        return payload
-    if point['status'] != 'ready':
-        payload['status'] = point['status']
-        payload['status_message'] = 'The current period is incomplete; a validated next-period forecast is not available.'
-        return payload
-    issued = IssuedForecast.objects.filter(scope=scope, version=VERSION,
-        configuration_signature=fingerprint, setup=setup['setup'],
-        period=period, date=point['date']).first()
-    if not issued:
-        payload['status'] = 'pending_update'
-        payload['status_message'] = 'The validated forecast has not been issued yet.'
-        return payload
-    point = issued.payload
-    payload['combined'] = point['combined']
-    payload['regular'].update(point.get('regular', point['combined']))
-    payload['horizon_days'] = point['days']
-    payload['forecast'] = [{'date':point['date'], 'end_date':point['end_date'],
-                            'trained_through':point['trained_through'], **point['combined']}]
-    payload['status'] = 'ready'
-    payload['status_message'] = 'The total-sales SARIMA forecast passed the retrospective quality gate.'
+    if model_status == 'ready':
+        payload['forecast']=[{'date':issued.target_month,'end_date':month_end(issued.target_month),
+            'predicted_revenue':issued.value,'lower_bound':issued.lower_bound,'upper_bound':issued.upper_bound,
+            'trained_through':run.trained_through,'range_kind':'historical_absolute_error_band',
+            'point_kind':'regular_monthly_revenue','sample_count':run.findings['next_month']['sample_count']}]
+        payload['regular'].update(predicted_revenue=issued.value)
     return payload
+
+
+def patterns_report():
+    snapshot=load_snapshot()
+    study=PatternStudy.objects.filter(analyzer_version=ANALYZER_VERSION,
+                    source_revision=snapshot.revision,as_of=snapshot.as_of).first()
+    return {'status':'current' if study else 'refresh_required','stage':'pattern_investigation',
+            'source_revision':snapshot.revision,'findings':study.findings if study else None}

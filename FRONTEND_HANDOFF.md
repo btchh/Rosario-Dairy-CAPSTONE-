@@ -586,3 +586,260 @@ table, there must be room for its heading, repeated column headers, and at least
 one data row; otherwise that section starts on the next page. Long tables still
 fill the available space and continue across pages with column headers repeated.
 The inventory ledger retains its columns, data, and two-row table header.
+
+## Forecasting reset — 2026-10-22 (supersedes previous forecast implementation)
+
+The old forecasting engine and its derived model-result tables have been backed
+up and removed. Existing sales/inventory/report APIs are retained. Migration
+`forecasting.0005_replace_legacy_engine_with_pattern_studies` removes only retired
+forecast storage and creates versioned `PatternStudy` records; migration 0004 is
+still required as part of the upgrade chain. No frontend changes are included.
+
+`GET /api/forecasting/forecast/?period=monthly` remains admin-only and now returns
+`status: pending_update`, `stage: pattern_investigation`, an empty `forecast`, empty
+`metrics`, and a clear rebuilding message. Do not show retired 2025 accuracy or
+interpret a withheld forecast as zero revenue. `accuracy_target_percent: 15.0`
+means the research target is **below 15% monthly WAPE for regular sales**; it is
+not achieved accuracy, nor an accuracy target for feeding/total sales.
+
+New admin endpoint: `GET /api/forecasting/patterns/`. It returns `status: current`
+and `findings` for the current source revision and cutoff, or `refresh_required`
+with null findings. Research runs offline with `refresh_forecast_patterns`; the
+GET request does not fit or refresh a model. A later sales correction/new completed
+sale causes a new revision. `PatternStudy` saves prior revisions rather than
+replacing their audit history.
+
+Findings include monthly regular/feeding invoice revenue, every regular customer's
+cadence and invoice-size statistics, weekday and month-day distributions,
+year-over-year comparisons, lag correlations, and research benchmark results.
+`coverage_verified: false` and `eligible_for_publication: false` are explicit:
+these are investigations, not predictions. Missing dates are not silently set to
+zero. Inactivity descriptions refer to `activity_reference_date` (latest observed
+sale), not unknown future months. `benchmarks.selected_test` belongs to the
+benchmark selected on earlier validation periods; alternative test scores are
+diagnostics. No target accuracy has been established for a production model.
+
+See `forecasting/README.md` for source rules, commands, backup/recovery location,
+and the staged learning/retraining/promotion design. Current code automatically
+refreshes descriptive studies when scheduled; fitted-model updating and live
+prediction scoring are the next implementation phase, not completed features.
+
+
+## Dairy dataset refresh — 2026-10-22
+
+Backend only. Upgrade with `manage.py migrate` (sales migration 0014 adds the
+read-only `source_sales_segment` field). Refresh source history with the new
+`refresh_annual_sales` command before refreshing pattern studies. This change
+does not alter the inventory ledger's layout or live stock.
+
+The refresh reads every sheet in the three original 2023–2025 XLSX workbooks and
+retains approved dairy products only. Per the user's clarification, pastillas
+(including PDL codes), Pastiroll, Polvoron, and the other identified non-dairy
+items are excluded. Unrecognised product labels are excluded pending review.
+The explicit policy is `sales/importers/dairy_policy.json`; new products require
+a reviewed policy entry. Products, customers, users, settings, demo data, live
+batches and manually encoded sales are preserved. Only source-referenced imported
+receipts/order lines are refreshed. Existing source SI numbers and receipt IDs
+are retained where the invoice still has dairy content; no SI is fabricated.
+Mixed-invoice totals use retained source line amounts and proportional source
+adjustments. An invoice-only total spanning dairy and excluded products is held
+out with a review record, because its dairy amount cannot be determined.
+
+Transaction responses now include `source_sales_segment`:
+
+- `regular` / `feeding`: reviewed refresh classification, with feeding based on
+  the recorded source customer label.
+- `unclassified`: the dairy entry remains in ledger/report history but has an
+  unresolved customer, date context, or price. `source_note` explains the flags.
+- empty: live/legacy entry; forecasting checks its item amounts and product
+  policy on each snapshot. Mixed live invoices contribute only approved dairy
+  revenue; unknown products or missing line details require review.
+
+The source workbook totals SI03744 at PHP 24,816, followed by an independently
+totalled PHP 2,087,137 Toned Milk entry without a customer/SI. The latter is
+retained separately as `2025:JANUARY:645`, unclassified, with no guessed customer
+or invoice number. The dairy-only SI03744 amount is PHP 21,516 after excluding
+its PHP 3,300 pastillas line. Date context is preserved as written/inherited;
+contradictory sheet/date contexts are flagged instead of silently corrected.
+
+Pattern findings now include monthly `unclassified_revenue` and
+`unclassified_invoices`; data quality includes `unclassified_invoices`,
+`unclassified_revenue`, and `excluded_non_dairy_invoices`. Do not combine
+unclassified amounts with regular revenue or present the research benchmarks as
+validated forecasts. Existing customer/sales reports include retained unclassified
+receipts; only the regular/feeding research segments exclude them.
+
+No frontend files were changed or pushed for this work.
+
+Applied refresh results: 4,835 historical dairy receipts, 24,285 retained lines,
+4,746 regular / 38 feeding / 51 unclassified receipts. Pastillas/PDL, Pastiroll,
+and Polvoron are excluded as instructed. The refreshed January–December 2025
+retrospective previous-month benchmark is 11.381% monthly regular-revenue WAPE;
+this previously inspected period is research evidence, not an untouched model
+acceptance test or published forecast accuracy. The forecast endpoint continues
+to withhold predictions. 138 integration tests and live API/PDF smoke checks
+passed. Private audit, source evidence and current research exports are under
+`backups/dataset-refresh-20261022-applied/` and
+`backups/dataset-refresh-20261022-findings/`.
+
+
+## Refreshed demo sales — 2026-10-22
+
+The 2026 demo generator now uses the refreshed, classified dairy-only history.
+Pastillas/PDL, Pastiroll, Polvoron and other excluded products are absent;
+unclassified entries and held invoices are not copied into demos. The command
+`populate_2026_sales --replace-demo --apply` replaces only reserved references
+matching `2026:NNNNNN`; real/manual 2026 sales and current inventory are preserved.
+Preview by omitting `--apply`. Each generated receipt's `source_note` explicitly
+marks it as demonstration data and identifies its historical source reference.
+No historical SI number is copied to a synthetic receipt. Demo records cover the
+full demonstration year; they are not forecasts. Forecasting excludes them even
+when `source_sales_segment` is regular/feeding. No frontend changes are included.
+
+Applied demo refresh: 1,526 receipts (1,492 regular and 34 feeding), 7,982 lines,
+and 168 customer identities. All 4,835 historical dairy receipts and the real
+forecasting source revision remain unchanged. Protected-row and backup-hash
+checks passed; every generated receipt/order amount reconciles. 88 relevant
+integration tests passed. Private verification evidence is in
+`backups/demo-refresh-20261022-checks/`; the full pre-demo-refresh database is in
+`backups/populate-2026-20261022-153202-168549/`.
+
+
+## Monthly forecasting model and ongoing learning — 2026-10-22
+
+This supersedes the pattern-only forecasting reset section. Backend migration
+`forecasting.0006_monthly_learning_lifecycle` adds retained fitted models,
+month-specific source coverage, immutable monthly shadow predictions, revisioned
+actual-error scores, and deployment/promotion history. Business sales/inventory
+records are not changed by model fitting. The frontend repository is untouched.
+
+A first model has been fitted to the refreshed regular dairy data. Nine
+candidates include simple baselines, optimized exponential level/damped trend,
+and learned ridge autoregressions using past revenue/calendar features. Select
+on six earlier validation months; evaluate at twelve later rolling origins;
+refit only on completed history. Model family selection never uses the test
+winner. The initial validation winner is previous month, with 11.381% WAPE on
+the retrospective 2025 test. This is not a verified live accuracy claim.
+
+New admin read endpoint: `GET /api/forecasting/models/`. It returns:
+
+- `status`, `stage: monthly_model_learning`, `model_id`, `engine_version`,
+  `model_is_current`, `source_revision`, `cutoff`, and `trained_through`.
+- `selected_candidate`, `artifact_sha256`, all retained `versions`, and candidate
+  validation/test metrics (`candidates`). Failed candidates carry reasons.
+- `evaluation` with selection basis, validation/test periods, selected test,
+  selected baseline, and retrospective gate results.
+- `research_forecast` with `date`, `predicted_revenue`, `lower_bound`,
+  `upper_bound`, `range_kind`, and `sample_count`. This is explicitly a research
+  preview; `research_forecast_is_live` is false. Do not put it on a live forecast
+  chart merely because it contains numbers. Its target date may be in the past.
+- `quality_gate` with `eligible`, failure `reasons`, missing coverage months,
+  and prospective model/baseline metrics from genuinely issued predictions.
+
+`GET /api/forecasting/forecast/?period=monthly` remains compatible and reads
+saved results only. It now reports `model_id`, `model_status`, `quality_gate`,
+`data_provenance`, and separately named retrospective/prospective monthly metrics.
+Statuses after fitting include `stale_data`, `refresh_required`, `research_only`,
+`insufficient_history`, and `ready`. When there is no trained version yet, the
+existing `pending_update` response is retained. Render an empty `forecast` as
+withheld, never as zero sales. Weekly/yearly requests are `unsupported_horizon`;
+`available_periods` is monthly after fitting. Do not fabricate daily points or
+sum a monthly prediction into an unevaluated yearly forecast.
+
+A `ready` forecast contains one regular-dairy monthly point with start/end dates,
+training date and an empirical historical-error range. That range is not a
+calibrated probability interval. `regular.predicted_revenue` is populated only
+when approved; `bulk.status` remains `not_modelled` and `combined` is empty.
+Do not label regular revenue as total revenue or assume feeding equals zero.
+The downloadable forecast report uses the same withholding status and regular
+revenue label.
+
+The current actual dataset stops at December 2025. The first saved research
+point therefore refers to January 2026, **not the current month**. Current live
+status is `stale_data`; no forecast is published. All generated 2026 demo records
+and unclassified sales remain excluded. Historical coverage has not been
+certified and no prospective acceptance record has been invented.
+
+`refresh_forecast_models` performs offline fitting, scoring, first-day shadow
+issuance and quality-gated promotion. `watch_forecast_models` repeats maintenance,
+reusing unchanged fits, learning from new completed months, and retaining old
+versions when corrections arrive. An issued prediction is never overwritten by
+new actuals or a later model. Coverage must be explicitly reconciled by an admin;
+corrections invalidate old coverage. Production publication additionally needs
+recent reviewed prospective error below 15% and no worse than the issued
+baseline. See `forecasting/README.md` for gates, commands, worker/timer setup and
+safe activation/rollback. No API GET performs training or changes source data.
+
+Implementation verification: 163 integration tests passed, including all new
+model lifecycle and existing report/encoding/cache/security checks. Live model,
+monthly/weekly forecast, patterns and forecast preview/PDF routes returned HTTP
+200 with the appropriate withheld/unsupported statuses. All business rows match
+the pre-model database backup. Model 1 is saved; no deployment is approved.
+The `rosario-forecast-learning.timer` user service is enabled hourly and its first
+maintenance run succeeded, reusing model 1. It depends on this workstation's user
+systemd manager; it does not enable linger or run while the machine is off.
+Private evaluation artifacts are in `backups/model-build-20261022/`.
+
+
+## Unlabelled Toned Milk entry: preserve null identity
+
+The user confirmed that `2025:JANUARY:645` (PHP 2,087,137) stays **unclassified**
+and remains in the sales ledger and report totals. Its customer is null. Sales
+migration `0015_allow_unassigned_source_invoice` permits a genuine nullable SI;
+this entry now returns `customer: null`, `source_invoice_number: null`, and
+`transaction_number: null`. Do not attach PCC-UPLB/SI03744 or infer feeding.
+Customer reports include it in unassigned-sales totals, not a fabricated named
+account. It remains excluded from regular/feeding forecasting and dummy sources.
+Historical imports/refreshes now preserve missing source SIs as null. Legacy
+empty strings are still allowed; existing recorded SI strings are unchanged.
+Frontend consumers must treat both null and an empty SI as unrecorded. No
+frontend repository changes are included.
+
+
+## SARIMA is the primary forecast — 2026-10-22
+
+This supersedes the earlier general-model selection. Current engine
+`regular-monthly-sarima-v2` selects **only among SARIMA configurations** for the
+primary forecast. Nine other methods remain comparison benchmarks. A baseline
+can have a better validation score without replacing SARIMA; if SARIMA fails,
+the backend withholds its forecast rather than silently changing families.
+
+Saved model **2** is SARIMA(0,1,0)(1,0,0,12), selected on six earlier validation
+months (July–December 2024, 9.9104% WAPE). The twelve rolling test months in 2025
+give **10.6433% SARIMA WAPE** versus **11.381% previous-month baseline WAPE**.
+Both scores are retrospective research. The 11.381% figure previously reported
+for model 1 belongs to the baseline; do not display it as SARIMA accuracy.
+
+`GET /api/forecasting/models/` now additionally returns:
+
+- `model_family: "SARIMA"` and `selected_candidate: "sarima_010_100_12"`.
+- `sarima.order: [0, 1, 0]`, `sarima.seasonal_order: [1, 0, 0, 12]`, `trend`,
+  `converged`, `statsmodels_version`, `optimization_attempts`, and `fit_warnings`.
+- Candidate `role: "primary"` for SARIMA and `"comparison"` for other methods.
+- `evaluation.selection_basis: "sarima_only_earlier_validation_wape"`.
+- Retained `versions` across engines, each explicitly labelled `engine_version`.
+
+The forecast API and downloadable report metadata also include `model_family`;
+`method` identifies the fitted SARIMA configuration. Failed SARIMA candidates
+retain failure reasons. A checksum-valid baseline artifact cannot be issued or
+promoted as SARIMA. Model 1 remains preserved for audit; its issued predictions
+cannot count toward this engine's prospective acceptance record.
+
+The saved research point is **January 2026**, PHP 1,389,358.58, with an empirical
+historical-error range of PHP 1,047,921.04–1,730,796.12. It is not current or a
+calibrated probability interval. Real data still stops in December 2025, so live
+status stays `stale_data` and `forecast` remains empty. No demo data bridges the
+gap. There are only three annual cycles; early validation fits have 18 months,
+so seasonal evidence remains limited despite the retrospective target passing.
+
+The existing hourly maintenance now refits SARIMA parameters and reselects its
+configuration when completed real data or corrections arrive. Unchanged input
+reuses a saved fit. Publication still requires current data, reviewed coverage,
+and twelve genuine prospective reviewed months below 15% and no worse than the
+baseline. No source sales, inventory, null identities or frontend files change.
+Private pre-change backup and evaluation: `backups/sarima-priority-20261022/`.
+
+2026-10-22 SARIMA priority verification: 170 integration tests and six live API/PDF
+checks passed. The hourly service successfully reused SARIMA model 2. Source
+sales, stock and the real forecasting revision are preserved; no frontend files
+were changed and nothing was pushed.

@@ -158,6 +158,11 @@ class ForecastPointSerializer(serializers.Serializer):
 
 
 class ForecastReportSerializer(serializers.Serializer):
+    model_family = serializers.CharField(required=False, allow_null=True)
+    stage = serializers.CharField(required=False)
+    model_id = serializers.IntegerField(required=False)
+    model_status = serializers.CharField(required=False)
+    quality_gate = serializers.DictField(required=False)
     generated_at = serializers.DateTimeField()
     data_end = serializers.DateField(required=False)
     horizon_days = serializers.IntegerField()

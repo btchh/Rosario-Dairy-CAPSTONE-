@@ -22,7 +22,7 @@ REPORT_TYPES = (
     'daily_sales', 'weekly_sales', 'monthly_sales', 'inventory',
     'sarima_forecast', 'customer',
 )
-CACHE_PREFIX = 'reporting:preview:v8:'
+CACHE_PREFIX = 'reporting:preview:v9:'
 CACHE_TIMEOUT = 300
 logger = logging.getLogger(__name__)
 
@@ -434,7 +434,7 @@ def inventory_status(visible_to_staff=False):
 
 
 def sarima_forecast(period='monthly'):
-    """Read an evaluated SARIMA snapshot; no model fitting during requests."""
+    """Compatibility report key; expose replacement status without fitting."""
     from forecasting.serving import report
     try:return report(period=period)
     except ValueError as exc:

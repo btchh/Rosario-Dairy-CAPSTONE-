@@ -1,19 +1,214 @@
-Forecasting uses recorded, non-voided sales and the `daily-sarima-v1` engine.
-The API serves saved evaluations; it does not fit models during requests.
+# SARIMA regular-dairy forecasting and ongoing learning
 
-Refresh the production evaluation with:
+The retired forecasting engine is removed. Its original source, database and
+results remain in `backups/forecasting-reset-20261022-142212/`. Historical
+migrations 0001–0005 preserve the upgrade chain; migration 0006 adds the new
+monthly learning lifecycle without deleting business records. A second verified
+source/database backup precedes this implementation in
+`backups/model-build-20261022/`.
+The SARIMA priority revision has its own verified pre-change logical database
+and source backup in `backups/sarima-priority-20261022/`.
+
+The replacement now fits and retains model versions, performs past-only rolling
+validation/evaluation, issues immutable first-day shadow predictions when data is
+current, scores them after real outcomes arrive, and applies publication gates.
+Its target is **strictly below 15% monthly regular-revenue WAPE**, not an accuracy
+promise or a target for feeding, quantities, weekly totals or yearly totals.
+
+## Current result and its limits
+
+The primary forecasting family is **SARIMA**, under engine version
+`regular-monthly-sarima-v2`. The refreshed source has 36 consecutive
+regular-sales months (2023–2025). Five fixed monthly SARIMA configurations use
+annual seasonality (period 12): `(0,0,0)`, `(1,0,0)`, `(0,1,0)`, `(1,1,0)` and
+`(0,1,1)`, each with seasonal order `(1,0,0,12)`. The two undifferenced models
+include an intercept. The search stays small because the earliest validation
+fold has only 18 months, providing limited evidence for annual seasonality.
+
+Nine comparison methods are also evaluated: previous month, trailing three/six-month mean,
+trailing three-month median, same month last year, fitted exponential level,
+fitted damped trend, and two standardized ridge autoregressions. The regressions
+learn from lagged revenue, recent changes, trailing mean, and known calendar
+features; regularization strengths are fixed before evaluation. All fitted
+parameters are re-estimated from available earlier months, not reused forever.
+
+The selected primary model is **SARIMA(0,1,0)(1,0,0,12)**, chosen from SARIMA
+configurations on July–December 2024 validation (9.9104% WAPE). Its
+January–December 2025 rolling test WAPE is **10.6433%**, against **11.381%** for
+the separately selected previous-month baseline. The baseline has a lower
+validation error; it remains a comparator because SARIMA is the required primary
+family. No test winner or baseline is substituted if selected SARIMA fitting
+fails. The previous general-model run remains retained as version 1; its
+11.381% score was a baseline result, not a SARIMA score.
+
+Those are retrospective research results. The 2025 period was already inspected
+during source cleanup; it is not an untouched acceptance test. Actual sales stop
+in December 2025, so the saved next-month research point refers to January 2026.
+It is not a forecast for the current 2026 month. Current serving reports
+`stale_data`, with no live forecast. No artificial 2026 data is used to bridge the
+gap, and no production model is currently approved.
+
+## Data and fitting rules
+
+- Read only real, non-voided sales before the first day of the current business
+  month. Current-month partial totals are never training labels.
+- Apply the reviewed dairy policy in `sales/importers/dairy_policy.json`.
+  Pastillas/PDL, Pastiroll, Polvoron and other excluded products stay excluded.
+  New live mixed invoices contribute only their approved dairy revenue.
+- Exclude exact reserved demo references `2026:` plus six digits. Updating demos
+  does not change actual model input or the real-sales source revision.
+- Separate regular, feeding and unclassified sales. Feeding, unresolved dates,
+  missing identities/prices, and held mixed invoices are not regular labels.
+- Preserve written/inherited source dates with audit flags; do not silently
+  assign the unlabelled January Toned Milk row to PCC-UPLB or a feeding program.
+- Work on the latest contiguous run of observed regular months. Missing months
+  are not filled as zero. Explicit, source-reviewed zero months are supported.
+- Pending invoices are revenue; changing payment status does not change labels.
+  Backdated sales, voids, amount and classification corrections change revisions.
+
+With at least 36 completed contiguous months, use six earlier validation months
+and twelve later test months, leaving at least eighteen initial training months.
+Every fold refits using only months before its target. Choose the primary SARIMA
+configuration and, separately, the best simple baseline on validation WAPE alone.
+Test results for alternative models
+are exported as diagnostics. A selected model that fails later fitting is held
+out; a test winner is not substituted. Refit the selected definition on all
+available completed history to produce one next-month research point.
+
+Fitted model state is finite JSON with a SHA256 checksum, not executable pickle.
+Signed zero is canonicalized before hashing so PostgreSQL JSONB normalization
+cannot invalidate an unchanged fitted artifact.
+The SARIMA state includes orders, trend, normalized history and scale, fitted
+parameters/names, library version, convergence results and optimizer warnings.
+Predictions can reconstruct the Kalman filter using saved parameters without
+running optimization. Fitting normalizes currency values, enforces stationarity
+and invertibility, limits BLAS to one thread, and uses bounded L-BFGS fitting
+with one bounded Powell retry if necessary. Nonconverged/nonfinite fits are
+rejected; fold diagnostics retain retry outcomes and warnings. A checksum-valid
+baseline artifact cannot qualify as a SARIMA deployment or prospective issue.
+The displayed
+range summarizes prior one-step absolute errors; it is **not** a calibrated
+probability interval. Only one-month-ahead regular revenue has been evaluated.
+
+## Learning, issued predictions and promotion
+
+`MonthlyModelRun` is versioned by engine, source, coverage revision and monthly
+cutoff. Unchanged data reuses the saved run without fitting. A new completed
+month or correction creates a new immutable fit; old fits remain available.
+Fitting runs offline; a short commit lock rechecks the source before saving.
+Concurrent sales/coverage changes abort an inconsistent run.
+
+On the first business-calendar day of a target month, current complete history
+can create one shadow `MonthlyIssuedForecast` per engine/month. Its model,
+amount, baseline and issue timestamp are retained. Historical commands never
+manufacture past issue timestamps. A correction never overwrites an issued
+prediction. Mid-month fitting can create a research run but cannot fabricate a
+first-day issue. On a later completed-month refresh, `MonthlyForecastScore`
+records actual amount/error and coverage status. Corrections create new score
+revisions while retaining old actuals and scores.
+
+Source coverage is an explicit admin attestation per month and exact source
+revision, not an inference from record counts. Corrections invalidate an old
+attestation. Resolve nonzero unclassified entries before attesting; reconcile
+held/excluded original workbook rows as well. Empty regular months require an
+explicit `--confirm-zero` assertion. The code does not automatically certify the
+historical dataset or reinterpret held source amounts.
+
+Automatic publication requires all of the following:
+
+1. A current, checksum-valid fit, with the latest twelve training months reviewed.
+2. Twelve retrospective test months below 15% WAPE, no worse than the baseline
+   selected on validation.
+3. Twelve consecutive recent, reviewed **prospective** issued months below 15%
+   WAPE and no worse than their originally issued baseline predictions.
+4. Valid first-day issue timestamps and past-only model cutoffs, with the most
+   recent closed month represented in prospective evidence.
+
+Only current issued predictions from an approved deployment are served. There
+is no forced promotion switch. `MonthlyPromotion` retains an activation trail;
+explicit activation/rollback must pass the same source, cutoff and accuracy
+checks. An old model cannot be activated against a different month's data. A
+retrospective score below 15% alone never approves a production forecast.
+
+## Commands and automatic maintenance
 
 ```bash
-venv/bin/python manage.py evaluate_forecast
+venv/bin/python manage.py migrate
+venv/bin/python manage.py refresh_forecast_models --output backups/current-monthly-model
+venv/bin/python manage.py refresh_forecast_models --as-of 2025-07-01 --output backups/historical-model
+venv/bin/python manage.py watch_forecast_models --once
+venv/bin/python manage.py watch_forecast_models --interval 3600
 ```
 
-The segmented, tuned, customer-grouped, and simulated-sales experiments have
-been retired. Migration `0003_remove_experiment_storage` drops the simulation
-tables and removes only the three retired experiment versions from real-scope
-`ForecastRun` records. Production snapshots and issued forecasts are retained.
-Back up the database before applying this migration: reversing it recreates
-the simulation schema but cannot recover deleted results.
+The watch command refreshes descriptive studies and maintains trained models,
+shadow issues and actual-error scores. It reuses unchanged fits. Database/source
+races are reported and retried on the next interval. Future `--as-of` values are
+rejected. Outputs include full model JSON, candidate comparisons, and selected
+validation/test prediction CSVs, stored privately.
 
-The original experiment source is preserved by the
-`backend-beta-2026-10-15` Git tag. Private database backups and archived exports
-belong under the ignored `backups/` directory and must not be committed.
+After actually reconciling an original completed month, an administrator can
+record that evidence (do not run this merely to bypass the gate):
+
+```bash
+venv/bin/python manage.py verify_forecast_coverage 2025-12-01 --admin-username ADMIN --note 'Original monthly sales ledger reconciled, including exclusions and held rows'
+venv/bin/python manage.py activate_forecast_model MODEL_ID
+```
+
+No coverage attestations have been fabricated for the current dataset. Source
+review and genuine future real-sales outcomes are still needed for promotion.
+
+Hourly user-systemd service/timer files are in `forecasting/deploy/`. Their paths
+match this workstation's `~/Documents/CodingProjects/SarimaHoes`; adjust them if
+installing elsewhere. The service uses the backend virtual environment and .env.
+
+```bash
+systemctl --user link "$PWD/forecasting/deploy/rosario-forecast-learning.service" "$PWD/forecasting/deploy/rosario-forecast-learning.timer"
+systemctl --user daemon-reload
+systemctl --user enable --now rosario-forecast-learning.timer
+systemctl --user start rosario-forecast-learning.service
+systemctl --user status rosario-forecast-learning.timer --no-pager
+journalctl --user -u rosario-forecast-learning.service -n 30 --no-pager
+```
+
+The timer runs while the user systemd manager is available; `Persistent=true`
+handles missed calendar runs when that manager resumes. This does not enable
+system-wide linger or guarantee operation while the workstation is powered off.
+Disable with `systemctl --user disable --now rosario-forecast-learning.timer`.
+
+## Read APIs and frontend handoff
+
+All endpoints are admin-only; GET requests read saved results and never fit.
+
+- `GET /api/forecasting/models/`: current model status, every retained version,
+  selected candidate, candidate validation/test metrics, explicitly labelled
+  research point, source/cutoff, checksum and live quality-gate reasons.
+  `model_family` is `SARIMA`; `sarima` gives orders, trend, convergence and
+  fitting diagnostics. Candidate `role` distinguishes primary SARIMA from
+  comparisons. Version entries include their engine, including earlier engines.
+- `GET /api/forecasting/forecast/?period=monthly`: compatibility forecast route.
+  Returns `stale_data`, `refresh_required`, `research_only` or `ready` as appropriate.
+  Live forecast points remain empty unless a current issued model is approved.
+  Weekly/yearly requests are withheld as `unsupported_horizon` after model fitting.
+- `GET /api/forecasting/patterns/`: retained descriptive studies. Their original
+  exclusion/coverage fields describe the study's creation snapshot; current model
+  gates and prospective evidence are reported by `/models/`.
+
+The forecast report/PDF uses the same status and labels any approved value as
+**regular dairy revenue**. Feeding and combined revenue are never silently set to
+zero or represented as validated forecasts. The frontend repository is untouched.
+See `FRONTEND_HANDOFF.md` for response fields and handling of research previews.
+
+## Method references
+
+Past-only evaluation follows the authors' [time-series cross-validation discussion](https://otexts.com/fpp3/toolbox.html#time-series-cross-validation).
+SARIMA uses the installed statsmodels 0.14.6 API, checked locally, documented in
+[SARIMAX](https://www.statsmodels.org/stable/generated/statsmodels.tsa.statespace.sarimax.SARIMAX.html)
+without exogenous regressors. The `seasonal_order` period is 12 for monthly data.
+Comparison smoothing uses the installed statsmodels API, documented
+in [SimpleExpSmoothing](https://www.statsmodels.org/stable/generated/statsmodels.tsa.holtwinters.SimpleExpSmoothing.html)
+and [Holt](https://www.statsmodels.org/stable/generated/statsmodels.tsa.holtwinters.Holt.html).
+
+Backups are private logical Django data dumps, not native PostgreSQL cluster
+backups. Verify hashes and restore into a separate empty database at the matching
+archived schema before planning live recovery. Schema reversal does not restore
+deleted legacy forecast rows. Historical research/model/score rows are retained.

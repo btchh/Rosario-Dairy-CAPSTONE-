@@ -17,7 +17,6 @@ from django.db import transaction
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import EmailChangeChallenge, PasswordResetChallenge
 from accounts.services import auth_service, password_reset_service

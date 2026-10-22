@@ -14,14 +14,13 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from django.apps import apps
-from django.conf import settings
 from django.db import connection, transaction
 from django.db.backends.postgresql.base import DatabaseWrapper
 from django.db.models import Q
 from django.utils import timezone
 from psycopg2 import sql
 
-from sales.models import Customer, Order, OrderItem, Transaction, TransactionItem
+from sales.models import Order, OrderItem, Transaction, TransactionItem
 from inventory.models import Product, Category
 
 

@@ -14,7 +14,7 @@ from rest_framework.test import APIClient
 
 from forecasting.data import RecordedSale, SalesSnapshot, load_snapshot
 from forecasting.learning import (CANDIDATES, ENGINE_VERSION, digest, fit_model, month_end,
-                                  month_revision, monthly_rows, predict_model, shift_month, train, walk_forward)
+                                  monthly_rows, predict_model, shift_month, train, walk_forward)
 from forecasting.lifecycle import (activate_model, attest_coverage, quality_gate, refresh_models,
                                    valid_coverage, prospective_evidence)
 from forecasting.models import (MonthlyCoverage, MonthlyDeployment, MonthlyForecastScore,

@@ -9,7 +9,7 @@ from django.core.cache import cache
 from config.test_support import APIClient
 from .data import RecordedSale, SalesSnapshot
 from .models import ProvisionalForecastRun, MonthlyIssuedForecast
-from .provisional import (VERSION, build, context, digest, fit, future_rows, project, refresh,
+from .provisional import (build, context, digest, fit, future_rows, project, refresh,
                           report, series, train)
 
 

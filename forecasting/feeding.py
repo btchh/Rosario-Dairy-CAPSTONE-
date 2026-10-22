@@ -1,6 +1,5 @@
 """Descriptive feeding evidence; invoice dates are not delivery schedules."""
 from collections import defaultdict
-from datetime import date
 from decimal import Decimal
 import re
 import unicodedata

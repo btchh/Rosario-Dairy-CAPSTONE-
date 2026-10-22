@@ -1,4 +1,3 @@
-from copy import deepcopy
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory

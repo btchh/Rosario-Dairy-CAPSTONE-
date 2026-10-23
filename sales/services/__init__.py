@@ -12,5 +12,3 @@ class SalesService:
     get_revenue_report = staticmethod(report_service.get_revenue_report)
     get_best_sellers = staticmethod(report_service.get_best_sellers)
     get_sales_by_category = staticmethod(report_service.get_sales_by_category)
-
-    PERIOD_TRUNC = report_service.PERIOD_TRUNC

@@ -66,8 +66,9 @@ class IngBatchSerializer(serializers.ModelSerializer):
       if validated_data.get('unit_price') is None:
           validated_data['unit_price'] = validated_data['ingredient'].unit_price
 
-      seq = next_sequence('ING')
-      validated_data['batch_number'] = generate_batch_number('ING', seq)
+      business_date = timezone.localdate()
+      seq = next_sequence('ING', business_date=business_date)
+      validated_data['batch_number'] = generate_batch_number('ING', seq, business_date=business_date)
       return super().create(validated_data)
 
   def update(self, instance, validated_data):

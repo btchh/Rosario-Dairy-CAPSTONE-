@@ -1,3 +1,5 @@
+from collections.abc import Mapping
+
 from rest_framework import serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -37,8 +39,8 @@ class ForecastRefreshView(APIView):
     def post(self, request, job_id=None):
         if job_id is not None:
             return Response({'detail': 'Start refreshes at /api/forecasting/refresh/.'}, status=405)
-        if request.data:
-            raise serializers.ValidationError('Refresh accepts an empty body only; actual completed-period data is selected by the backend.')
+        if not isinstance(request.data, Mapping) or request.data:
+            raise serializers.ValidationError('Refresh accepts an empty JSON object only; actual completed-period data is selected by the backend.')
         job, created = enqueue(request.user)
         if job is None:
             return Response({'status': 'busy', 'message': 'Forecast maintenance is starting. Check refresh status shortly.'}, status=409)
@@ -59,7 +61,7 @@ class WeeklyModelView(APIView):
         return Response(weekly_report())
 
 
-class ChartQuery(serializers.Serializer):
+class ForecastQuery(serializers.Serializer):
     period = serializers.ChoiceField(choices=['weekly', 'monthly', 'yearly'], default='monthly')
     scope = serializers.ChoiceField(choices=['real'], default='real')
 
@@ -70,7 +72,7 @@ class ForecastChartView(APIView):
 
     @cache_api_response
     def get(self, request):
-        query = ChartQuery(data=request.query_params)
+        query = ForecastQuery(data=request.query_params)
         query.is_valid(raise_exception=True)
         return Response(chart_report(period=query.validated_data['period']))
 
@@ -84,18 +86,13 @@ class FeedingStudyView(APIView):
         return Response(feeding_report())
 
 
-class Query(serializers.Serializer):
-    period=serializers.ChoiceField(choices=['weekly','monthly','yearly'],default='monthly')
-    scope=serializers.ChoiceField(choices=['real'],default='real')
-
-
 class ForecastView(APIView):
     permission_classes=[IsAdmin]
     throttle_classes=[ExpensiveReadRateThrottle]
 
     @cache_api_response
     def get(self,request):
-        query=Query(data=request.query_params);query.is_valid(raise_exception=True)
+        query=ForecastQuery(data=request.query_params);query.is_valid(raise_exception=True)
         return Response(report(**query.validated_data))
 
 

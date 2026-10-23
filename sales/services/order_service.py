@@ -31,7 +31,7 @@ def place_order(customer, items, handled_by, discount_type='none', discount_valu
     return order
 
 
-def void_fulfilled_order(order, admin_user):
+def void_fulfilled_order(order):
     if order.transaction is None:
         raise ValueError("This order has no linked transaction to void.")
 

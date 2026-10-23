@@ -1,7 +1,8 @@
 # Backend verification
 
-Latest broad verification (2026-10-23): **607 tests passed** in 119.190 seconds,
-including six primary-SARIMA alignment tests and prospective evidence checks. Django
+Latest broad verification (2026-10-23): **640 full-suite tests passed** in 473.513
+seconds after the security/dependency fixes. The final batch-date change then
+passed **304 inventory/sales/audit tests** in 19.076 seconds. Django
 system checks passed and the migration drift check found no changes. A fast
 password hasher was used only in the test process; production password settings
 are unchanged.
@@ -531,3 +532,29 @@ was unchanged. The v2 engine saved **81** new future issues, with no scores or
 invented coverage reviews. Old v1 evidence remains separate. No schema migration
 or frontend edit was needed. Live log:
 `/tmp/rosario-primary-alignment-live-check.log`.
+
+## Connection, logic and security audit — October 23, 2026
+
+See [SECURITY_AUDIT.md](SECURITY_AUDIT.md) for findings, remediation, dependency
+sources, deployment checks and remaining infrastructure limits.
+
+The full baseline passed 629 tests. The post-fix full suite passed **640 tests**,
+including complete monthly SARIMA lifecycle tests previously omitted from the
+shorter regression runs. `config.test_connection_security` adds cache/database
+outage responses without automatic mutation retries, permission precedence,
+recovery/429 preservation, strict refresh bodies, staff customer-summary
+visibility and cache invalidation, and DRF header/charset regressions.
+
+A subsequent month-boundary fix makes batch counters and number prefixes share
+one captured business date. The final **304-test inventory/sales/audit run**
+includes Manila month/year boundaries and allocation crossing midnight. Existing
+order, inventory, customer-import and concurrency tests all passed. Production
+hashing remains PBKDF2; only test-process hashing uses MD5 for speed.
+
+Django system/migration checks and `pip check` passed. DRF is pinned at 3.18.3;
+Pillow at 13.0.0. The final installed-dependency audit checked 32 packages, skipped
+none and found zero known advisories, down from 38 advisories in two packages.
+The actual PostgreSQL connection and unique-key file-cache read/write/delete
+probe passed. SMTP and production Redis were not live-tested. No migration,
+live dataset change or frontend edit was required; the handoff covers safe 503
+handling and correctly scoped customer summaries.

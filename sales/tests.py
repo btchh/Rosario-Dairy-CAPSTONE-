@@ -45,7 +45,7 @@ from sales.importers.annual_sales import (
     parse_workbooks,
     source_date,
 )
-from sales.importers.load_annual_sales import load, merge_imported_customers
+from sales.importers.load_annual_sales import load
 from sales.management.commands.populate_2026_sales import (
     backup_database,
     build_plan,
@@ -57,6 +57,7 @@ from sales.models import Customer, Order, OrderItem, Transaction, TransactionIte
 from sales.serializers import TransactionSerializer
 from sales.serializers.order_serializer import OrderListTransactionSerializer
 from sales.services import SalesService
+from sales.services.customer_consolidation import consolidate_customers
 from sales.views.transaction_views import TransactionViewSet
 
 
@@ -473,7 +474,7 @@ class VoidFulfilledOrderTests(TestCase):
         order = self._place_order(qty=Decimal('10.00'))
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.remaining_quantity, Decimal('90.00'))
-        SalesService.void_fulfilled_order(order, self.admin)
+        SalesService.void_fulfilled_order(order)
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.remaining_quantity, Decimal('100.00'))
 
@@ -491,19 +492,19 @@ class VoidFulfilledOrderTests(TestCase):
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.remaining_quantity, Decimal('85.00'))
 
-        SalesService.void_fulfilled_order(order, self.admin)
+        SalesService.void_fulfilled_order(order)
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.remaining_quantity, Decimal('95.00'))
 
     def test_voiding_already_voided_transaction_rejected(self):
         order = self._place_order()
-        SalesService.void_fulfilled_order(order, self.admin)
+        SalesService.void_fulfilled_order(order)
         with self.assertRaises(ValueError):
-            SalesService.void_fulfilled_order(order, self.admin)
+            SalesService.void_fulfilled_order(order)
 
     def test_void_marks_order_cancelled(self):
         order = self._place_order()
-        SalesService.void_fulfilled_order(order, self.admin)
+        SalesService.void_fulfilled_order(order)
         order.refresh_from_db()
         self.assertEqual(order.status, 'cancelled')
 
@@ -512,7 +513,7 @@ class VoidFulfilledOrderTests(TestCase):
         self.batch.refresh_from_db()
         self.batch.status = 'disposed'
         self.batch.save()
-        txn, skipped = SalesService.void_fulfilled_order(order, self.admin)
+        txn, skipped = SalesService.void_fulfilled_order(order)
         self.assertIn(self.batch.batch_number, skipped)
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.remaining_quantity, Decimal('90.00'))
@@ -1010,7 +1011,7 @@ class SalesAuditRegressionTests(TestCase):
         self.batch.expiration_date = timezone.localdate() - timedelta(days=1)
         self.batch.save(update_fields=['expiration_date'])
 
-        _, skipped = SalesService.void_fulfilled_order(order, self.admin)
+        _, skipped = SalesService.void_fulfilled_order(order)
 
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.remaining_quantity, Decimal('90.00'))
@@ -1260,11 +1261,15 @@ class AnnualSalesLoaderTests(TestCase):
         sale.refresh_from_db()
         self.assertFalse(sale.is_voided)
 
-        duplicate = Customer.objects.create(name='SKYE DAIRY', created_by=self.admin)
+        # Case-only identities need contact evidence in the current workflow.
+        keeper = Customer.objects.get()
+        keeper.email = 'skye@example.test'
+        keeper.save(update_fields=['email'])
+        duplicate = Customer.objects.create(name='SKYE DAIRY', email=keeper.email, created_by=self.admin)
         Transaction.objects.filter(pk=sale.pk).update(customer=duplicate)
         Order.objects.filter(transaction=sale).update(customer=duplicate)
-        merged = merge_imported_customers(result)
-        self.assertEqual(merged['merged'], 1)
+        merged = consolidate_customers()
+        self.assertEqual(len(merged['merge_groups']), 1)
         self.assertEqual(Customer.objects.count(), 1)
         self.assertEqual(Transaction.objects.get().customer.name, 'Skye Dairy')
         self.assertEqual(Order.objects.get().customer_id, Transaction.objects.get().customer_id)

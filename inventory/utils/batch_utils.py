@@ -2,13 +2,13 @@ from datetime import datetime
 from django.utils import timezone
 # Batch Number Generator
 
-def generate_batch_number(prefix, sequence):
+def generate_batch_number(prefix, sequence, *, business_date=None):
     """
-    Generate a unique batch number for an ingredient / product based on its name and the current date.
+    Format a batch number using the same business date as its monthly counter.
     The format is: PRD-2506-001 / ING-2506-001
     """
 
-    now = timezone.now()
+    now = business_date if business_date is not None else timezone.localdate()
     year = now.strftime("%y")  # Get last two digits of the year
     month = now.strftime("%m")  # Get the month in two digits
     seq = f"{sequence:03d}"  # Format sequence as a three-digit number with leading zeros

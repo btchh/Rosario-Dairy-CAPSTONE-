@@ -9,6 +9,7 @@ from ..models import Customer
 from ..serializers import CustomerSummarySerializer, TransactionSerializer
 from accounts.permissions import IsAdmin, IsStaff
 from .transaction_views import TransactionPagination, transaction_history_queryset
+from ..visibility import visible_transactions
 
 
 class CustomerViewSet(CachedListMixin, viewsets.ModelViewSet):
@@ -42,6 +43,8 @@ class CustomerViewSet(CachedListMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         active_sales = Q(transactions__is_voided=False)
+        if self.request.user.role == 'staff':
+            active_sales &= Q(transactions__in=visible_transactions(True).values('pk'))
         queryset = super().get_queryset()
         if self.action == 'list' and self.request.query_params.get('include_inactive', 'false').lower() != 'true':
             queryset = queryset.filter(is_active=True)

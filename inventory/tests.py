@@ -991,7 +991,7 @@ class BatchSequenceServiceTests(TestCase):
         self.assertTrue(serializer2.is_valid(), serializer2.errors)
         batch2 = serializer2.save()
 
-        now = timezone.now()
+        now = timezone.localdate()
         expected_prefix = f"PRD-{now.strftime('%y')}{now.strftime('%m')}-"
         self.assertEqual(batch1.batch_number, f"{expected_prefix}001") # type: ignore
         self.assertEqual(batch2.batch_number, f"{expected_prefix}002") # type: ignore

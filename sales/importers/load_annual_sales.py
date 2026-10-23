@@ -1,6 +1,6 @@
 """Load parsed workbook sales into the linked catalog and sales tables."""
 
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime, time
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -176,40 +176,3 @@ def load(result, admin_username):
             'categories': len(categories), 'reference_batches': len(batches),
             'revenue': str(actual_revenue), 'years': dict(sorted(expected.items())),
         }
-
-
-def merge_imported_customers(result):
-    """Consolidate only customers from a completed historical import."""
-    with db_transaction.atomic():
-        if Transaction.objects.filter(source_reference__isnull=True).exists():
-            raise ValueError('Live sales exist; refusing automatic customer merges.')
-        source_names = Counter(canonical_customer(ticket.customer_label)
-                               for ticket in result.tickets if not ticket.duplicate_of)
-        preferred = {}
-        for name, count in source_names.items():
-            if name:
-                key = name.casefold()
-                if key not in preferred or count > source_names[preferred[key]]:
-                    preferred[key] = name
-        grouped = defaultdict(list)
-        for customer in Customer.objects.all():
-            key = customer_key(customer.name)
-            if key in preferred:
-                grouped[key].append(customer)
-        merged = 0
-        renamed = 0
-        for key, group in grouped.items():
-            group.sort(key=lambda customer: (customer.name == preferred[key],
-                                             customer.transactions.count() + customer.orders.count()),
-                       reverse=True)
-            winner = group[0]
-            for duplicate in group[1:]:
-                Transaction.objects.filter(customer=duplicate).update(customer=winner)
-                Order.objects.filter(customer=duplicate).update(customer=winner)
-                duplicate.delete()
-                merged += 1
-            if winner.name != preferred[key]:
-                winner.name = preferred[key]
-                winner.save(update_fields=['name', 'updated_at'])
-                renamed += 1
-        return {'merged': merged, 'renamed': renamed, 'customers': Customer.objects.count()}

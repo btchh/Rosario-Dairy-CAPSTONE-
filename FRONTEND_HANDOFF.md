@@ -241,6 +241,18 @@ and does not refresh models. Keep the existing graph; no new panel or coverage
 review controls are needed. Provisional labels remain required regardless of
 scores; this evidence does not approve production forecasts.
 
+## Shared availability and customer summaries
+
+Shared availability handling: rate-limited endpoints now return **503** with a
+safe `detail` message if the rate-limit cache is unavailable. Database
+connection/operational failures also return **503**. Preserve form values and
+show a retry-later message; do not automatically repeat a sale submission.
+For encoding retries, retain the original `request_id` and verify transaction
+history first when the outcome is uncertain. Existing **401/403/429** handling
+is unchanged. Customer `transaction_count` and `last_sale` now match the user's
+visible non-voided receipt history; staff can legitimately receive zero/null
+for a customer whose receipts are hidden.
+
 ## Reference
 
 - [Forecast API and publication rules](forecasting/README.md)

@@ -86,8 +86,9 @@ class ProdBatchSerializer(serializers.ModelSerializer):
         quantity = validated_data.pop('quantity')
         validated_data['initial_quantity'] = quantity
         validated_data['remaining_quantity'] = quantity
-        seq = next_sequence('PRD')
-        validated_data['batch_number'] = generate_batch_number('PRD', seq)
+        business_date = timezone.localdate()
+        seq = next_sequence('PRD', business_date=business_date)
+        validated_data['batch_number'] = generate_batch_number('PRD', seq, business_date=business_date)
         return super().create(validated_data)
 
   def update(self, instance, validated_data):

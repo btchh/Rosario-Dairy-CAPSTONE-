@@ -4,7 +4,7 @@ from django.utils import timezone
 from ..models import BatchSequence
 
 
-def next_sequence(prefix):
+def next_sequence(prefix, *, business_date=None):
     """
     Atomically returns the next sequence number for a batch-number prefix
     ('PRD' or 'ING') within the current year/month. select_for_update() on
@@ -13,8 +13,10 @@ def next_sequence(prefix):
     of a given month/prefix can itself race (nothing exists yet to lock), so
     that specific case is handled with a small retry on IntegrityError
     rather than a lock.
+    Creation callers pass the date captured for the batch-number prefix so a
+    midnight rollover cannot split allocation and formatting across months.
     """
-    today = timezone.localdate()
+    today = business_date if business_date is not None else timezone.localdate()
     year, month = today.year, today.month
 
     for attempt in range(3):

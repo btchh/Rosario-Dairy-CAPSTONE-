@@ -1,7 +1,25 @@
 from rest_framework.throttling import SimpleRateThrottle
+from rest_framework.exceptions import APIException
+from redis.exceptions import RedisError
 
 
-class ClientIPRateThrottle(SimpleRateThrottle):
+class RateLimitUnavailable(APIException):
+    status_code = 503
+    default_detail = 'Request rate limiting is temporarily unavailable. Try again shortly.'
+    default_code = 'rate_limit_unavailable'
+
+
+class CacheBackedRateThrottle(SimpleRateThrottle):
+    """Fail closed with a safe availability response when the cache is down."""
+
+    def allow_request(self, request, view):
+        try:
+            return super().allow_request(request, view)
+        except (OSError, RedisError) as exc:
+            raise RateLimitUnavailable() from exc
+
+
+class ClientIPRateThrottle(CacheBackedRateThrottle):
     """Apply a scoped IP limit even when a caller includes a valid JWT."""
 
     def get_cache_key(self, request, view):
@@ -27,7 +45,7 @@ class TokenRefreshRateThrottle(ClientIPRateThrottle):
     scope = 'token_refresh'
 
 
-class AccountRateThrottle(SimpleRateThrottle):
+class AccountRateThrottle(CacheBackedRateThrottle):
     def get_cache_key(self, request, view):
         ident = str(request.user.pk) if request.user.is_authenticated else self.get_ident(request)
         return self.cache_format % {'scope': self.scope, 'ident': ident}

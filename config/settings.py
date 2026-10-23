@@ -118,6 +118,13 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+try:
+    DB_CONNECT_TIMEOUT = int(os.getenv('DB_CONNECT_TIMEOUT', '5'))
+except ValueError as exc:
+    raise ImproperlyConfigured('DB_CONNECT_TIMEOUT must be an integer of at least 2 seconds.') from exc
+if DB_CONNECT_TIMEOUT < 2:
+    raise ImproperlyConfigured('DB_CONNECT_TIMEOUT must be an integer of at least 2 seconds.')
+
 DATABASES = {
 #   Postgre
     'default': {
@@ -127,6 +134,7 @@ DATABASES = {
         'PASSWORD': os.getenv('DB_PASSWORD', 'root' if not IS_PRODUCTION else ''),
         'HOST': os.getenv('DB_HOST', 'localhost'),
         'PORT': os.getenv('DB_PORT', '5432'),
+        'OPTIONS': {'connect_timeout': DB_CONNECT_TIMEOUT},
     }
 
 }

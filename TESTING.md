@@ -1,5 +1,12 @@
 # Backend verification
 
+Second audit pass (2026-10-23, after `ffdde7c0`): **140 accounts/config tests
+passed** in 5.618 seconds, including password-reset username races and PostgreSQL
+connection-timeout validation/driver forwarding. The separate cache-recovery
+reproduction confirmed an **open staff visibility/freshness defect** after lost
+invalidation; this is not a passing security check. See `SECURITY_AUDIT.md` for
+the reproduction and required repair coverage.
+
 Latest broad verification (2026-10-23): **640 full-suite tests passed** in 473.513
 seconds after the security/dependency fixes. The final batch-date change then
 passed **304 inventory/sales/audit tests** in 19.076 seconds. Django

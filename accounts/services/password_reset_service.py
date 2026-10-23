@@ -44,16 +44,17 @@ def request_password_reset(username, email):
 
     now = timezone.now()
     cooldown = timedelta(seconds=settings.PASSWORD_RESET_OTP_RESEND_COOLDOWN)
-    identity = _identity(user.username, user.email)
     otp = f'{secrets.randbelow(1_000_000):06d}'
-    otp_digest = _otp_digest(identity, otp)
 
     with transaction.atomic():
         # Locking the user serializes first-time requests even before a
         # PasswordResetChallenge row exists.
         locked_user = User.objects.select_for_update().get(pk=user.pk)
-        if not locked_user.is_active or locked_user.email.casefold() != email.casefold():
+        if (not locked_user.is_active or locked_user.username != username
+                or locked_user.email.casefold() != email.casefold()):
             return
+        user = locked_user
+        otp_digest = _otp_digest(_identity(user.username, user.email), otp)
         challenge = PasswordResetChallenge.objects.filter(user=locked_user).first()
         if challenge and challenge.last_sent_at + cooldown > now:
             return
@@ -111,7 +112,8 @@ def reset_password_with_otp(username, email, otp, new_password):
         # Always lock user before challenge, matching OTP issuance and password
         # updates. Recheck eligibility after acquiring the lock.
         user = User.objects.select_for_update().filter(pk=user.pk, is_active=True).first()
-        if user is None or user.email.casefold() != email.casefold():
+        if (user is None or user.username != username
+                or user.email.casefold() != email.casefold()):
             return False
         identity = _identity(user.username, user.email)
         challenge = (

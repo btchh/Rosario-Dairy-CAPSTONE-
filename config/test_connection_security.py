@@ -5,7 +5,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db import InterfaceError, OperationalError
-from django.test import override_settings
+from django.test import SimpleTestCase, override_settings
 from redis.exceptions import ConnectionError as RedisConnectionError
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 
@@ -190,6 +190,79 @@ class HTTPParserSecurityTests(APITestCase):
                 content_type='application/json; charset='+charset)
             self.assertEqual(response.status_code, 400)
         self.assertFalse(OutstandingToken.objects.exists())
+
+
+@override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class PasswordResetIdentityRaceTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = get_user_model().objects.create_user(username='reset-before-rename',
+            email='reset-race@example.test', password='StrongAuditPass!92')
+
+    def test_rename_between_lookup_and_lock_does_not_issue_code_or_start_cooldown(self):
+        from django.core import mail
+        from accounts.services import password_reset_service as service
+
+        def rename_after_lookup(*args):
+            get_user_model().objects.filter(pk=self.user.pk).update(username='reset-after-rename')
+            return self.user  # Snapshot read before the concurrent profile update.
+
+        with patch.object(service, '_matching_active_user', side_effect=rename_after_lookup):
+            response = self.client.post('/accounts/forgot-password/', {
+                'username': self.user.username, 'email': self.user.email}, format='json')
+        self.assertEqual(response.status_code, 200)  # Keep the non-enumerating response.
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertFalse(PasswordResetChallenge.objects.filter(user=self.user).exists())
+        self.user.refresh_from_db()
+        with patch.object(service.secrets, 'randbelow', return_value=123456):
+            service.request_password_reset(self.user.username, self.user.email)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertTrue(service.reset_password_with_otp(self.user.username, self.user.email,
+                                                       '123456', 'ChangedAuditPass!92'))
+
+    def test_old_username_request_cannot_consume_new_identity_code_after_lookup_race(self):
+        from accounts.services import password_reset_service as service
+
+        old_username = self.user.username
+        get_user_model().objects.filter(pk=self.user.pk).update(username='reset-after-rename')
+        with patch.object(service.secrets, 'randbelow', return_value=123456):
+            service.request_password_reset('reset-after-rename', self.user.email)
+        with patch.object(service, '_matching_active_user', return_value=self.user):
+            self.assertFalse(service.reset_password_with_otp(old_username, self.user.email,
+                '123456', 'ChangedAuditPass!92'))
+        self.assertTrue(PasswordResetChallenge.objects.filter(user=self.user, failed_attempts=0).exists())
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('StrongAuditPass!92'))
+        self.assertTrue(service.reset_password_with_otp(self.user.username, self.user.email,
+            '123456', 'ChangedAuditPass!92'))
+
+
+class DatabaseTimeoutConfigurationTests(SimpleTestCase):
+    def test_timeout_is_forwarded_to_postgresql_without_opening_a_connection(self):
+        import os
+        import runpy
+        from pathlib import Path
+        from django.db.backends.postgresql.base import DatabaseWrapper
+
+        for value in ('5', '9'):
+            with self.subTest(timeout=value), patch.dict(os.environ, {
+                    'DJANGO_ENV': 'development', 'DB_CONNECT_TIMEOUT': value}):
+                configured = runpy.run_path(str(Path(__file__).with_name('settings.py')))
+                wrapper = DatabaseWrapper(configured['DATABASES']['default'])
+                self.assertEqual(wrapper.get_connection_params()['connect_timeout'], int(value))
+                self.assertIsNone(wrapper.connection)
+
+    def test_zero_negative_and_invalid_timeouts_fail_at_startup(self):
+        import os
+        import runpy
+        from pathlib import Path
+        from django.core.exceptions import ImproperlyConfigured
+
+        for value in ('0', '-1', '1', 'invalid', '2.5', ''):
+            with self.subTest(timeout=value), patch.dict(os.environ, {
+                    'DJANGO_ENV': 'development', 'DB_CONNECT_TIMEOUT': value}):
+                with self.assertRaisesMessage(ImproperlyConfigured, 'DB_CONNECT_TIMEOUT'):
+                    runpy.run_path(str(Path(__file__).with_name('settings.py')))
 
 
 class BatchBusinessDateAuditTests(APITestCase):

@@ -4,6 +4,44 @@ Scope: accounts, inventory, sales, reports, forecasting, settings, PostgreSQL,
 cache behavior and the installed Python dependencies. Tests use the separate
 Django test database; production sales and forecasts were not changed.
 
+## Second pass — follow-up to `ffdde7c0`
+
+- PostgreSQL connections now receive `connect_timeout=5` by default, configurable
+  through `DB_CONNECT_TIMEOUT` (integer, minimum two seconds). This bounds connection
+  establishment per host, not DNS resolution or query execution. Driver-parameter
+  tests open no network connection and reject invalid/unbounded timeout settings.
+- Password-reset issuance and consumption now recheck the requested username
+  after locking the account, alongside email and active status. Issuance computes
+  the code digest from that locked identity. A concurrent rename previously could
+  issue an unusable code and start its resend cooldown; an old-username request
+  racing a rename could also consume a code for the new identity. Regression tests
+  simulate the update between lookup and lock, verify no mail/code/cooldown on a
+  stale request, preserve the generic response, and verify a fresh request works.
+- All **140 accounts/config tests passed** in 5.618 seconds after these changes.
+  Log: `/tmp/rosario-second-audit-tests.log`. No frontend or live sales data was
+  changed.
+
+### Open finding: lost cache invalidation after recovery
+
+**High priority: not fixed by the availability handler or connection timeout.**
+If a business write commits while `cache.set(VERSION_KEY, ...)` fails, the failure
+is logged but no durable invalidation is retained. When cache service recovers,
+the old shared version and its payloads can still be reused until their original
+expiry (normally five minutes; history payloads can last an hour).
+
+An isolated test reproduced a staff visibility leak: warm the product list as
+staff; hide its category while injecting failure only into the post-commit cache
+write; restore the cache; request the same list. The database category is hidden,
+but the response is a cache HIT containing the formerly visible product. The
+reproduction passed by confirming this undesired behavior; it is **not a passing
+security regression**. Log: `/tmp/rosario-cache-recovery-reproduction.log`.
+
+The repair needs an authoritative revision or invalidation record that survives
+cache outages and is observed by every worker. A process-local flag or immediate
+retry alone does not provide that guarantee. Include stock/history freshness,
+category visibility, rollback, cache recovery and multiple workers in the repair's
+regression coverage. Do not consider the cache recovery path security-complete.
+
 ## Confirmed findings and changes
 
 | Finding | Change |

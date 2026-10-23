@@ -161,6 +161,7 @@ def chart_report(period='monthly'):
     return {'scope': 'real', 'period': period, 'available_periods': list(PERIODS),
         'provisional_status': provisional['status'],
         'provisional_model_id': provisional.get('model_id'),
+        'provisional_engine_version': provisional.get('engine_version'),
         'provisional_source_revisions': provisional.get('source_revisions'),
         'provisional_targets': provisional.get('targets', []),
         'validated_forecast_periods': ['monthly'],
@@ -173,4 +174,4 @@ def chart_report(period='monthly'):
             'Historical predictions and their WAPE are research evidence, separate from approved live forecasts.',
             'Dummy sales are excluded. Feeding predictions are never substituted with zero.',
             'Weekly buckets run Monday through Sunday and can span calendar years.',
-            'Yearly prediction sums use twelve different monthly origins, not a year-ahead forecast. Monthly WAPE is not weekly or yearly accuracy.']}
+            'Yearly historical prediction sums use twelve different monthly origins; provisional yearly paths use one origin. Monthly WAPE is not weekly or yearly accuracy.']}

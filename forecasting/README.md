@@ -39,20 +39,34 @@ promise or a target for feeding, quantities, weekly totals or yearly totals.
 12 months, and 2 calendar years. They remain available with stale/limited history,
 explicitly marked provisional, never approved or promised below 15% error.
 
-`forecasting/provisional.py` fits four component models (two segments × weekly /
-monthly); annual values sum a single-origin twelve-month path and Combined sums
+`forecasting/provisional.py` manages four components (two segments × weekly /
+monthly). Regular monthly reuses the primary seasonal SARIMA's saved parameters
+when source, cutoff, coverage, checksum and actual training totals match. It
+does not run a separate model selection. Annual values sum that same model's
+single-origin twelve-month path and Combined sums
 matching component targets. Missing invoice periods are NaN observations in the
 state-space likelihood, not zeros; no pre-feeding padding is used. Only past
 classified actual dairy invoices enter fitting. No synthetic data or unclassified
 Toned Milk revenue is included.
 
-The small SARIMA family comprises local-level `(0,1,0)`, AR(1) `(1,0,0)` and,
+The remaining components' small SARIMA family comprises local-level `(0,1,0)`, AR(1) `(1,0,0)` and,
 when at least two seasons of observed periods exist before validation,
 `(1,0,0)(1,0,0,s)` (`s=12` or `52`). The first two are nonseasonal SARIMA
 special cases for sparse data. Earlier validation selects a configuration; a
 later single-origin test is separate, never used to choose it. Candidate/fit
 failures are retained; fewer than six observed periods or no valid fit withholds
 the component rather than inventing values. No baseline replaces SARIMA.
+Short/gapped regular history uses this family only as an explicitly labelled
+`provisional_fallback`. Eligible regular history without an aligned primary fit
+waits for primary maintenance; corrupt primary artifacts are withheld. Weekly
+and feeding model selection remain unchanged.
+
+The projection engine is now `actual-provisional-sarima-v2`. Model/dependency
+fingerprints also invalidate bundles after primary-model or coverage changes.
+Old runs and first-issued v1 predictions remain intact; v2 prospective evidence
+is grouped separately. Monthly reused-model metrics are exposed only as
+`primary_monthly_backtest` (rolling one-month research), never a score for its
+longer future path. Production approval and interval limitations are unchanged.
 
 Portable model parameters and missing observations are retained in immutable
 `ProvisionalForecastRun` JSON. Source/target fingerprints and a checksum prevent

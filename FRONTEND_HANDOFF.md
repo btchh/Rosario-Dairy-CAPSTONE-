@@ -113,13 +113,27 @@ feeding metadata includes `model`, `seasonal_terms_enabled`, `observed_periods`,
 `missing_periods`, `stale_history` and `training_age_days` when available.
 With `refresh_required`, `insufficient_data`, `fit_failed`, `component_unavailable`
 or `invalid_artifact`, retain recorded history and an availability message.
+Also handle `primary_refresh_required`, `primary_model_unavailable` and
+`invalid_primary_artifact` without substituting another prediction line.
+
+For monthly/yearly Regular, `provisional_metadata.model_basis` is
+`primary_monthly_sarima` when the saved primary seasonal SARIMA is reused.
+`primary_model_id` identifies that fit. Combined's metadata includes
+`component_models` identifying its Regular and Feeding components. For short or
+gapped regular history, `model_basis: provisional_fallback` and `fallback_reason`
+identify the simpler sparse-data model; keep its warning visible. Weekly and
+feeding selection are unchanged. Top-level `provisional_engine_version` is
+`actual-provisional-sarima-v2`; use this version when matching prospective
+evidence groups, keeping earlier engine versions separate.
 
 Keep `metrics.wape_percent` attached to its existing historical comparison.
 `provisional_metadata.metrics.wape` is a different single-origin observed-period
 test, with `sample_count`, `rows` and `basis`; do not substitute it for the primary
-monthly score or imply future accuracy. Provisional yearly/Combined metrics are
-null. The primary regular monthly 10.6433% historical error does not describe the
-rough regular model, feeding, or a twelve-month future path.
+monthly score or imply future accuracy. Primary monthly reuse leaves
+`provisional_metadata.metrics` null and exposes its historical score separately
+as `primary_monthly_backtest`, with `basis: rolling_one_month_ahead`. Provisional
+yearly/Combined metrics remain null. The primary regular monthly 10.6433%
+historical error does not measure feeding or a twelve-month future path.
 
 Short feeding history currently selects a nonseasonal local-level SARIMA special
 case, so its future line can be flat. Do not infer seasonal events or contracts.

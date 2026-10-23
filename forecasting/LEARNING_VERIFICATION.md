@@ -84,9 +84,12 @@ proving the preview uses the retained trained state.
 
 This is a fixed-origin 2026 research projection, not live approval and not the
 older 2025 rolling backtest. No 2026 actuals or dummy invoices enter fitting or
-evaluation. The primary regular model is separate from the simpler regular
-component currently selected in the all-view provisional chart API; this preview
-does not change API model selection. Feeding is flat because its current
+evaluation. At generation time the graph API independently selected a simpler
+regular model. The v2 graph pipeline now reuses the matching saved primary
+seasonal SARIMA for Regular monthly/yearly and their contribution to Combined;
+only short/gapped regular histories retain a labelled fallback. The retained
+preview's model origin remains December 2025; current graph targets follow the
+request date. Feeding is flat because its current
 nonseasonal local-level model extrapolates the latest level, without evidence
 for future billing events. Bounds are uncalibrated and summed bounds are not a
 joint probability interval. The 10.6433% monthly rolling research WAPE does not

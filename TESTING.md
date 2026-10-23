@@ -1,7 +1,7 @@
 # Backend verification
 
-Latest broad verification (2026-10-23): **599 tests passed** in 144.948 seconds,
-followed by **10 focused prospective-evidence tests** in 6.511 seconds. Django
+Latest broad verification (2026-10-23): **607 tests passed** in 119.190 seconds,
+including six primary-SARIMA alignment tests and prospective evidence checks. Django
 system checks passed and the migration drift check found no changes. A fast
 password hasher was used only in the test process; production password settings
 are unchanged.
@@ -504,3 +504,30 @@ coverage review was invented, and no dummy sales entered the evidence.
 
 See [forecasting/PROSPECTIVE_SCORING.md](forecasting/PROSPECTIVE_SCORING.md) for
 review commands, baseline definition, correction handling and interpretation.
+
+## Primary SARIMA graph alignment — October 23, 2026
+
+The v2 projection engine reuses the current primary monthly SARIMA parameters
+after checking source, coverage, cutoff, checksum, selected configuration and
+training totals. Regular yearly sums the same monthly path; Combined adds that
+regular component to feeding. Weekly/feeding selection is unchanged. Short or
+gapped regular histories retain an explicitly labelled sparse-data fallback;
+eligible history awaits its primary fit, and corrupt artifacts are withheld.
+
+`forecasting.test_primary_projection` covers saved-state replay without fitting,
+monthly/yearly reconciliation, Combined addition, separate historical metrics,
+source mismatch, short-history fallback, both checksum and training-total
+corruption, primary dependency invalidation and preservation of old bundles.
+The broad **607-test** suite passed, including API, maintenance, source-change,
+coverage and prospective-issue regressions. System/migration checks passed.
+Regression log: `/tmp/rosario-primary-alignment-regression.log`.
+
+Live tracked refresh **job 5** succeeded and reused primary monthly model **4**
+(`sarima_010_100_12`, 36 actual months). Authenticated graph checks verified all
+nine combinations, matching primary monthly/yearly paths and Combined sums;
+optimization was blocked during GET checks. All old v1 runs/issues and primary
+model rows matched their pre-refresh fingerprints; the actual-sales fingerprint
+was unchanged. The v2 engine saved **81** new future issues, with no scores or
+invented coverage reviews. Old v1 evidence remains separate. No schema migration
+or frontend edit was needed. Live log:
+`/tmp/rosario-primary-alignment-live-check.log`.

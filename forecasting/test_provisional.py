@@ -69,12 +69,15 @@ class ProvisionalProjectionTests(SimpleTestCase):
         self.assertFalse(points[0]['production_approved'])
         self.assertEqual(points[0]['basis'], 'single_origin_monthly_path_sum')
 
-    def test_all_nine_combinations_have_future_points_and_reconcile(self):
+    @patch('forecasting.provisional.primary_monthly', return_value={
+        'status': 'fallback_allowed', 'dependency': None, 'fallback_reason': 'short_history'})
+    def test_all_nine_combinations_have_future_points_and_reconcile(self, primary):
         snap = snapshot()
         with patch('forecasting.provisional.load_snapshot', return_value=snap):
             snapshots, targets, _ = context(date(2026, 10, 22))
         with patch('forecasting.provisional.train', side_effect=component):
             result = build(snapshots, targets)
+        primary.assert_called()
         for period, views in result['periods'].items():
             self.assertEqual(set(views), {'regular', 'feeding', 'combined'})
             for key, view in views.items():

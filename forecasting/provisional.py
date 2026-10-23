@@ -18,11 +18,12 @@ from statsmodels.tsa.statespace.sarimax import SARIMAX
 from threadpoolctl import threadpool_limits
 
 from .data import load_snapshot
-from .learning import shift_month
-from .lifecycle import _commit_lock
-from .models import ProvisionalForecastRun
+from .learning import ENGINE_VERSION, MIN_MONTHS, month_end, shift_month
+from .lifecycle import _commit_lock, valid_coverage, coverage_revision, coverage_rows
+from .models import MonthlyModelRun, ProvisionalForecastRun
+from .seasonal import is_sarima_artifact
 
-VERSION = 'actual-provisional-sarima-v1'
+VERSION = 'actual-provisional-sarima-v2'
 PERIODS = ('weekly', 'monthly', 'yearly')
 VIEWS = ('regular', 'feeding', 'combined')
 
@@ -61,6 +62,63 @@ def digest(value):
     return hashlib.sha256(json.dumps(canonical(value), sort_keys=True, allow_nan=False).encode()).hexdigest()
 
 
+def primary_monthly(snapshot):
+    """Adapt the exact-source primary fit without optimizing or relaxing approval.
+
+    Short/gapped history can use the sparse-data component. Eligible history
+    awaits primary maintenance instead of silently selecting another model.
+    """
+    coverage = valid_coverage(snapshot)
+    rows = coverage_rows(snapshot, coverage)
+    coverage_hash = coverage_revision(coverage)
+    run = MonthlyModelRun.objects.filter(engine_version=ENGINE_VERSION,
+        source_revision=snapshot.revision, coverage_revision=coverage_hash, cutoff=snapshot.as_of).first()
+    artifact = (run.findings.get('artifact') or {}) if run else {}
+    try:
+        actual_hash = digest(artifact)
+    except (ValueError, TypeError):
+        actual_hash = 'invalid'
+    dependency = {'model_id': run.pk if run else None, 'coverage_revision': coverage_hash,
+                  'artifact_hash': actual_hash, 'status': run.status if run else 'missing',
+                  'selected_candidate': run.findings.get('selected_candidate') if run else None,
+                  'trained_through': run.trained_through.isoformat() if run and run.trained_through else None,
+                  'declared_hash': run.findings.get('artifact_sha256') if run else None}
+    base = {'dependency': dependency, 'primary_model_id': run.pk if run else None,
+            'primary_engine_version': ENGINE_VERSION, 'model_basis': 'primary_monthly_sarima'}
+    if run is None or run.status != 'research_candidate':
+        if len(rows) < MIN_MONTHS:
+            return {**base, 'status': 'fallback_allowed', 'model_basis': 'provisional_fallback',
+                    'fallback_reason': 'primary_requires_36_contiguous_completed_months'}
+        return {**base, 'status': 'primary_refresh_required' if run is None else 'primary_model_unavailable'}
+    try:
+        history = artifact['normalized_history']
+        scale = float(artifact['scale'])
+        valid = (run.findings.get('status') == 'research_candidate' and
+                 is_sarima_artifact(artifact) and actual_hash == run.findings.get('artifact_sha256') and
+                 artifact['name'] == run.findings.get('selected_candidate') and len(rows) >= MIN_MONTHS and
+                 len(rows) == len(history) and artifact['trained_through'] == rows[-1]['month'] and
+                 run.trained_through == month_end(date.fromisoformat(rows[-1]['month'])) and
+                 math.isfinite(scale) and scale > 0 and
+                 all(math.isfinite(float(p)) for p in artifact['params']) and
+                 all(math.isclose(float(v)*scale, r['revenue'], rel_tol=0, abs_tol=.005)
+                     for r, v in zip(rows, history)))
+    except (KeyError, ValueError, TypeError, OverflowError):
+        valid = False
+    if not valid:
+        return {**base, 'status': 'invalid_primary_artifact'}
+    state = {'name': artifact['name'], 'specification': {k: artifact[k] for k in ('order', 'seasonal_order', 'trend')},
+             'scale': artifact['scale'], 'values': history, 'parameters': artifact['params'],
+             'training_start': rows[0]['month'], 'trained_through': artifact['trained_through']}
+    return {**base, 'status': 'provisional', 'state': state, 'seasonal_terms_enabled': True,
+            'selection': 'reuse_primary_earlier_validation_sarima_selection',
+            'observed_periods': len(rows), 'missing_periods': 0,
+            'verified_zero_periods': sum(c.confirmed_zero for c in coverage.values()
+                if rows[0]['month'] <= c.month.isoformat() <= rows[-1]['month']),
+            # Rolling one-month scores cannot describe a multi-step path.
+            'test': None, 'primary_monthly_backtest': {'basis': 'rolling_one_month_ahead',
+                                                     'metrics': run.findings.get('selected_test')}}
+
+
 def context(today=None):
     today = today or timezone.localdate()
     if today > timezone.localdate():
@@ -71,7 +129,9 @@ def context(today=None):
         'monthly': [shift_month(today.replace(day=1), n).isoformat() for n in range(1, 13)],
         'yearly': [date(today.year+n, 1, 1).isoformat() for n in (1, 2)],
     }
-    identity = {'version': VERSION, 'sources': {p: s.revision for p, s in snapshots.items()}, 'targets': targets}
+    primary = primary_monthly(snapshots['monthly'])
+    identity = {'version': VERSION, 'sources': {p: s.revision for p, s in snapshots.items()}, 'targets': targets,
+                'primary_monthly': {'dependency': primary['dependency'], 'status': primary['status']}}
     return snapshots, targets, digest(identity)
 
 
@@ -203,13 +263,21 @@ def future_rows(component, targets, period):
 
 def build(snapshots, targets, previous=None):
     components = {}
+    primary = primary_monthly(snapshots['monthly'])
     for period in ('weekly', 'monthly'):
         for segment in ('regular', 'feeding'):
             key = f'{segment}_{period}'
             rows = series(snapshots[period], segment, period)
-            signature = digest(rows)
+            is_primary = segment == 'regular' and period == 'monthly'
+            signature = digest({'rows': rows, 'primary': primary}) if is_primary else digest(rows)
             old = (previous or {}).get('components', {}).get(key, {})
-            component = old if old.get('input_signature') == signature and old.get('state') else train(rows, period)
+            if is_primary and primary['status'] != 'fallback_allowed':
+                component = primary
+            else:
+                component = old if old.get('input_signature') == signature and old.get('state') else train(rows, period)
+                component = {**component, 'model_basis': 'provisional_fallback' if is_primary else 'provisional_selection'}
+                if is_primary:
+                    component['fallback_reason'] = primary['fallback_reason']
             components[key] = {**component, 'input_signature': signature}
     periods = {}
     for period in PERIODS:
@@ -220,11 +288,18 @@ def build(snapshots, targets, previous=None):
             views[segment] = {'status': 'provisional' if points else component['status'], 'points': points,
                 'model': component.get('state', {}).get('name'),
                 'seasonal_terms_enabled': component.get('seasonal_terms_enabled', False),
+                'model_basis': component.get('model_basis'),
+                'primary_model_id': component.get('primary_model_id'),
+                'primary_engine_version': component.get('primary_engine_version'),
+                'primary_monthly_backtest': component.get('primary_monthly_backtest') if period == 'monthly' else None,
+                'fallback_reason': component.get('fallback_reason'),
                 'metrics': component.get('test') if period != 'yearly' else None,
                 'observed_periods': component.get('observed_periods'), 'missing_periods': component.get('missing_periods'),
                 'warnings': ['Limited actual invoices; accuracy is unvalidated for future periods.',
                     'Missing invoice periods are unknown observations, not zero sales.',
                     'Bounds are uncalibrated model uncertainty; they do not cover all business risks.']}
+            if component.get('fallback_reason'):
+                views[segment]['warnings'].append('Short or gapped regular history uses the provisional fallback, not the primary monthly model.')
         combined = []
         if views['regular']['points'] and views['feeding']['points']:
             for regular, feeding in zip(views['regular']['points'], views['feeding']['points']):
@@ -233,6 +308,8 @@ def build(snapshots, targets, previous=None):
                     'is_provisional': True, 'production_approved': False, 'basis': 'sum_of_component_predictions',
                     'interval_basis': 'sum_of_uncalibrated_component_bounds'})
         views['combined'] = {'status': 'provisional' if combined else 'component_unavailable', 'points': combined,
+                              'component_models': {s: {k: views[s].get(k) for k in
+                                  ('model', 'model_basis', 'primary_model_id', 'primary_engine_version')} for s in ('regular', 'feeding')},
                               'metrics': None, 'warnings': ['Regular plus feeding; unclassified invoices excluded.',
                                 'Summed component bounds are not a calibrated combined confidence interval.']}
         periods[period] = views
@@ -261,11 +338,11 @@ def report(period, today=None):
     snapshots, targets, revision = context(today)
     run = ProvisionalForecastRun.objects.filter(engine_version=VERSION, source_revision=revision).first()
     if not run:
-        return {'status': 'refresh_required', 'views': {}, 'targets': targets[period]}
+        return {'status': 'refresh_required', 'engine_version': VERSION, 'views': {}, 'targets': targets[period]}
     findings = dict(run.findings)
     checksum = findings.pop('artifact_digest', None)
     if checksum != digest(findings):
-        return {'status': 'invalid_artifact', 'views': {}, 'targets': targets[period]}
+        return {'status': 'invalid_artifact', 'engine_version': VERSION, 'views': {}, 'targets': targets[period]}
     views = findings['periods'][period]
     current = today or timezone.localdate()
     for segment in ('regular', 'feeding'):
@@ -282,5 +359,5 @@ def report(period, today=None):
         for s in ('regular', 'feeding') if views[s]['points']}
     if combined['stale_history']:
         combined['warnings'].append('Component history is stale; these are rough projections across unobserved periods.')
-    return {'status': 'provisional', 'model_id': run.pk, 'views': views, 'targets': targets[period],
+    return {'status': 'provisional', 'engine_version': VERSION, 'model_id': run.pk, 'views': views, 'targets': targets[period],
             'source_revisions': findings['source_revisions'], 'production_approved': False}

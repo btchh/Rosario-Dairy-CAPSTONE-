@@ -16,6 +16,11 @@ actual issue timestamp. Repeated refreshes and source corrections within that
 bucket cannot replace its predictions. A new origin can issue another forecast
 for the same target; evidence is reported separately by horizon.
 
+The v2 chart engine reuses the aligned primary seasonal SARIMA for regular
+monthly/yearly paths. Saved v1 issues remain unchanged; evidence groups must
+match the graph's `provisional_engine_version`. Do not pool versions to claim a
+model improvement. Short/gapped regular histories use a labelled fallback.
+
 Only actual issue timestamps before the target starts qualify. The run must
 already exist when issuing. Old runs with stale source/target revisions are not
 backfilled. Existing private 2026 previews and historical backtests are not

@@ -14,6 +14,8 @@ from .chart import chart_report
 from .weekly import weekly_report
 from .refresh_jobs import enqueue, launch_after_commit, lookup, payload
 from .prospective import evidence_report
+from .beta_graph import report as beta_graph_report
+from django.utils import timezone
 
 
 class ProjectionEvidenceView(APIView):
@@ -64,6 +66,31 @@ class WeeklyModelView(APIView):
 class ForecastQuery(serializers.Serializer):
     period = serializers.ChoiceField(choices=['weekly', 'monthly', 'yearly'], default='monthly')
     scope = serializers.ChoiceField(choices=['real'], default='real')
+
+
+class BetaGraphQuery(serializers.Serializer):
+    period = serializers.ChoiceField(choices=['weekly', 'monthly', 'yearly'], default='monthly')
+    scope = serializers.ChoiceField(choices=['real', 'demo2026'], default='real')
+    as_of = serializers.DateField(default=timezone.localdate)
+
+    def validate(self, attrs):
+        if not 3 <= attrs['as_of'].year <= 9997:
+            raise serializers.ValidationError('as_of is outside the supported calendar.')
+        if attrs['scope'] == 'real' and attrs['as_of'] > timezone.localdate():
+            raise serializers.ValidationError('Real sales cannot use a future as_of date.')
+        if attrs['scope'] == 'demo2026' and attrs['as_of'].year < 2026:
+            raise serializers.ValidationError('The demo starts in 2026.')
+        return attrs
+
+
+class BetaGraphView(APIView):
+    permission_classes = [IsAdmin]
+    throttle_classes = [ExpensiveReadRateThrottle]
+
+    def get(self, request):
+        query = BetaGraphQuery(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        return Response(beta_graph_report(**query.validated_data))
 
 
 class ForecastChartView(APIView):

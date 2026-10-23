@@ -216,3 +216,33 @@ class ProjectionScore(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['issued', 'actual_revision'], name='projection_score_revision_unique')]
+
+
+class GraphForecastRun(models.Model):
+    """Immutable beta graph and portable fits; simulated sales never train them."""
+    engine_version = models.CharField(max_length=60)
+    scope = models.CharField(max_length=12)
+    period = models.CharField(max_length=7)
+    as_of = models.DateField()
+    source_revision = models.CharField(max_length=64)
+    findings = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-pk']
+        constraints = [models.UniqueConstraint(fields=['engine_version', 'scope', 'period', 'as_of', 'source_revision'],
+                                               name='beta_graph_revision_unique')]
+
+
+class GraphPrediction(models.Model):
+    """Preserve each real future prediction before its target period begins."""
+    run = models.ForeignKey(GraphForecastRun, on_delete=models.PROTECT, related_name='issued_predictions')
+    view = models.CharField(max_length=8)
+    target = models.DateField()
+    value = models.DecimalField(max_digits=20, decimal_places=2)
+    issued_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-issued_at', '-pk']
+        constraints = [models.UniqueConstraint(fields=['run', 'view', 'target'], name='beta_graph_issue_unique'),
+                       models.CheckConstraint(condition=models.Q(value__gte=0), name='beta_graph_issue_nonnegative')]

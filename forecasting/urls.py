@@ -1,8 +1,9 @@
 from django.urls import path
-from .views import ProjectionEvidenceView
+from .views import ProjectionEvidenceView, BetaGraphView
 from .views import ForecastView, PatternStudyView, ModelStatusView, DemoForecastView, FeedingStudyView, ForecastChartView, WeeklyModelView, ForecastRefreshView
 
 urlpatterns=[
+    path('graph/', BetaGraphView.as_view(), name='beta-forecast-graph'),
     path('evidence/', ProjectionEvidenceView.as_view(), name='projection-evidence'),
     path('refresh/', ForecastRefreshView.as_view(), name='forecast-refresh'),
     path('refresh/<int:job_id>/', ForecastRefreshView.as_view(), name='forecast-refresh-job'),

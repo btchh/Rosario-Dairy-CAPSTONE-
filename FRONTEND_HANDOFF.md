@@ -1,152 +1,102 @@
-# Remaining frontend integration
+# Forecasting API guide
 
-Updated 2026-10-23 (Asia/Manila). Checked against JayMark frontend commit
-`3d5e913f`. This handoff contains pending integration work only.
+Updated 2026-10-23 (Asia/Manila). API contract only; frontend implementation is
+owned by the frontend team. No frontend files were edited.
 
-## Three views in the existing forecast line graph
+Before running the system, always run `venv/bin/python manage.py migrate` from
+the backend directory, including after pulling changes. Start the backend only
+after migrations succeed.
 
-Keep one forecast card with three tabs, in this order:
+## Authentication
 
-1. **Combined** — regular plus milk-feeding recorded revenue.
-2. **Regular sales** — regular dairy revenue and its SARIMA predictions.
-3. **Milk feeding** — feeding revenue and its own predictions when available.
-
-Keep **Weekly / Monthly / Yearly** as a separate selector alongside these sales
-tabs. All nine combinations use the same line graph. No additional audit cards,
-program tables or separate feeding dashboard are required.
-
-New admin-only endpoint, through the existing authenticated API client:
+Forecasting endpoints require an authenticated admin:
 
 ```http
-GET /api/forecasting/chart/?period=weekly
-GET /api/forecasting/chart/?period=monthly
-GET /api/forecasting/chart/?period=yearly
+Authorization: Bearer <access_token>
 ```
 
-The direct response includes `available_views`, `default_view: combined`,
-`period`, `available_periods: [weekly, monthly, yearly]`, `source_revision`,
-`as_of_exclusive`, `default_range` and `views`. Use `views[selectedTab]` to populate
-the graph; switching sales tabs needs no new fetch. Changing the time period
-fetches the corresponding response. Include `period` in frontend query/cache keys.
-The default period is monthly.
+## Centered three-series graph
 
-| Field in each view | Graph behavior |
+```http
+GET /api/forecasting/graph/?period=monthly&scope=real
+GET /api/forecasting/graph/?period=monthly&scope=demo2026
+```
+
+| Query | Values | Default |
+| --- | --- | --- |
+| `period` | `weekly`, `monthly`, `yearly` | `monthly` |
+| `scope` | `real`, `demo2026` | `real` |
+| `as_of` | ISO date anchoring the range | Today, Asia/Manila |
+
+Real scope cannot use a future date. Demo scope starts in 2026 and can simulate
+another date without using simulated sales for training. Non-default dates
+require a saved offline refresh for that date; GET never trains.
+
+Ranges are centered on `as_of`, independently of the latest recorded sale:
+
+| Period | Earlier buckets | Current bucket | Later buckets | Total |
+| --- | --- | --- | --- | --- |
+| Weekly | 3 weeks | This week | 3 weeks | 7 |
+| Monthly | 3 months | This month | 3 months | 7 |
+| Yearly | 2 years | This year | 2 years | 5 |
+
+Weeks are Monday–Sunday. Months/years follow the calendar. Dates identify bucket
+starts, with inclusive `end_date`. Values are Philippine-peso revenue, not units.
+
+The response contains `scope`, `is_demo`, `training_scope: real`, `period`,
+`as_of`, `available_periods`, `available_views`, `range`, `status`, `model_id`,
+and `views`. `range` has `start_date`, `end_date`, `past_periods`, `future_periods`.
+`status: ready` means a matching saved beta graph exists; it is not production
+approval or an accuracy guarantee. `refresh_required` leaves recorded values
+available, with unavailable estimates null. Beta predictions do not depend on
+the older twelve-month production approval gate.
+
+`views` contains `combined`, `regular`, `feeding`. Each entry has `label`,
+`points`, `evaluation`, and a nullable availability `message`.
+
+Each point contains:
+
+| Field | Meaning |
 | --- | --- |
-| `label` | Tab/series title |
-| `history` | Period points: `date`, `end_date`, `actual`, `predicted`, `invoice_count`, `record_status`, `is_partial_period` |
-| `metrics.wape_percent` | Historical error for this view only; metrics is null without valid predictions |
-| `historical_prediction_status` | Whether a retained comparison line is available |
-| `forecast` | Approved live points only; empty means withheld |
-| `provisional_forecast` | Rough future points for the selected sales view and period |
-| `provisional_status`, `provisional_metadata` | Rough prediction availability, model evidence, stale history and limitations |
-| `status`, `status_message` | Explain the view's current prediction availability |
+| `date`, `end_date` | Bucket dates |
+| `past_prediction` | Estimate for an earlier bucket; otherwise null |
+| `actual` | Recorded sales through `as_of`; future buckets are null |
+| `future_prediction` | Estimate for the current/later bucket; otherwise null |
+| `is_current` | Bucket contains `as_of` |
+| `is_partial_period` | Current actual total is partial, or a demo week crosses the 2026 dataset boundary |
+| `prediction_basis` | `issued_forecast`, `historical_test`, `forecast`, or `fixed_origin_demo` |
 
-Render `actual` as the solid recorded-sales line and `predicted` as the dashed
-historical comparison line. Monthly predictions are SARIMA backtests. For yearly
-rows label the dashed series **Sum of monthly SARIMA predictions**, using
-`prediction_basis: sum_of_12_monthly_rolling_predictions`; it is not a prediction
-issued before the year began. Keep null values as gaps (`connectNulls={false}`); never
-replace them with zero. If predictions are unavailable, retain the recorded line
-and show a short availability message. A recorded zero from a real invoice is
-separate from a month with no invoices (`actual: null`).
+The current bucket can contain both partial actual sales and a full-period
+estimate. These are different quantities. Null means unavailable/unknown and is
+not zero. No missing segment is substituted with zero to create a Combined
+prediction; both component estimates are required.
 
-For each selected time period, all three views share the same calendar.
-Weekly buckets run Monday–Sunday, monthly buckets are calendar months, and yearly
-buckets are calendar years. Weekly buckets can span two years; use `date` and
-`end_date` for labels. Period ends are clipped to the source cutoff; label
-`is_partial_period: true` as a partial week/year rather than a full-period total.
-Actual totals are grouped directly from invoice dates. Combined recorded values sum
-classified regular and feeding invoices; unclassified sales are excluded. A
-month with only one segment's invoices contains that recorded amount, not an
-attestation that the other segment had zero demand. Do not sum or average
-component WAPE to fabricate a combined score.
+`issued_forecast` is an immutable real forecast saved before the target began.
+If none exists for a past bucket, `historical_test` is reconstructed using only
+real data preceding that bucket. The basis distinguishes these cases; they are
+not interchangeable evidence. Original issued values are retained after later
+refreshes or ledger corrections. Current/future estimates are available in beta
+without waiting a year for approval. Limited data can produce flat SARIMA paths;
+no artificial variation is added.
 
-Use `default_range` for the initial historical comparison window when supplied;
-other retained periods remain in `history`. Monthly defaults to the 2025
-backtest; weekly defaults to its separate 13-week test window; yearly shows all
-recorded years so its graph is not reduced to a single annual point. Historical
-comparisons can display while the live status is `stale_data`;
-do not hide the entire historical graph because a current forecast is withheld.
-If source data changes, old prediction lines and scores are withheld until an
-aligned model result exists.
+## Demo data and evaluation
 
-All three time-period selectors remain available even when a prediction line is
-unavailable. Weekly uses a separately fitted SARIMA research model when an aligned saved
-backtest exists; it never splits monthly forecasts into weekly values. Yearly includes a regular prediction
-sum only when all twelve aligned monthly backtests exist for that year. Incomplete
-years have a null predicted value. Weekly `metrics` describe the saved weekly backtest. Yearly `metrics` remain
-null because sums of monthly predictions are not independent annual evaluation. `validated_forecast_periods`
-currently contains only monthly; it does not restrict which history views can be
-selected. Approved live points remain gated and monthly-only.
+`scope=demo2026` displays only non-voided generated transactions in the reserved
+`2026:NNNNNN` namespace, dated in 2026 and no later than `as_of`. It never treats
+real 2026 invoices as simulated. Demo fitting uses only real pre-2026 data;
+simulated sales and later real sales cannot enter its model selection or fits.
+Changing a dummy amount updates displayed results/evaluation while unchanged
+training inputs reuse saved parameters. Demo predictions are hypothetical,
+fixed-origin demonstrations, not forecasts proven issued before 2026.
 
-Regular monthly SARIMA retains its 10.6433% historical WAPE. Separate weekly
-SARIMA research now has 26.8135% WAPE over 13 later weeks, versus 20.2992% for its
-validation-selected baseline. Label weekly scores as retrospective research;
-they do not pass a weekly production gate or establish the monthly 15% target.
-Feeding has no approved model. Rough predictions for all three sales views are
-available separately in `provisional_forecast`, as described below. Approved
-Combined predictions remain withheld until both approved components are available.
-Never copy Regular into Combined or substitute zero for an unavailable component.
-No dummy sales are used. The retired synthetic endpoint returns HTTP 410.
+`evaluation` groups completed visible buckets by `prediction_basis`. Each group
+contains `periods`, `wape_percent`, `mae`, and `bias`. Current partial periods,
+missing actuals, incomplete demo boundary weeks and missing predictions are excluded. WAPE is null when its
+actual-value denominator is zero. Demo scores remain under `fixed_origin_demo`
+and do not count toward real forecast accuracy or production evidence. Regular
+monthly error below 15% is an improvement target, not a display blocker.
 
-## Rough future predictions in all nine combinations
-
-Keep all sales tabs and Weekly / Monthly / Yearly buttons visible. Read
-`views[selectedTab].provisional_forecast` for **13 future complete weeks, 12 months,
-or 2 calendar years**. Top-level `provisional_targets` gives the dates. Each point
-has `date`, `predicted`, `lower_bound`, `upper_bound`, `is_provisional: true` and
-`production_approved: false`. Combined adds matching component predictions;
-yearly values sum twelve monthly predictions from a single forecast origin.
-
-Append these dates to the recorded graph calendar with `actual: null` and label
-the new dashed series **Rough SARIMA prediction**. Extend the displayed range to
-include them: `default_range` describes the historical comparison only. Keep
-unknown recorded periods as gaps; do not fabricate 2026 actuals or connect through
-missing history. Optional shaded bounds must be labelled **Uncalibrated estimate
-range**; summed component ranges are not a combined probability guarantee.
-
-Use `provisional_status: provisional` to display this rough line even when the
-legacy `status` is `stale_data`, `not_modelled` or `horizon_not_validated` and
-approved `forecast` is empty. Display a short **Rough estimate — limited/stale
-invoice history** caption from `provisional_metadata.warnings`. The regular and
-feeding metadata includes `model`, `seasonal_terms_enabled`, `observed_periods`,
-`missing_periods`, `stale_history` and `training_age_days` when available.
-With `refresh_required`, `insufficient_data`, `fit_failed`, `component_unavailable`
-or `invalid_artifact`, retain recorded history and an availability message.
-Also handle `primary_refresh_required`, `primary_model_unavailable` and
-`invalid_primary_artifact` without substituting another prediction line.
-
-For monthly/yearly Regular, `provisional_metadata.model_basis` is
-`primary_monthly_sarima` when the saved primary seasonal SARIMA is reused.
-`primary_model_id` identifies that fit. Combined's metadata includes
-`component_models` identifying its Regular and Feeding components. For short or
-gapped regular history, `model_basis: provisional_fallback` and `fallback_reason`
-identify the simpler sparse-data model; keep its warning visible. Weekly and
-feeding selection are unchanged. Top-level `provisional_engine_version` is
-`actual-provisional-sarima-v2`; use this version when matching prospective
-evidence groups, keeping earlier engine versions separate.
-
-Keep `metrics.wape_percent` attached to its existing historical comparison.
-`provisional_metadata.metrics.wape` is a different single-origin observed-period
-test, with `sample_count`, `rows` and `basis`; do not substitute it for the primary
-monthly score or imply future accuracy. Primary monthly reuse leaves
-`provisional_metadata.metrics` null and exposes its historical score separately
-as `primary_monthly_backtest`, with `basis: rolling_one_month_ahead`. Provisional
-yearly/Combined metrics remain null. The primary regular monthly 10.6433%
-historical error does not measure feeding or a twelve-month future path.
-
-Short feeding history currently selects a nonseasonal local-level SARIMA special
-case, so its future line can be flat. Do not infer seasonal events or contracts.
-Nightly refresh is scheduled for **12:00 midnight, Asia/Manila**; eligible new or
-corrected data is incorporated then or through the manual button below. Unchanged
-component observations reuse saved state. `validated_forecast_periods` describes
-legacy monthly research support and must not hide rough horizon controls.
-
-## Manual refresh button
-
-Add one admin **Refresh forecast** button beside the existing graph selectors.
-It refreshes all sales views and horizons together. Keep the selected tab/period;
-use a spinner and short inline status, with no extra dashboard panel.
+## Refresh lifecycle
 
 ```http
 POST /api/forecasting/refresh/
@@ -155,105 +105,33 @@ Content-Type: application/json
 {}
 ```
 
-Use the authenticated API client and send no date, scope, model or force fields.
-The backend returns **202 Accepted**, not a finished-training result. The payload
-includes `job_id`, `status`, `stage`, `already_running`, `message` and `status_url`
-(e.g. `/api/forecasting/refresh/12/`).
+The body must be an empty object. A 202 response includes `job_id`, `status`,
+`status_url`, `already_running` and `message`. `Location` identifies the job.
+Manual refresh and midnight maintenance now also refresh all three centered
+periods for both real and demo scopes, anchored to the current business date.
+Unchanged data reuses saved fits. Active work is shared rather than duplicated.
 
-1. On page/card load, `GET /api/forecasting/refresh/` recovers the latest job;
-   `status: idle` means no prior job. Resume polling if queued/running.
-2. Disable the button while `queued` or `running`, show **Refreshing…**, and poll
-   the returned `status_url` every **5 seconds**. These GET responses are uncached
-   and never fit. Stop polling on unmount; the job continues independently.
-3. On `succeeded`, stop polling and invalidate/refetch chart queries for all three
-   periods plus visible forecast/model/report queries. Show **Forecast refreshed**.
-   If every phase result has `created: false`, **Forecast already up to date** is
-   appropriate: unchanged fits are reused.
-4. On `failed`, stop polling, show the safe returned `message`, and enable retry.
-   Refetch the graph for any completed updates; old valid versions are retained.
+GET `/api/forecasting/refresh/` returns the latest job or
+`{"status":"idle","job_id":null}`. GET its `status_url` returns the job's current
+state. `queued`/`running` are active; `succeeded`/`failed` are terminal. Five-second
+polling fits the read limit. A successful refresh updates saved graph results;
+it does not guarantee lower error. Status responses also include timestamps,
+stage, results and a nullable error code.
 
-GET latest/detail responses include status/stage, trigger, timestamps, results,
-error code/message and status URL. The ID-specific URL accepts GET polling, not
-POST. Map stage names to user-facing text:
-
-| Stage | Text |
+| HTTP status | Meaning |
 | --- | --- |
-| `queued` | Waiting to refresh |
-| `refresh_forecast_patterns` | Checking sales |
-| `refresh_forecast_models` | Updating monthly forecasts |
-| `refresh_weekly_forecasts` | Updating weekly forecasts |
-| `refresh_provisional_forecasts` | Updating forecast views |
-| `refresh_projection_evidence` | Checking forecast results |
-| `complete` | Forecast refreshed |
+| 400 | Invalid period/scope/date/body |
+| 401 / 403 | Authentication required / admin permission required |
+| 404 | Unknown refresh job |
+| 409 | Maintenance is starting; check the latest job |
+| 429 | Rate limit; observe `Retry-After` |
+| 503 | Dependency unavailable; safe `detail` provided |
 
-Repeated accepted requests share the active job (`already_running: true`). Manual
-and midnight jobs cannot fit concurrently. **409** means maintenance is starting:
-wait and check the latest-job endpoint. **429** means the one-start-per-minute
-account limit was reached; respect `Retry-After` and continue polling an existing
-job. Preserve normal **401/403** handling; unknown job IDs return **404**.
+Refresh starts are limited to one per minute per account. GET does not fit.
 
-Tooltip: **Refresh using the latest completed weeks and months.** Unfinished
-periods remain excluded: an older completed-period correction can retrain now,
-while a current entry waits for its training period to close. Completion does
-not guarantee better accuracy or production approval. Preserve provisional/stale
-labels and do not add coverage-attestation controls to this button.
+## Existing endpoints
 
-## Reconcile the existing forecast report summary
-
-The existing `sarima_forecast` report preview and
-`GET /api/forecasting/forecast/?period=monthly` remain regular-only compatibility
-routes. They do not select the three graph tabs.
-
-- Display the backend `status_message` and `quality_gate.reasons` when relevant.
-- Their historical score is `metrics.retrospective_regular_monthly`; reviewed
-  future scores are `metrics.prospective_regular_monthly`, not `metrics.combined`.
-- The compatibility forecast/report route still supports monthly predictions
-  only. Use the new chart endpoint's `available_periods` for the Weekly / Monthly /
-  Yearly graph selector; do not use the compatibility route to hide these options.
-- Publish a current value only with `status: ready` and a valid forecast point.
-  The saved January 2026 research point is not a current approved forecast.
-- The old total-sales baseline map, fixed-origin comparison and planning estimate
-  do not match the current backend contract. Do not manufacture missing values.
-
-Monthly model details remain at `/api/forecasting/models/`. Separate weekly
-research details are at `/api/forecasting/weekly/`: model/source/cutoff,
-`metrics`, `baseline_metrics`, `beats_baseline`, candidates, retained test rows,
-and an explicitly non-live `research_forecast`. `forecast` remains empty and
-`production_ready` is false. Weekly `as_of_exclusive` is Monday (current partial
-week excluded); monthly/yearly chart snapshots exclude the current partial month.
-A source change withholds old weekly comparisons until offline maintenance saves
-an aligned revision. GET never fits. Backend setup is documented in the forecast
-README; no migration or maintenance command belongs in the frontend flow.
-
-The feeding
-history audit remains available from `/api/forecasting/feeding/`. Neither needs
-an additional panel for the requested three-tab line graph.
-
-## Accuracy labels on the existing graph
-
-Admin-only `GET /api/forecasting/evidence/` exposes prospective evidence for the
-provisional chart models. If showing accuracy in the existing graph's tooltip,
-match `period`, `view`, `horizon` and `engine_version`; do not combine horizons
-or substitute the primary monthly research score. `scored_count: 0` or a null
-`wape` means accuracy is not yet available, not zero error. Pending outcomes and
-unreviewed/corrected periods do not count as scored. This endpoint is read-only
-and does not refresh models. Keep the existing graph; no new panel or coverage
-review controls are needed. Provisional labels remain required regardless of
-scores; this evidence does not approve production forecasts.
-
-## Shared availability and customer summaries
-
-Shared availability handling: rate-limited endpoints now return **503** with a
-safe `detail` message if the rate-limit cache is unavailable. Database
-connection/operational failures also return **503**. Preserve form values and
-show a retry-later message; do not automatically repeat a sale submission.
-For encoding retries, retain the original `request_id` and verify transaction
-history first when the outcome is uncertain. Existing **401/403/429** handling
-is unchanged. Customer `transaction_count` and `last_sale` now match the user's
-visible non-voided receipt history; staff can legitimately receive zero/null
-for a customer whose receipts are hidden.
-
-## Reference
-
-- [Forecast API and publication rules](forecasting/README.md)
-- [Milk-feeding evidence and limitations](forecasting/FEEDING_RESEARCH.md)
+`/api/forecasting/chart/`, `/forecast/`, report previews and existing model/evidence
+routes retain their previous contracts for compatibility. The new three-series
+contract is `/api/forecasting/graph/`; it does not add another approval series.
+Existing clients can continue using the old endpoints while adopting the new API.

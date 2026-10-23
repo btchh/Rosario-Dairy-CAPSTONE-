@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 LOCK_ID = 185213773
 ACTIVE = ('queued', 'running')
 STAGES = ('refresh_forecast_patterns', 'refresh_forecast_models',
-          'refresh_weekly_forecasts', 'refresh_provisional_forecasts', 'refresh_projection_evidence')
+          'refresh_weekly_forecasts', 'refresh_provisional_forecasts', 'refresh_beta_graphs', 'refresh_projection_evidence')
 
 
 @contextmanager

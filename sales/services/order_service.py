@@ -1,7 +1,7 @@
 from django.db import transaction as db_transaction
 from django.utils import timezone
 from decimal import Decimal
-from ..models import Order, OrderItem, Transaction
+from ..models import Order, OrderItem, Transaction, StockReturn
 from inventory.models import ProductBatch
 from . import checkout_service
 
@@ -41,11 +41,13 @@ def void_fulfilled_order(order):
             raise ValueError("This transaction has already been voided.")
 
         skipped_batches = []
-        for item in txn.items.select_related('product_batch').all():
+        for item in txn.items.select_related('product_batch').order_by(
+                'product_batch__product_id', 'product_batch__expiration_date', 'product_batch_id', 'pk'):
             batch = ProductBatch.objects.select_for_update().get(pk=item.product_batch_id)  # pyright: ignore[reportAttributeAccessIssue]
             if (batch.status in ('expired', 'disposed') or
                     batch.expiration_date < timezone.localdate()):
                 skipped_batches.append(batch.batch_number)
+                StockReturn.objects.create(sale_item=item, quantity=Decimal('0'))
                 continue
 
             # Cap the restore at initial_quantity, mirroring the cap
@@ -60,6 +62,7 @@ def void_fulfilled_order(order):
                 if batch.status == 'depleted':
                     batch.status = 'available'
                 batch.save()
+            StockReturn.objects.create(sale_item=item, quantity=restore_amount)
 
         txn.is_voided = True
         txn.save()

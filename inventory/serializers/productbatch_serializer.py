@@ -93,4 +93,8 @@ class ProdBatchSerializer(serializers.ModelSerializer):
 
   def update(self, instance, validated_data):
     validated_data.pop('quantity', None)
-    return super().update(instance, validated_data)
+    with transaction.atomic():
+      current = ProductBatch.objects.select_for_update().get(pk=instance.pk)
+      self.instance = current
+      validated_data = self.validate(validated_data)
+      return super().update(current, validated_data)

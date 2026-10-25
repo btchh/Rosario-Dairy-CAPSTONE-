@@ -1167,7 +1167,13 @@ class SalesAuditRegressionTests(TestCase):
             response = client.get('/sales/transactions/')
 
         self.assertEqual(response.status_code, 200)
-        self.assertLessEqual(len(queries), 5)
+        # Two bounded reads verify current category/product access boundaries,
+        # including when a previous cache invalidation failed.
+        self.assertLessEqual(len(queries), 7)
+        with CaptureQueriesContext(connection) as warm_queries:
+            repeated = client.get('/sales/transactions/')
+        self.assertEqual(repeated['X-Data-Cache'], 'HIT')
+        self.assertEqual(len(warm_queries), 2)
 
     def test_order_history_query_count_does_not_grow_per_item(self):
         for _ in range(3):

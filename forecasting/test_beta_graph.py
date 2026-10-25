@@ -2,12 +2,14 @@
 from copy import deepcopy
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
+from django.core.management import call_command, CommandError
 from django.utils import timezone
 
 from config.test_support import APITestCase
@@ -51,9 +53,60 @@ class CenteredWindowTests(SimpleTestCase):
         with patch('forecasting.beta_graph.MonthlyModelRun.objects.filter', return_value=[run]):
             state = graph._primary(SimpleNamespace(revision='source', as_of=date(2026,1,1)), rows)
             self.assertEqual(state['name'], artifact['name'])
+            # The primary engine intentionally selects the latest contiguous
+            # block, even when the ledger also has older isolated source rows.
+            with_old_gaps = [{'date': '2023-10-01', 'actual': 20.0},
+                             {'date': '2023-11-01', 'actual': None},
+                             {'date': '2023-12-01', 'actual': None}]+rows
+            reused = graph._primary(SimpleNamespace(revision='source', as_of=date(2026,1,1)), with_old_gaps)
+            self.assertEqual(reused, state)
+            self.assertEqual(reused['training_start'], '2024-01-01')
+            # A gap within the fitted window or a newer observation invalidates
+            # reuse; selecting an arbitrary matching subsection would leak data.
+            missing = deepcopy(rows)
+            missing[5]['actual'] = None
+            self.assertIsNone(graph._primary(SimpleNamespace(revision='source', as_of=date(2026,1,1)), missing))
+            extended = rows+[{'date':'2026-01-01', 'actual':100.0}]
+            self.assertIsNone(graph._primary(SimpleNamespace(revision='source', as_of=date(2026,2,1)), extended))
             changed = deepcopy(rows)
             changed[-1]['actual'] = 999
             self.assertIsNone(graph._primary(SimpleNamespace(revision='source', as_of=date(2026,1,1)), changed))
+
+    def test_sixth_observation_with_zero_validation_does_not_erase_beta_model(self):
+        rows = [{'date':f'2025-{i:02d}-01', 'actual':value}
+                for i, value in enumerate([100,100,100,0,0,500],1)]
+        result = graph._train(rows,'monthly')
+        self.assertEqual(result['status'],'provisional')
+        self.assertEqual(result['state']['name'],'local_level')
+        self.assertEqual(result['selection'],'local_level_zero_validation_denominator')
+        self.assertTrue(all(v['wape'] is None for v in result['validation'].values()))
+        self.assertIsNotNone(graph._point(result,date(2025,7,1),'monthly'))
+
+    def test_failed_nonzero_validation_is_not_mistaken_for_zero_sales(self):
+        rows = [{'date':f'2025-{i:02d}-01', 'actual':100} for i in range(1,7)]
+        failed = {'status':'fit_failed','validation':{'ar1':{'wape':None,'error':'fit failed'}}}
+        with patch('forecasting.beta_graph.train',return_value=failed), \
+                patch('forecasting.beta_graph.fit',side_effect=AssertionError('No known zero validation')):
+            self.assertEqual(graph._train(rows,'monthly'),failed)
+
+
+@override_settings(IS_PRODUCTION=True)
+class ProductionDemoGuards(SimpleTestCase):
+    def test_production_rejects_demo_fitting_and_seeding_before_database_access(self):
+        with self.assertRaisesMessage(ValueError, 'unavailable in production'):
+            graph.context('monthly','demo2026',date(2026,10,25))
+        for command, options in [('refresh_beta_graphs', {'scope':'demo2026'}),
+                                 ('populate_2026_sales', {'apply':True})]:
+            with self.assertRaisesMessage(CommandError, 'unavailable in production'):
+                call_command(command,stdout=StringIO(),**options)
+
+    def test_regular_refresh_processes_only_real_sales(self):
+        namespace='forecasting.management.commands.refresh_beta_graphs.refresh'
+        with patch(namespace,return_value=(SimpleNamespace(pk=1),False)) as refresh:
+            call_command('refresh_beta_graphs',stdout=StringIO())
+        self.assertEqual(refresh.call_count,3)
+        self.assertEqual({c.args[0] for c in refresh.call_args_list},set(graph.PERIODS))
+        self.assertTrue(all(c.args[1]=='real' for c in refresh.call_args_list))
 
 
 class BetaGraphTests(APITestCase):
@@ -183,6 +236,33 @@ class BetaGraphTests(APITestCase):
         self.assertTrue(all(GraphPrediction.objects.get(pk=pk).value==value for pk,value in frozen))
         self.assertIn('issued_forecast',run.findings['views']['regular']['evaluation'])
 
+    def test_replayed_combined_and_components_come_from_one_complete_issue(self):
+        with patch('django.utils.timezone.now',return_value=timezone.make_aware(datetime(2026,7,15,12))):
+            first,_=self.refresh('monthly','real',date(2026,7,15))
+        # A later refresh could issue regular predictions while feeding fitting
+        # fails. Replaying each view independently would yield 999+123 != 246.
+        partial = GraphForecastRun.objects.create(engine_version=graph.VERSION,scope='real',period='monthly',
+            as_of=date(2026,7,20),source_revision='partial',findings={})
+        with patch('django.utils.timezone.now',return_value=timezone.make_aware(datetime(2026,7,20,12))):
+            GraphPrediction.objects.create(run=partial,view='regular',target=date(2026,8,1),value=999)
+        run,_=self.refresh('monthly','real',date(2026,9,15))
+        points={v:next(p for p in run.findings['views'][v]['points'] if p['date']=='2026-08-01') for v in graph.VIEWS}
+        self.assertEqual(points['regular']['past_prediction'],123)
+        self.assertEqual(points['combined']['past_prediction'],
+                         points['regular']['past_prediction']+points['feeding']['past_prediction'])
+        self.assertTrue(all(p['prediction_basis']=='issued_forecast' for p in points.values()))
+        # With no complete issued bundle, retain real component issues but do
+        # not manufacture a Combined prediction that was never issued.
+        GraphPrediction.objects.filter(run=first,target=date(2026,8,1)).delete()
+        ctx=graph.context('monthly','real',date(2026,9,15))
+        with patch('forecasting.beta_graph.train',side_effect=fake_train), \
+                patch('forecasting.beta_graph._point',side_effect=fake_point):
+            result=graph.build(ctx)
+        regular=next(p for p in result['views']['regular']['points'] if p['date']=='2026-08-01')
+        combined=next(p for p in result['views']['combined']['points'] if p['date']=='2026-08-01')
+        self.assertEqual(regular['past_prediction'],999)
+        self.assertIsNone(combined['past_prediction'])
+
     def test_invalidated_and_corrupt_artifacts_do_not_fit_on_get(self):
         run,_ = self.refresh()
         corrupted = deepcopy(run.findings)
@@ -194,6 +274,9 @@ class BetaGraphTests(APITestCase):
         self.assertNotEqual(result['views']['regular']['points'][0]['actual'],99999)
 
     def test_permissions_queries_and_legacy_contract_are_preserved(self):
+        with override_settings(IS_PRODUCTION=True):
+            self.assertEqual(self.client.get('/api/forecasting/graph/', {'scope':'demo2026'}).status_code,400)
+            self.assertEqual(self.client.get('/api/forecasting/graph/', {'scope':'real'}).status_code,200)
         for values in ({'period':'daily'}, {'scope':'dummy'}, {'as_of':'invalid'},
                        {'as_of':'9999-01-01','scope':'demo2026'}, {'as_of':'2099-01-01'},
                        {'scope':'demo2026','as_of':'2025-01-01'}):

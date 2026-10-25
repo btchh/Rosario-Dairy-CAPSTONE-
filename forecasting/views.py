@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from django.conf import settings
 
 from rest_framework import serializers
 from rest_framework.response import Response
@@ -74,6 +75,8 @@ class BetaGraphQuery(serializers.Serializer):
     as_of = serializers.DateField(default=timezone.localdate)
 
     def validate(self, attrs):
+        if attrs['scope'] == 'demo2026' and settings.IS_PRODUCTION:
+            raise serializers.ValidationError({'scope': 'Demo forecasting is unavailable in production.'})
         if not 3 <= attrs['as_of'].year <= 9997:
             raise serializers.ValidationError('as_of is outside the supported calendar.')
         if attrs['scope'] == 'real' and attrs['as_of'] > timezone.localdate():

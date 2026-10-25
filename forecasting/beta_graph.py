@@ -10,6 +10,7 @@ import math
 import numpy as np
 
 from django.db import transaction
+from django.conf import settings
 from django.utils import timezone
 
 from sales.models import Transaction
@@ -18,11 +19,11 @@ from .data import load_snapshot
 from .learning import ENGINE_VERSION, shift_month
 from .lifecycle import _commit_lock
 from .models import GraphForecastRun, GraphPrediction, MonthlyModelRun
-from .provisional import digest, series, train, fit, future_rows
+from .provisional import digest, series, train, fit, future_rows, project
 from .seasonal import is_sarima_artifact
 from .chart import period_start, period_end
 
-VERSION = 'centered-beta-sarima-v1'
+VERSION = 'centered-beta-sarima-v3'
 PERIODS = ('weekly', 'monthly', 'yearly')
 SCOPES = ('real', 'demo2026')
 VIEWS = ('combined', 'regular', 'feeding')
@@ -43,7 +44,12 @@ def window(period, as_of):
 
 def _primary(snapshot, rows):
     """Reuse a saved primary seasonal SARIMA only for its exact earlier history."""
-    if not rows or any(r['actual'] is None for r in rows):
+    # The primary engine trains on the latest contiguous monthly block.
+    # Older isolated sales must not make a matching saved seasonal fit unusable.
+    # Keep the full source revision check; only its training window is narrower.
+    last_gap = max((i for i, row in enumerate(rows) if row['actual'] is None), default=-1)
+    rows = rows[last_gap+1:]
+    if not rows:
         return None
     for run in MonthlyModelRun.objects.filter(engine_version=ENGINE_VERSION,
             source_revision=snapshot.revision, trained_through__lt=snapshot.as_of,
@@ -71,6 +77,8 @@ def _primary(snapshot, rows):
 def context(period, scope, as_of):
     if period not in PERIODS or scope not in SCOPES:
         raise ValueError('Use weekly/monthly/yearly and real/demo2026.')
+    if scope == 'demo2026' and settings.IS_PRODUCTION:
+        raise ValueError('Demo forecasting is unavailable in production.')
     if not isinstance(as_of, date) or isinstance(as_of, datetime):
         raise ValueError('as_of must be a date.')
     if not 3 <= as_of.year <= 9997:
@@ -134,7 +142,46 @@ def _train(rows, unit):
                     'status': 'provisional', 'observed_periods': observed}
         except (ValueError, ArithmeticError, np.linalg.LinAlgError):
             return {'status': 'insufficient_data'}
-    return train(rows, unit)
+    result = train(rows, unit)
+    validation = [row for candidate in result.get('validation', {}).values()
+                  for row in candidate.get('rows', [])]
+    if (result.get('status') == 'fit_failed' and validation
+            and all(row['actual'] == 0 for row in validation)):
+        # Percentage error cannot rank candidates against a zero denominator.
+        # Retain a fitted beta baseline, without claiming validated accuracy.
+        try:
+            state = fit(rows, 'local_level', 52 if unit == 'weekly' else 12)
+            project(state, 1)
+            return {**result, 'status': 'provisional', 'state': state,
+                    'selection': 'local_level_zero_validation_denominator',
+                    'observed_periods': observed}
+        except (ValueError, ArithmeticError, np.linalg.LinAlgError):
+            pass
+    return result
+
+
+def _issued_predictions(period, target):
+    target_time = timezone.make_aware(datetime.combine(target, time.min))
+    records = list(GraphPrediction.objects.filter(run__scope='real', run__period=period,
+        target=target, issued_at__lt=target_time).values('run_id', 'view', 'value'))
+    bundles = defaultdict(dict)
+    for record in records:
+        bundles[record['run_id']][record['view']] = record['value']
+    # Prefer the most recent complete issue across all views. Picking the newest
+    # component independently can mix refreshes and break Combined = R + F.
+    for values in bundles.values():
+        if (all(view in values for view in VIEWS)
+                and abs(values['combined']-values['regular']-values['feeding']) <= Decimal('0.01')):
+            return {view: float(values[view]) for view in VIEWS}
+    values = {}
+    for record in records:
+        if record['view'] in ('regular', 'feeding'):
+            values.setdefault(record['view'], float(record['value']))
+    if values:
+        # These component issues remain useful, but no coherent Combined issue
+        # exists. Do not relabel a newly computed sum as an original forecast.
+        values['combined'] = None
+    return values
 
 
 def build(ctx, artifacts=None):
@@ -148,6 +195,8 @@ def build(ctx, artifacts=None):
             totals[bucket][segment] = totals[bucket].get(segment, Decimal('0'))+amount
     views = {}
     predictions = {}
+    issued = {target: _issued_predictions(period, target) for target in ctx['calendar']
+              if scope == 'real' and target <= current}
     for target in ctx['calendar']:
         for segment in ('regular', 'feeding'):
             item = ctx['inputs'][(target, segment)]
@@ -167,12 +216,10 @@ def build(ctx, artifacts=None):
             partial = target == current or (scope == 'demo2026' and actual is not None and
                 (target < DEMO_ORIGIN or period_end(target, period) >= date(2027, 1, 1)))
             basis = 'fixed_origin_demo' if scope == 'demo2026' else 'historical_test' if target < current else 'forecast'
-            if scope == 'real' and target <= current:
-                target_time = timezone.make_aware(datetime.combine(target, time.min))
-                issue = GraphPrediction.objects.filter(run__scope='real',
-                    run__period=period, view=view, target=target, issued_at__lt=target_time).first()
-                if issue:
-                    predicted, basis = float(issue.value), 'issued_forecast'
+            if view in issued.get(target, {}):
+                predicted = issued[target][view]
+                if predicted is not None:
+                    basis = 'issued_forecast'
             if target < current and not partial and actual is not None and predicted is not None:
                 evaluations[basis].append({'actual': float(actual), 'predicted': predicted})
             points.append({'date': target.isoformat(), 'end_date': period_end(target, period).isoformat(),

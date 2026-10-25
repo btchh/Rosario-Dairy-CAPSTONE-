@@ -226,6 +226,8 @@ class Command(BaseCommand):
         parser.add_argument('--replace-demo', action='store_true', help='Replace only reserved 2026:NNNNNN demo receipts, preserving actual 2026 sales.')
 
     def handle(self, *args, **options):
+        if settings.IS_PRODUCTION:
+            raise CommandError('Dummy sales generation is unavailable in production.')
         backup = None
         with transaction.atomic():
             # Keep the preview, backup, and insert consistent, including against another invocation.

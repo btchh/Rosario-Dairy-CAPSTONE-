@@ -1,7 +1,6 @@
 # Forecasting API guide
 
-Updated 2026-10-23 (Asia/Manila). API contract only; frontend implementation is
-owned by the frontend team. No frontend files were edited.
+Updated 2026-10-25 (Asia/Manila). API contract only.
 
 Before running the system, always run `venv/bin/python manage.py migrate` from
 the backend directory, including after pulling changes. Start the backend only
@@ -19,16 +18,16 @@ Authorization: Bearer <access_token>
 
 ```http
 GET /api/forecasting/graph/?period=monthly&scope=real
-GET /api/forecasting/graph/?period=monthly&scope=demo2026
 ```
 
 | Query | Values | Default |
 | --- | --- | --- |
 | `period` | `weekly`, `monthly`, `yearly` | `monthly` |
-| `scope` | `real`, `demo2026` | `real` |
+| `scope` | `real`; `demo2026` is development-only | `real` |
 | `as_of` | ISO date anchoring the range | Today, Asia/Manila |
 
-Real scope cannot use a future date. Demo scope starts in 2026 and can simulate
+Real scope cannot use a future date. Production rejects demo scope with HTTP 400.
+Development demo scope starts in 2026 and can simulate
 another date without using simulated sales for training. Non-default dates
 require a saved offline refresh for that date; GET never trains.
 
@@ -79,9 +78,16 @@ refreshes or ledger corrections. Current/future estimates are available in beta
 without waiting a year for approval. Limited data can produce flat SARIMA paths;
 no artificial variation is added.
 
-## Demo data and evaluation
+Past issued predictions use the latest complete saved run for the target so
+Combined and its two components remain consistent. If only component issues
+exist, those remain available while Combined is null; a new sum is not presented
+as a previously issued forecast. If validation sales total zero, percentage
+error is undefined. A fitted local-level SARIMA baseline can still be returned
+in beta without claiming validated accuracy.
 
-`scope=demo2026` displays only non-voided generated transactions in the reserved
+## Evaluation and development-only comparisons
+
+Outside production, an explicit `scope=demo2026` displays only non-voided generated transactions in the reserved
 `2026:NNNNNN` namespace, dated in 2026 and no later than `as_of`. It never treats
 real 2026 invoices as simulated. Demo fitting uses only real pre-2026 data;
 simulated sales and later real sales cannot enter its model selection or fits.
@@ -107,8 +113,9 @@ Content-Type: application/json
 
 The body must be an empty object. A 202 response includes `job_id`, `status`,
 `status_url`, `already_running` and `message`. `Location` identifies the job.
-Manual refresh and midnight maintenance now also refresh all three centered
-periods for both real and demo scopes, anchored to the current business date.
+Manual refresh and midnight maintenance refresh all three centered periods for
+real sales, anchored to the current business date. Demo runs are excluded from
+normal maintenance and require an explicit development-only offline command.
 Unchanged data reuses saved fits. Active work is shared rather than duplicated.
 
 GET `/api/forecasting/refresh/` returns the latest job or

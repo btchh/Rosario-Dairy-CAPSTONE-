@@ -14,7 +14,7 @@ from config.data_cache import data_version
 from sales.visibility import visible_transactions
 
 from inventory.models import FEFOConf, Ingredient, IngredientBatch, Product, ProductBatch, StockAdjustment
-from sales.models import Customer, TransactionItem
+from sales.models import Customer, TransactionItem, StockReturn
 from systemsetting.runtime import get_runtime_settings
 
 
@@ -356,7 +356,8 @@ def inventory_ledger(visible_to_staff=False):
     # Use all physical deductions for visible products, including a visible line
     # in a mixed-category invoice, so the stock equation still reconciles.
     sales = TransactionItem.objects.filter(
-        product_batch__in=batches, transaction__is_voided=False,
+        Q(transaction__is_voided=False) | Q(stock_return__isnull=False),
+        product_batch__in=batches,
     ).annotate(movement_at=Coalesce('transaction__encoded_at', 'transaction__created_at')).filter(
         movement_at__date=today,
     ).select_related('transaction__customer', 'product_batch')
@@ -384,6 +385,16 @@ def inventory_ledger(visible_to_staff=False):
         if adjustment.reason:
             text += f': {adjustment.reason}'
         row['remarks'].append(text)
+    # Returns are signed stock movements on the cancellation date, separate
+    # from the original deduction date. Only the quantity actually restored is
+    # credited; expired/disposed/capped returns may restore less or nothing.
+    for returned in StockReturn.objects.filter(
+            sale_item__product_batch__in=batches, created_at__date=today
+            ).select_related('sale_item__product_batch'):
+        row = rows[returned.sale_item.product_batch.product_id]
+        row['adjustments'] -= returned.quantity
+        if returned.quantity:
+            row['remarks'].append(f'{returned.quantity.normalize():f} returned from cancelled sale')
     for row in rows.values():
         deductions = row['outlet'] + sum(row['allocations'].values(), Decimal('0')) + row['adjustments']
         row['total'] = row['ending'] + deductions
@@ -555,7 +566,7 @@ def get_report(report_type, force_refresh=False, visible_to_staff=False, period=
         raise PermissionDenied('Global sales forecasts require an admin account.')
     scope = 'staff' if visible_to_staff else 'admin'
     settings_version = get_runtime_settings()['version']
-    key = (f'{CACHE_PREFIX}{data_version()}:{settings_version}:{scope}:{report_type}:'
+    key = (f'{CACHE_PREFIX}{data_version(visible_to_staff=visible_to_staff)}:{settings_version}:{scope}:{report_type}:'
            f'{period}:{start_date}:{end_date}:{timezone.get_current_timezone_name()}:{timezone.localdate()}')
     if not force_refresh:
         try:

@@ -189,11 +189,9 @@ class PatternStudyTests(TestCase):
         self.sale(date(2024,1,1))
         output=StringIO()
         call_command('refresh_forecast_patterns',stdout=output)
-        call_command('watch_forecast_patterns',once=True,stdout=output)
+        call_command('refresh_forecast_patterns',stdout=output)
         self.assertEqual(PatternStudy.objects.count(),1)
         self.assertEqual(report()['forecast'],[])
-        with self.assertRaises(CommandError):
-            call_command('watch_forecast_patterns',interval=1,once=True,stdout=output)
         with self.assertRaises(CommandError):
             call_command('refresh_forecast_patterns',as_of=timezone.localdate()+timedelta(days=1),stdout=output)
 

@@ -17,16 +17,33 @@ logger = logging.getLogger(__name__)
 VERSION_KEY = 'business-data:version:v1'
 
 
-def data_version():
+def staff_visibility_version():
+    """Check current access boundaries even if cache invalidation was lost.
+
+    Never cache this digest: a cache outage must not revive a hidden category
+    or a product moved into one. Database errors propagate rather than serving
+    a payload whose visibility cannot be verified.
+    """
+    from inventory.models import Category, Product
+    boundaries = (
+        list(Category.objects.order_by('pk').values_list('pk', 'is_active', 'is_visible_to_staff')),
+        list(Product.objects.order_by('pk').values_list('pk', 'category_id', 'is_active')),
+    )
+    return sha256(json.dumps(boundaries).encode()).hexdigest()
+
+
+def data_version(visible_to_staff=False):
+    visibility = staff_visibility_version() if visible_to_staff else None
     try:
         version = cache.get(VERSION_KEY)
         if version is None:
             cache.add(VERSION_KEY, uuid4().hex, timeout=None)
             version = cache.get(VERSION_KEY)
-        return version or uuid4().hex
+        version = version or uuid4().hex
     except Exception:
         logger.exception('Data cache unavailable; reading directly')
-        return uuid4().hex
+        version = uuid4().hex
+    return f'{version}:{visibility}' if visibility else version
 
 
 def invalidate_data_cache(using=None):
@@ -75,7 +92,7 @@ def cache_api_response(handler):
         if request.method not in {'GET', 'HEAD'} or not request.user.is_authenticated:
             return handler(self, request, *args, **kwargs)
         identity = (
-            data_version(), request.user.pk, request.user.role,
+            data_version(visible_to_staff=request.user.role == 'staff'), request.user.pk, request.user.role,
             request.build_absolute_uri(), timezone.get_current_timezone_name(),
             str(timezone.localdate()),
         )

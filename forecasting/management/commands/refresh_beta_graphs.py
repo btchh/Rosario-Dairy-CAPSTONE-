@@ -6,7 +6,7 @@ from forecasting.beta_graph import PERIODS, SCOPES, refresh
 
 
 class Command(BaseCommand):
-    help = 'Refresh centered three-line beta graphs; dummy sales are display/evaluation only.'
+    help = 'Refresh saved three-line real-sales graphs. Demo evaluation requires an explicit development-only scope.'
 
     def add_arguments(self, parser):
         parser.add_argument('--as-of', type=date.fromisoformat)
@@ -17,7 +17,7 @@ class Command(BaseCommand):
         as_of = options['as_of'] or timezone.localdate()
         results = {}
         try:
-            for scope in (options['scope'],) if options['scope'] else SCOPES:
+            for scope in (options['scope'],) if options['scope'] else ('real',):
                 for period in (options['period'],) if options['period'] else PERIODS:
                     run, created = refresh(period, scope, as_of)
                     results[f'{scope}:{period}'] = {'model_id': run.pk, 'created': created}

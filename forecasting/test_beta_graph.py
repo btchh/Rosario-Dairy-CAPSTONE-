@@ -92,13 +92,11 @@ class CenteredWindowTests(SimpleTestCase):
 
 @override_settings(IS_PRODUCTION=True)
 class ProductionDemoGuards(SimpleTestCase):
-    def test_production_rejects_demo_fitting_and_seeding_before_database_access(self):
+    def test_production_rejects_demo_fitting_before_database_access(self):
         with self.assertRaisesMessage(ValueError, 'unavailable in production'):
             graph.context('monthly','demo2026',date(2026,10,25))
-        for command, options in [('refresh_beta_graphs', {'scope':'demo2026'}),
-                                 ('populate_2026_sales', {'apply':True})]:
-            with self.assertRaisesMessage(CommandError, 'unavailable in production'):
-                call_command(command,stdout=StringIO(),**options)
+        with self.assertRaisesMessage(CommandError, 'unavailable in production'):
+            call_command('refresh_beta_graphs',scope='demo2026',stdout=StringIO())
 
     def test_regular_refresh_processes_only_real_sales(self):
         namespace='forecasting.management.commands.refresh_beta_graphs.refresh'

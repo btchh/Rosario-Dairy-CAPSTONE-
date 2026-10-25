@@ -56,7 +56,8 @@ produce flat estimates. Below 15% regular monthly WAPE remains a target, not a
 promise or a display blocker. Original forecasts are distinguished from
 reconstructed historical tests; accuracy must be measured against later actuals.
 
-Demo comparisons and dummy-sales generation are unavailable in production.
+The dummy-sales generator has been removed; existing dummy receipts are retained.
+Demo comparisons are unavailable in production.
 Development-only comparisons require explicit `scope=demo2026` and an offline
 refresh using `refresh_beta_graphs --scope demo2026`. Generated sales never train
 the models. No dummy receipts, SQL backups or archived forecasts are deleted by

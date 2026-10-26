@@ -194,7 +194,6 @@ class Report:
             self.story.extend([self.p(contact, 'note'), Spacer(1, 2 * mm)])
 
     def insights(self, lines):
-        self.section('What the numbers say')
         for line in lines:
             self.story.extend([self.p('•  ' + line), Spacer(1, 1.5 * mm)])
 
@@ -271,7 +270,8 @@ class Report:
         # customers. Stock totals and the complete product list repeat.
         groups = [columns[i:i + 6] for i in range(0, len(columns), 6)] or [[]]
         style = ParagraphStyle('Ledger', parent=self.styles['cell'], fontSize=7, leading=9)
-        head_style = ParagraphStyle('LedgerHead', parent=style, fontName='Helvetica-Bold')
+        head_style = ParagraphStyle('LedgerHead', parent=style, fontName='Helvetica-Bold',
+                                    textColor=colors.white)
         def cell(text, head=False):
             return Paragraph(escape(str(text)), head_style if head else style)
         def qty(amount):
@@ -298,7 +298,7 @@ class Report:
             table = Table(data, colWidths=widths, repeatRows=2, hAlign='LEFT')
             commands = [
                 ('SPAN', (2, 0), (4, 0)),
-                ('BACKGROUND', (0, 0), (-1, 1), PALE),
+                ('BACKGROUND', (0, 0), (-1, 1), INK),
                 ('GRID', (0, 0), (-1, -1), .45, MUTED),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                 ('LEFTPADDING', (0, 0), (-1, -1), 4),
@@ -314,11 +314,10 @@ class Report:
             self.story.append(table)
             if not ledger['rows']:
                 self.note('No active products to report.')
-            self.note('Quantities use each product’s unit. Outlet = sales without a named customer. Customer columns show quantities deducted today; unpaid invoices are included, voided sales and historical reference batches are excluded.')
-            self.note('Production / received = initial quantities of batches entered today. Backdated invoices use their encoding date for stock movements. Beginning inventory is reconstructed: ending + sales + signed adjustments − received; it is not a saved opening count. Unlogged changes and prior-day void restorations cannot be reconstructed.')
-            self.note('Ending inventory is physical batch balance, including expired stock still on hand. Adjustments in remarks are signed deductions (negative = stock added). Sellable stock and ingredient balances appear in the stock register below.')
+            self.note('Outlet means sales without a named customer. Customer columns show stock issued to each customer.')
+            self.note('Beginning stock is calculated. Ending stock includes expired items still on hand.')
             if len(groups) > 1:
-                self.note('Only the customer columns on this sheet are shown; beginning, total, outlet and ending quantities cover all sheets. Do not add repeated balances across sheets.')
+                self.note('Stock balances repeat on each sheet; do not add them together.')
 
     def inventory(self):
         self.inventory_ledger()
@@ -352,7 +351,7 @@ class Report:
         ], [.30, .17, .12, .18, .23], numeric=(1, 2), empty='No stock or expiry exceptions.')
         self.section('Full stock register')
         self.table(['Type / item', 'Available', 'Minimum', 'Next expiry', 'Status'], [
-            [f"{label(r['item_type'])}: {r['name']}", f"{number(r['quantity'])} {r['unit']}",
+            [r['name'] if r['item_type'] == 'product' else f"{label(r['item_type'])}: {r['name']}", f"{number(r['quantity'])} {r['unit']}",
              number(r['low_stock_threshold']), r['next_expiration_date'] or '—', label(r['fefo_status'])]
             for r in d['items']
         ], [.32, .21, .13, .18, .16], numeric=(1, 2))
@@ -416,18 +415,21 @@ class Report:
         regular = d.get('regular') or {}
         ready = d.get('status') == 'ready' and regular.get('predicted_revenue') is not None
         self.cards([
-            ('Forecast status', label(d.get('status', 'unavailable'))),
-            ('Requested horizon', f"{d.get('horizon_days', 0)} days"),
-            ('Regular dairy forecast', money(regular['predicted_revenue'], self.currency) if ready else 'Withheld'),
+            ('Forecast status', 'Available' if ready else 'Unavailable'),
+            ('Forecast period', label(d.get('period', 'monthly'))),
+            ('Regular dairy forecast', money(regular['predicted_revenue'], self.currency) if ready else 'Not available'),
         ])
-        self.section('Forecasting status')
-        self.story.append(self.p(d.get('status_message') or 'No validated forecast is available.'))
-        if d.get('accuracy_target_percent') is not None:
-            self.note(f"Research target: below {number(d['accuracy_target_percent'])}% monthly WAPE for regular-sales revenue. This is a target, not achieved accuracy for total sales or feeding.")
-        for warning in d.get('warnings', []):
-            self.note(f'Note: {warning}')
-        if d.get('limitations'):
-            self.note(d['limitations'])
+        if ready:
+            point = next(iter(d.get('forecast') or []), {})
+            if point.get('date') and point.get('end_date'):
+                self.note(f"Forecast dates: {point['date']} to {point['end_date']}.")
+            self.note('Estimated regular dairy sales only; milk feeding is not included.')
+        else:
+            self.note('Recent sales are needed to provide an updated forecast.'
+                      if d.get('status') == 'stale_data'
+                      else 'No forecast is available for the selected period.')
+            if d.get('data_end'):
+                self.note(f"Most recent recorded sale: {d['data_end']}.")
 
     def paginated_story(self):
         """Reserve a section heading plus the first meaningful content block.

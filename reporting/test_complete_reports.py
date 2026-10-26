@@ -56,9 +56,32 @@ class CompleteReportTests(TestCase):
         self.assertEqual(len(priority.args[1]), 23)
         self.assertTrue(Report('inventory', data).render().read().startswith(b'%PDF'))
 
-    def test_forecast_pdf_includes_all_returned_warnings(self):
-        report = Report('sarima_forecast', {'warnings': [f'Warning {i:02}' for i in range(9)]})
+    def test_forecast_pdf_shows_useful_availability_without_internal_diagnostics(self):
+        report = Report('sarima_forecast', {
+            'status': 'stale_data', 'period': 'monthly', 'data_end': '2025-12-31',
+            'status_message': 'Internal model publication gate details',
+            'accuracy_target_percent': 15, 'limitations': 'Internal calibration details',
+            'warnings': ['stale_training_data', 'unverified_ledger_coverage',
+                         'needs_12_prospective_reviewed_months'],
+        })
         report.forecast()
         content = ' '.join(part.text for part in report.story if hasattr(part, 'text'))
-        for index in range(9):
-            self.assertIn(f'Warning {index:02}', content)
+        self.assertIn('Recent sales are needed', content)
+        self.assertIn('2025-12-31', content)
+        for text in ('Forecasting status', 'Internal', 'Research target', *report.data['warnings']):
+            self.assertNotIn(text, content)
+        self.assertTrue(Report('sarima_forecast', report.data).render().read().startswith(b'%PDF'))
+
+    def test_available_forecast_keeps_amount_dates_and_regular_sales_scope(self):
+        report = Report('sarima_forecast', {
+            'status': 'ready', 'period': 'monthly', 'regular': {'predicted_revenue': 0},
+            'forecast': [{'date': '2026-11-01', 'end_date': '2026-11-30'}],
+        })
+        with patch.object(report, 'cards', wraps=report.cards) as cards:
+            report.forecast()
+        values = dict(cards.call_args.args[0])
+        self.assertEqual(values['Forecast status'], 'Available')
+        self.assertIn('0.00', values['Regular dairy forecast'])
+        content = ' '.join(part.text for part in report.story if hasattr(part, 'text'))
+        self.assertIn('2026-11-01 to 2026-11-30', content)
+        self.assertIn('milk feeding is not included', content)

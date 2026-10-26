@@ -74,12 +74,19 @@ candidate after inspecting the test. The corrected provisional v3 and centered
 graph v4 engines require `venv/bin/python manage.py run_forecast_refresh` after
 updating; older saved model records and issued predictions remain intact.
 
-The dummy-sales generator has been removed; existing dummy receipts are retained.
+The dummy-sales generator has been removed. Preview cleanup of previously
+generated data with `venv/bin/python manage.py remove_dummy_data`. Apply it with
+`--apply --output backups/dummy-cleanup-UNIQUE-DATE`, using a new private directory.
+The command backs up the full database, removes only reserved `2026:NNNNNN`
+receipts and their orders/items plus explicit demo graphs and synthetic
+experiments, and verifies that every unrelated record remains unchanged. Live
+stock references or stock-return records require reconciliation before removal.
+Shared customers, products, stock and real forecast history are retained. Existing
+SQL backups and original source files remain private and are not removed.
 Demo comparisons are unavailable in production.
 Development-only comparisons require explicit `scope=demo2026` and an offline
 refresh using `refresh_beta_graphs --scope demo2026`. Generated sales never train
-the models. No dummy receipts, SQL backups or archived forecasts are deleted by
-this cleanup. Use a real-only dataset for production; other sales/report APIs
+the models. Use a real-only dataset for production; other sales/report APIs
 are not a mechanism for filtering an imported demonstration database.
 
 ## Inventory consistency

@@ -19,14 +19,14 @@ def create_stock_adjustment(adjustment_type, quantity, unit_cost, adjusted_by, r
         else:
             batch = IngredientBatch.objects.select_for_update().get(pk=ingredient_batch.pk)  # type: ignore
 
-        if batch.status in ('expired', 'disposed'):
+        expired = batch.status == 'expired' or batch.expiration_date < timezone.localdate()
+        if batch.status == 'disposed' or (expired and adjustment_type not in ('expired', 'spoilage')):
             raise ValueError(
                 f"Batch {batch.batch_number} is {batch.status} and cannot be adjusted."
             )
 
-        if (adjustment_type in ('complimentary', 'free_taste') and
-                batch.expiration_date < timezone.localdate()):
-            raise ValueError('Expired stock cannot be used for complimentary items or free taste.')
+        if batch.date_received > timezone.localdate():
+            raise ValueError('Stock cannot be adjusted before its receipt date.')
 
         if quantity > Decimal('0.00') and quantity > batch.remaining_quantity:
             raise ValueError(

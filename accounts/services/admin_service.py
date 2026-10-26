@@ -82,6 +82,11 @@ def update_user(pk, data, requesting_user):
             if remaining_admins == 0:
                 raise ValueError("Cannot remove the last active admin.")
 
+        if user.is_active and data.get('is_active') is False:
+            user.token_version += 1
+            PasswordResetChallenge.objects.filter(user=user).delete()
+            EmailChangeChallenge.objects.filter(user=user).delete()
+
         for field in _ADMIN_EDITABLE_FIELDS:
             if field in data:
                 setattr(user, field, data[field])
@@ -122,6 +127,9 @@ def deactivate_user(pk, requesting_user, reason='suspended'):
                 raise ValueError("Cannot deactivate the last active admin.")
 
         user.is_active = False
+        user.token_version += 1
         user.deactivation_reason = reason
         user.save()
+        PasswordResetChallenge.objects.filter(user=user).delete()
+        EmailChangeChallenge.objects.filter(user=user).delete()
         return user

@@ -14,6 +14,7 @@ from config.data_cache import data_version
 from sales.visibility import visible_transactions
 
 from inventory.models import FEFOConf, Ingredient, IngredientBatch, Product, ProductBatch, StockAdjustment
+from inventory.services.eligibility import expired_stock_filter
 from sales.models import Customer, TransactionItem, StockReturn
 from systemsetting.runtime import get_runtime_settings
 
@@ -295,6 +296,7 @@ def _inventory_rows(model, relation_name, item_type, visible_to_staff=False):
             filter=Q(**{
                 f'{relation_name}__status': 'available',
                 f'{relation_name}__expiration_date__gte': today,
+                f'{relation_name}__date_received__lte': today,
             }),
         ),
         next_expiration=Min(
@@ -302,6 +304,7 @@ def _inventory_rows(model, relation_name, item_type, visible_to_staff=False):
             filter=Q(**{
                 f'{relation_name}__status': 'available',
                 f'{relation_name}__expiration_date__gte': today,
+                f'{relation_name}__date_received__lte': today,
                 f'{relation_name}__remaining_quantity__gt': 0,
             }),
         ),
@@ -345,7 +348,7 @@ def inventory_ledger(visible_to_staff=False):
         'outlet': Decimal('0'), 'allocations': {}, 'ending': Decimal('0'),
         'adjustments': Decimal('0'), 'remarks': [],
     } for p in products}
-    batches = ProductBatch.objects.filter(product_id__in=rows, is_historical_reference=False)
+    batches = ProductBatch.objects.filter(product_id__in=rows, is_historical_reference=False, date_received__lte=today)
     for batch in batches:
         row = rows[batch.product_id]
         row['ending'] += batch.remaining_quantity
@@ -413,7 +416,7 @@ def inventory_status(visible_to_staff=False):
     soon = today + timedelta(days=config.near_expiry_threshold)
     items = _inventory_rows(Product, 'batches', 'product', visible_to_staff)
     items += _inventory_rows(Ingredient, 'batches', 'ingredient')
-    available_batches = Q(status='available', remaining_quantity__gt=0)
+    available_batches = Q(status='available', remaining_quantity__gt=0, date_received__lte=today)
     product_batches = ProductBatch.objects.all()
     products = Product.objects.filter(is_active=True)
     if visible_to_staff:
@@ -421,8 +424,8 @@ def inventory_status(visible_to_staff=False):
             product__category__is_active=True, product__category__is_visible_to_staff=True)
         products = products.filter(category__is_active=True, category__is_visible_to_staff=True)
     expired = (
-        product_batches.filter(available_batches, expiration_date__lt=today).count()
-        + IngredientBatch.objects.filter(available_batches, expiration_date__lt=today).count()
+        product_batches.filter(expired_stock_filter(today)).count()
+        + IngredientBatch.objects.filter(expired_stock_filter(today)).count()
     )
     expiring = (
         product_batches.filter(available_batches, expiration_date__range=(today, soon)).count()

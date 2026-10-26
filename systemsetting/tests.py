@@ -123,7 +123,8 @@ class SystemSettingsViewTests(TestCase):
         self.assertEqual(get_runtime_settings()['currency'], 'PHP')
         config = SystemSettings.get_config()
         config.currency = 'USD'
-        config.save()
+        with self.captureOnCommitCallbacks(execute=True):
+            config.save()
         self.assertEqual(get_runtime_settings()['currency'], 'USD')
 
     def test_runtime_settings_fall_back_to_database_when_cache_is_down(self):

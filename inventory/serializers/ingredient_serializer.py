@@ -13,7 +13,7 @@ class IngredientSerializer(StockThresholdMixin, serializers.ModelSerializer):
     if hasattr(obj, 'available_stock'):
       return obj.available_stock
     return obj.batches.filter(
-      status='available', expiration_date__gte=timezone.localdate()
+      status='available', expiration_date__gte=timezone.localdate(), date_received__lte=timezone.localdate()
     ).aggregate(
       total=Sum('remaining_quantity')
     )['total'] or 0

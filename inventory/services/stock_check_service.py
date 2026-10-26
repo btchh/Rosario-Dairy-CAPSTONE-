@@ -16,6 +16,7 @@ def _available_stock(relation_name, today):
       filter=Q(**{
         f'{relation_name}__status': 'available',
         f'{relation_name}__expiration_date__gte': today,
+        f'{relation_name}__date_received__lte': today,
       }),
     ),
     Decimal('0.00'),
@@ -65,7 +66,7 @@ def check_product_expiration(visible_to_staff=False):
   near_expiry_threshold = now + timedelta(days=config.near_expiry_threshold)
   critical_expiry_threshold = now + timedelta(days=config.critical_expiry_threshold)
   batches = ProductBatch.objects.filter(
-    status='available', expiration_date__range=(now, near_expiry_threshold)
+    status='available', expiration_date__range=(now, near_expiry_threshold), date_received__lte=now
   ).annotate(expiry_status=_expiry_status(critical_expiry_threshold)).prefetch_related(Prefetch(
     'product', queryset=Product.objects.select_related('category').annotate(
       available_stock=_available_stock('batches', now)
@@ -82,7 +83,7 @@ def check_ingredient_expiration():
   near_expiry_threshold = now + timedelta(days=config.near_expiry_threshold)
   critical_expiry_threshold = now + timedelta(days=config.critical_expiry_threshold)
   return IngredientBatch.objects.filter(
-    status='available', expiration_date__range=(now, near_expiry_threshold)
+    status='available', expiration_date__range=(now, near_expiry_threshold), date_received__lte=now
   ).annotate(
     expiry_status=_expiry_status(critical_expiry_threshold)
   ).prefetch_related(Prefetch(

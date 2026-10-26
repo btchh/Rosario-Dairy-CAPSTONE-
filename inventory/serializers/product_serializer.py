@@ -42,7 +42,7 @@ class ProductSerializer(StockThresholdMixin, serializers.ModelSerializer):
         Decimal('0.00'),
       )
     return obj.batches.filter(
-      status='available', expiration_date__gte=timezone.localdate()
+      status='available', expiration_date__gte=timezone.localdate(), date_received__lte=timezone.localdate()
     ).aggregate(
       total=Sum('remaining_quantity')
     )['total'] or 0

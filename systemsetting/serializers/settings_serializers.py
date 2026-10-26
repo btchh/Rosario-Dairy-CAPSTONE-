@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.conf import settings
 import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -32,7 +33,14 @@ class SystemSettingsSerializer(serializers.ModelSerializer):
       ZoneInfo(value)
     except (ZoneInfoNotFoundError, ValueError) as exc:
       raise serializers.ValidationError('Enter a valid IANA timezone, such as Asia/Manila.') from exc
+    if value != settings.TIME_ZONE:
+      raise serializers.ValidationError(f'The business timezone is managed by DJANGO_TIME_ZONE ({settings.TIME_ZONE}) so the API and scheduled workers use the same calendar.')
     return value
+
+  def to_representation(self, instance):
+    data = super().to_representation(instance)
+    data['timezone'] = settings.TIME_ZONE
+    return data
 
   def validate_language(self, value):
     if not re.fullmatch(r'[a-z]{2}(?:-[A-Z]{2})?', value):

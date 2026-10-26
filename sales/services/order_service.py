@@ -31,12 +31,12 @@ def place_order(customer, items, handled_by, discount_type='none', discount_valu
     return order
 
 
-def void_fulfilled_order(order):
-    if order.transaction is None:
-        raise ValueError("This order has no linked transaction to void.")
-
+def void_transaction(sale_id, *, voided_by=None, reason=''):
+    """Void any local sale and record only stock that is actually restored."""
     with db_transaction.atomic():
-        txn = Transaction.objects.select_for_update().get(pk=order.transaction_id)
+        txn = Transaction.objects.select_for_update().get(pk=sale_id)
+        if txn.source_reference:
+            raise ValueError('Imported historical transactions cannot be cancelled.')
         if txn.is_voided:
             raise ValueError("This transaction has already been voided.")
 
@@ -65,13 +65,28 @@ def void_fulfilled_order(order):
             StockReturn.objects.create(sale_item=item, quantity=restore_amount)
 
         txn.is_voided = True
-        txn.save()
+        txn.voided_at = timezone.now()
+        txn.voided_by = voided_by
+        txn.void_reason = reason
+        txn.save(update_fields=['is_voided', 'voided_at', 'voided_by', 'void_reason'])
 
-        order.status = 'cancelled'
-        order.warning = (
+        warning = (
             f"Stock could not be restored for the following expired/disposed batches: {', '.join(skipped_batches)}"
             if skipped_batches else ''
         )
-        order.save()
+        # Lock transaction first on both API paths, so order cancellation and
+        # direct transaction cancellation cannot restore the same stock twice.
+        for order in Order.objects.select_for_update().filter(transaction=txn):
+            order.status = 'cancelled'
+            order.warning = warning
+            order.save(update_fields=['status', 'warning', 'updated_at'])
 
     return txn, skipped_batches
+
+
+def void_fulfilled_order(order, *, voided_by=None, reason=''):
+    if order.transaction_id is None:
+        raise ValueError('This order has no linked transaction to void.')
+    result = void_transaction(order.transaction_id, voided_by=voided_by, reason=reason)
+    order.refresh_from_db()
+    return result

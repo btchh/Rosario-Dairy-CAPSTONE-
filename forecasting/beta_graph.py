@@ -107,7 +107,6 @@ def context(period, scope, as_of):
     if scope == 'real':
         displayed = load_snapshot(as_of+timedelta(days=1))
         sales = [(s.id, s.day, s.segment, s.revenue) for s in displayed.sales]
-        display_revision = displayed.revision
     else:
         sales = []
         for row in Transaction.objects.filter(source_reference__regex=r'^2026:[0-9]{6}$', is_voided=False).order_by('pk').values(
@@ -115,11 +114,11 @@ def context(period, scope, as_of):
             day = timezone.localtime(row['created_at']).date()
             if day.year == 2026 and day <= as_of:
                 sales.append((row['pk'], day, row['source_sales_segment'], row['total_amount']))
-        display_revision = digest([(pk, day.isoformat(), segment, str(value)) for pk, day, segment, value in sales])
     identity = {'version': VERSION, 'period': period, 'scope': scope, 'as_of': as_of.isoformat(),
                 'training_sources': {day.isoformat(): snap.revision for day, snap in snapshots.items()},
-                'inputs': {f'{target}:{segment}': item['signature'] for (target, segment), item in inputs.items()},
-                'display': display_revision}
+                'inputs': {f'{target}:{segment}': item['signature'] for (target, segment), item in inputs.items()}}
+    if scope == 'demo2026':
+        identity['display'] = digest([(pk, day.isoformat(), segment, str(value)) for pk, day, segment, value in sales])
     return {'period': period, 'scope': scope, 'as_of': as_of, 'calendar': calendar, 'unit': unit,
             'inputs': inputs, 'sales': sales, 'revision': digest(identity)}
 
@@ -184,7 +183,7 @@ def _issued_predictions(period, target):
     return values
 
 
-def build(ctx, artifacts=None):
+def build(ctx, artifacts=None, *, allow_training=True, saved_views=None):
     artifacts = dict(artifacts or {})
     period, scope, as_of = ctx['period'], ctx['scope'], ctx['as_of']
     current = period_start(as_of, period)
@@ -198,12 +197,19 @@ def build(ctx, artifacts=None):
     issued = {target: _issued_predictions(period, target) for target in ctx['calendar']
               if scope == 'real' and target <= current}
     for target in ctx['calendar']:
+        if saved_views is not None:
+            for view in VIEWS:
+                point = next(p for p in saved_views[view]['points'] if p['date'] == target.isoformat())
+                predictions[(target, view)] = point['past_prediction'] if target < current else point['future_prediction']
+            continue
         for segment in ('regular', 'feeding'):
             item = ctx['inputs'][(target, segment)]
             signature = item['signature']
             if signature not in artifacts:
-                artifacts[signature] = ({'state': item['primary'], 'status': 'provisional'} if item['primary']
-                                        else _train(item['rows'], ctx['unit']))
+                artifacts[signature] = (
+                    ({'state': item['primary'], 'status': 'provisional'} if item['primary']
+                     else _train(item['rows'], ctx['unit'])) if allow_training
+                    else {'status': 'unavailable'})
             predictions[(target, segment)] = _point(artifacts[signature], target, period)
         values = [predictions[(target, segment)] for segment in ('regular', 'feeding')]
         predictions[(target, 'combined')] = round(sum(values), 2) if all(v is not None for v in values) else None
@@ -236,7 +242,8 @@ def build(ctx, artifacts=None):
             'as_of': as_of.isoformat(), 'available_periods': list(PERIODS), 'available_views': list(VIEWS),
             'range': {'start_date': ctx['calendar'][0].isoformat(), 'end_date': period_end(ctx['calendar'][-1], period).isoformat(),
                       'past_periods': 2 if period == 'yearly' else 3, 'future_periods': 2 if period == 'yearly' else 3},
-            'views': views, 'artifacts': {item['signature']: artifacts[item['signature']] for item in ctx['inputs'].values()}}
+            'views': views, 'artifacts': {} if saved_views is not None else
+            {item['signature']: artifacts[item['signature']] for item in ctx['inputs'].values()}}
 
 
 def checked(findings):
@@ -282,12 +289,15 @@ def report(period='monthly', scope='real', as_of=None):
     ctx = context(period, scope, as_of or timezone.localdate())
     run = GraphForecastRun.objects.filter(engine_version=VERSION, scope=scope, period=period,
                                         as_of=ctx['as_of'], source_revision=ctx['revision']).first()
-    data = checked(run.findings) if run else None
-    if data is None:
-        # The GET fallback exposes actuals/calendar only and never invokes fit.
-        empty = dict(ctx)
-        empty['inputs'] = {key: {**item, 'signature': 'unavailable'} for key, item in ctx['inputs'].items()}
-        data = build(empty, {'unavailable': {'status': 'unavailable'}})
+    saved = checked(run.findings) if run else None
+    # Actuals and evaluations are live ledger values, while immutable issued
+    # predictions and fitted states retain their original provenance. Never fit
+    # missing states during a GET, including when saved findings are corrupt.
+    data = build(ctx, allow_training=False, saved_views=saved['views'] if saved else None)
+    if saved is None:
+        for view in data['views'].values():
+            if view['message'] is not None:
+                view['message'] = 'Refresh saved forecasts to make predictions available.'
     data = {key: value for key, value in data.items() if key != 'artifacts'}
-    return {**data, 'status': 'ready' if run and checked(run.findings) else 'refresh_required',
+    return {**data, 'status': 'ready' if saved is not None else 'refresh_required',
             'model_id': run.pk if run else None}

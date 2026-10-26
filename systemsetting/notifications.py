@@ -3,6 +3,7 @@ from hashlib import sha256
 import json
 from django.utils import timezone
 from inventory.services.batch_service import BatchService
+from inventory.services.eligibility import expired_stock_filter
 from inventory.models import FEFOConf, IngredientBatch, ProductBatch
 from sales.models import Order
 from .models import NotificationSettings, NotificationState
@@ -33,8 +34,7 @@ def live_notifications(user):
         # expired stock in the inbox too so clients can persist acknowledgements
         # using the same batch IDs instead of creating temporary local alerts.
         expired_products = ProductBatch.objects.filter(
-            status__in=['available', 'expired'], expiration_date__lt=today,
-            remaining_quantity__gt=0,
+            expired_stock_filter(today),
         ).select_related('product')
         if visible:
             expired_products = expired_products.filter(
@@ -42,8 +42,7 @@ def live_notifications(user):
                 product__category__is_visible_to_staff=True,
             )
         expired_ingredients = IngredientBatch.objects.filter(
-            status__in=['available', 'expired'], expiration_date__lt=today,
-            remaining_quantity__gt=0,
+            expired_stock_filter(today),
         ).select_related('ingredient')
         for kind, rows, entity in (
             ('product', expired_products, 'product'),

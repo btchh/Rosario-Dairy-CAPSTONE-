@@ -21,6 +21,8 @@ from config.api_inputs import parse_decimal
 from ..serializers.sale_input_serializer import encoded_sale_items
 from ..services.item_pricing import reject_invoice_discount
 from accounts.throttles import SaleWriteRateThrottle
+from .transaction_views import CancellationInput
+from ..services.submission_service import request_id, submit_sale
 
 
 class OrderPagination(PageNumberPagination):
@@ -47,7 +49,7 @@ class OrderViewSet(CachedListMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         if self.action == 'list':
             queryset = super().get_queryset().select_related(
-                'customer', 'handled_by', 'transaction'
+                'customer', 'handled_by', 'transaction__handled_by'
             ).prefetch_related(Prefetch(
                 'items', queryset=OrderItem.objects.prefetch_related(Prefetch(
                     'product', queryset=Product.objects.only('id', 'name')
@@ -55,7 +57,7 @@ class OrderViewSet(CachedListMixin, viewsets.ModelViewSet):
             )).order_by('-created_at', '-id')
         else:
             available_batches = ProductBatch.objects.filter(
-                status='available', expiration_date__gte=timezone.localdate()
+                status='available', expiration_date__gte=timezone.localdate(), date_received__lte=timezone.localdate()
             ).only('product_id', 'remaining_quantity')
             order_items = OrderItem.objects.select_related(
                 'product__category'
@@ -102,6 +104,7 @@ class OrderViewSet(CachedListMixin, viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         if not isinstance(request.data, dict):
             return Response({'error': 'Request body must be a JSON object.'}, status=400)
+        key = request_id(request)
         try:
             reject_invoice_discount(request.data.get('discount_type', 'none'), request.data.get('discount_value', '0'))
             items = encoded_sale_items(request.data.get('items', []), request)
@@ -123,27 +126,28 @@ class OrderViewSet(CachedListMixin, viewsets.ModelViewSet):
                 return Response({'error': str(exc)}, status=400)
 
         try:
-            order = SalesService.place_order(
-                customer=validated_data['customer'],
-                items=items,
-                handled_by=request.user,
-                payment_method=payment_method,
+            customer = validated_data['customer']
+            order, created = submit_sale(user=request.user, key=key, endpoint='order',
+                items=items, customer=customer, payment_method=payment_method,
                 amount_tendered=amount_tendered,
-            )
+                create=lambda: SalesService.place_order(customer=customer, items=items,
+                    handled_by=request.user, payment_method=payment_method, amount_tendered=amount_tendered))
         except ValueError as e:
             return Response({'error': str(e)}, status=400)
 
-        return Response(OrderSerializer(order).data, status=201)
+        return Response(OrderSerializer(order).data, status=201 if created else 200)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdmin])
     def cancel(self, request, pk=None):
         order = self.get_object()
+        values = CancellationInput(data=request.data)
+        values.is_valid(raise_exception=True)
         if order.transaction and order.transaction.source_reference:
             return Response({'error': 'Imported historical orders cannot be cancelled.'}, status=400)
         if order.status == 'cancelled':
             return Response({'error': 'Order is already cancelled.'}, status=400)
         try:
-            SalesService.void_fulfilled_order(order)
+            SalesService.void_fulfilled_order(order, voided_by=request.user, **values.validated_data)
         except ValueError as e:
             return Response({'error': str(e)}, status=400)
         order.refresh_from_db()

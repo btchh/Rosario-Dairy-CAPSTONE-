@@ -566,6 +566,9 @@ class SalesByCategoryReportTests(TestCase):
         self.client.force_authenticate(user=self.admin)
 
     def test_category_data_queryset_is_evaluated_once(self):
+        from systemsetting.runtime import get_runtime_settings
+        with self.captureOnCommitCallbacks(execute=True):
+            get_runtime_settings()
         with self.assertNumQueries(1):
             response = self.client.get('/sales/reports/sales-by-category/')
         self.assertEqual(response.status_code, 200)
@@ -1146,6 +1149,9 @@ class SalesAuditRegressionTests(TestCase):
         self.assertEqual(processed, sorted(processed))
 
     def test_transaction_history_query_count_does_not_grow_per_item(self):
+        from systemsetting.runtime import get_runtime_settings
+        with self.captureOnCommitCallbacks(execute=True):
+            get_runtime_settings()
         from inventory.models import FEFOConf
         FEFOConf.get_config()
         for _ in range(3):
@@ -1169,6 +1175,9 @@ class SalesAuditRegressionTests(TestCase):
         self.assertEqual(len(warm_queries), 2)
 
     def test_order_history_query_count_does_not_grow_per_item(self):
+        from systemsetting.runtime import get_runtime_settings
+        with self.captureOnCommitCallbacks(execute=True):
+            get_runtime_settings()
         for _ in range(3):
             SalesService.place_order(
                 self.customer, [(self.product, Decimal('1.00'), Decimal('10.00'))], self.staff,

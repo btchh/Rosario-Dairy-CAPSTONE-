@@ -79,6 +79,8 @@ class ProdBatchSerializer(serializers.ModelSerializer):
       raise serializers.ValidationError({
         'expiration_date': 'Expiration date cannot be before date received.'
       })
+    if date_received is not None and date_received > timezone.localdate():
+      raise serializers.ValidationError({'date_received': 'Date received cannot be in the future.'})
     return attrs
 
   def create(self, validated_data):

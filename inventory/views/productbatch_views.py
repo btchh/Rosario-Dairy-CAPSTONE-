@@ -15,7 +15,7 @@ class ProductBatchViewSet(CachedListMixin, BatchCreateDestroyMixin, viewsets.Mod
     def get_queryset(self):
         qs = super().get_queryset().select_related('product__category').prefetch_related(Prefetch(
             'product__batches', queryset=ProductBatch.objects.filter(
-                status='available', expiration_date__gte=timezone.localdate()
+                status='available', expiration_date__gte=timezone.localdate(), date_received__lte=timezone.localdate()
             ).only('product_id', 'remaining_quantity'), to_attr='available_batches_for_total',
         ))
         if self.action == 'list' and self.request.query_params.get('include_historical') != 'true':

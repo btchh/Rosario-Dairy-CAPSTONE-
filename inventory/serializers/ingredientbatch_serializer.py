@@ -39,6 +39,9 @@ class IngBatchSerializer(serializers.ModelSerializer):
     datetime (see to_date()'s docstring) if the instance was created
     without an explicit date_received and never re-fetched from the DB.
     """
+    request = self.context.get('request')
+    if request and request.user.role != 'admin' and 'unit_price' in attrs:
+      raise serializers.ValidationError({'unit_price': 'Only an admin can override prices.'})
     if (self.instance is not None and 'ingredient' in attrs and
         attrs['ingredient'].pk != self.instance.ingredient_id):
       raise serializers.ValidationError({
@@ -56,6 +59,8 @@ class IngBatchSerializer(serializers.ModelSerializer):
       raise serializers.ValidationError({
         'expiration_date': 'Expiration date cannot be before date received.'
       })
+    if date_received is not None and date_received > timezone.localdate():
+      raise serializers.ValidationError({'date_received': 'Date received cannot be in the future.'})
     return attrs
 
   def create(self, validated_data):

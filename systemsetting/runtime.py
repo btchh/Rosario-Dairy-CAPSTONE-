@@ -2,6 +2,7 @@ import logging
 
 from django.conf import settings
 from django.core.cache import cache
+from django.db import transaction
 
 from .models import SystemSettings
 
@@ -35,14 +36,14 @@ def get_runtime_settings():
         logger.exception('Runtime-settings cache read failed; using the database')
         data = None
     if data is not None:
-        return data
+        return {**data, 'timezone': settings.TIME_ZONE}
 
     config = SystemSettings.get_config()
     data = {
         'system_name': config.system_name,
         'currency': config.currency,
         'date_format': config.date_format,
-        'timezone': config.timezone,
+        'timezone': settings.TIME_ZONE,
         'language': config.language,
         'business_name': config.business_name,
         'business_address': config.business_address,
@@ -52,18 +53,24 @@ def get_runtime_settings():
         'business_type': config.business_type,
         'version': config.updated_at.isoformat(),
     }
-    try:
-        cache.set(RUNTIME_SETTINGS_CACHE_KEY, data, 300)
-    except Exception:
-        logger.exception('Runtime-settings cache write failed')
+    # A transaction may have uncommitted preferences. Never publish those to
+    # another request, or leave them cached if the transaction later rolls back.
+    def store():
+        try:
+            cache.set(RUNTIME_SETTINGS_CACHE_KEY, data, 300)
+        except Exception:
+            logger.exception('Runtime-settings cache write failed')
+    transaction.on_commit(store)
     return data
 
 
-def invalidate_runtime_settings(*args, **kwargs):
-    try:
-        cache.delete(RUNTIME_SETTINGS_CACHE_KEY)
-    except Exception:
-        logger.exception('Runtime-settings cache invalidation failed')
+def invalidate_runtime_settings(*args, using=None, **kwargs):
+    def invalidate():
+        try:
+            cache.delete(RUNTIME_SETTINGS_CACHE_KEY)
+        except Exception:
+            logger.exception('Runtime-settings cache invalidation failed')
+    transaction.on_commit(invalidate, using=using)
 
 
 def get_brand_name():

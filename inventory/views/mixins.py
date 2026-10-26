@@ -3,6 +3,8 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import ProtectedError
+from django.db import transaction
+from rest_framework.permissions import SAFE_METHODS
 from accounts.permissions import IsAdmin, IsStaff
 
 if TYPE_CHECKING:
@@ -94,6 +96,10 @@ class BatchCreateDestroyMixin(_Base):
         'deleted. Adjust its status instead.'
     )
 
+    def get_permissions(self):
+        permission = (IsAdmin | IsStaff) if self.request.method in SAFE_METHODS else IsAdmin
+        return [permission()]
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -102,6 +108,12 @@ class BatchCreateDestroyMixin(_Base):
 
     def destroy(self, request, *args, **kwargs):
         try:
-            return super().destroy(request, *args, **kwargs)  # type: ignore
+            with transaction.atomic():
+                obj = self.get_object()
+                obj = type(obj).objects.select_for_update().get(pk=obj.pk)
+                if obj.initial_quantity > 0 or obj.remaining_quantity > 0:
+                    return Response({'error': 'Received batches must be retained for inventory history. Use a stock adjustment to write off stock.'}, status=400)
+                obj.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
         except ProtectedError:
             return Response({'error': self.protected_error_message}, status=status.HTTP_400_BAD_REQUEST)

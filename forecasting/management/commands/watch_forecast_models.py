@@ -5,11 +5,13 @@ from zoneinfo import ZoneInfo
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import DatabaseError
+from django.conf import settings
 
 
 def seconds_until_midnight(now=None):
     """Use the business timezone even on a server configured in UTC."""
-    now = (now or datetime.now(ZoneInfo('Asia/Manila'))).astimezone(ZoneInfo('Asia/Manila'))
+    business_zone = ZoneInfo(settings.TIME_ZONE)
+    now = (now or datetime.now(business_zone)).astimezone(business_zone)
     midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     return (midnight-now).total_seconds()
 

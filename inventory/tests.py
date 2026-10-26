@@ -237,8 +237,7 @@ class StaffCategoryVisibilityAPITests(TestCase):
             'quantity': '2.00',
             'expiration_date': '2026-12-31',
         }, format='json')
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('product_id', response.data)
+        self.assertEqual(response.status_code, 403)
 
     def test_inactive_category_hides_products_and_batches_from_staff(self):
         self.visible_category.is_active = False
@@ -258,8 +257,7 @@ class StaffCategoryVisibilityAPITests(TestCase):
             'product_id': self.visible_product.pk,
             'quantity': '2.00', 'expiration_date': '2026-12-31',
         }, format='json')
-        self.assertEqual(create.status_code, 400)
-        self.assertIn('product_id', create.data)
+        self.assertEqual(create.status_code, 403)
 
     def test_inactive_product_batch_is_not_available_to_staff(self):
         batch = ProductBatch.objects.create(
@@ -275,7 +273,7 @@ class StaffCategoryVisibilityAPITests(TestCase):
             'product_id': self.visible_product.pk,
             'quantity': '2.00', 'expiration_date': '2026-12-31',
         }, format='json')
-        self.assertEqual(create.status_code, 400)
+        self.assertEqual(create.status_code, 403)
 
     def test_admin_cannot_create_product_in_inactive_category(self):
         self.visible_category.is_active = False

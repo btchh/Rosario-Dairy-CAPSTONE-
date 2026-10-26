@@ -10,6 +10,7 @@ from ..services.item_pricing import reject_invoice_discount
 from decimal import Decimal
 from config.api_inputs import parse_decimal
 from accounts.throttles import SaleWriteRateThrottle
+from ..services.submission_service import request_id, submit_sale
 
 class CheckoutView(viewsets.ViewSet):
     permission_classes = [IsAdmin | IsStaff]
@@ -17,6 +18,7 @@ class CheckoutView(viewsets.ViewSet):
 
     @object_body
     def create(self, request):
+        key = request_id(request)
         raw_items = request.data.get('items', [])
         payment_method = request.data.get('payment_method', 'cash')
         discount_type = request.data.get('discount_type', 'none')
@@ -50,10 +52,12 @@ class CheckoutView(viewsets.ViewSet):
             return Response({'error': str(exc)}, status=400)
 
         try:
-            txn = SalesService.checkout(cart_items, request.user, payment_method,
-                            amount_tendered=amount_tendered,
-                            customer=customer)
+            txn, created = submit_sale(user=request.user, key=key, endpoint='checkout',
+                items=cart_items, customer=customer, payment_method=payment_method,
+                amount_tendered=amount_tendered,
+                create=lambda: SalesService.checkout(cart_items, request.user, payment_method,
+                    amount_tendered=amount_tendered, customer=customer))
         except ValueError as e:
             return Response({'error': str(e)}, status=400)
 
-        return Response(TransactionSerializer(txn).data, status=201)
+        return Response(TransactionSerializer(txn).data, status=201 if created else 200)

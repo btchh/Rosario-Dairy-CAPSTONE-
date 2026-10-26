@@ -16,8 +16,8 @@ For production, configure the secrets/settings in `deployment.env.example`, run
 `venv/bin/python manage.py collectstatic --noinput`, and serve
 `config.wsgi:application` with Gunicorn behind the hosting provider's HTTPS proxy.
 Keep SQL recovery backups and original source files private; they are excluded
-from Git. Apply `sales.0016_record_cancellation_stock_returns` along with all other
-pending migrations before serving requests.
+from Git. Apply `sales.0017_transaction_void_reason_transaction_voided_at_and_more`
+along with all other pending migrations before serving requests.
 
 ## Retraining
 
@@ -91,11 +91,65 @@ are not a mechanism for filtering an imported demonstration database.
 
 ## Inventory consistency
 
+Batch creation, edits and deletion, and ingredient catalog edits require an
+admin. Staff can still read visible inventory, record stock adjustments/counts,
+and explicitly deactivate ingredients. Received batches cannot be deleted;
+record an adjustment to retain their stock history. Past-date available batches
+and explicitly expired batches support `expired`/`spoilage` write-offs. Repeating
+a completed disposal returns 400 without recording another movement. Future
+receipt dates are rejected; legacy future receipts are excluded from sellable
+stock and the physical ledger until their receipt date.
+
 Batch metadata edits lock/reload the current batch before saving. Staff caches
 verify category visibility and product assignments directly against the database.
 Cancellations record actual restored units and dates; the ledger retains physical
 deductions and credits returns through signed adjustments and remarks. Existing
 report fields are unchanged.
+
+## Sale retries and cancellation
+
+`POST /sales/checkout/` and `/sales/orders/` accept an optional UUID `request_id`
+in the JSON body or UUID `Idempotency-Key` header. If both are supplied they must
+match. Reusing the same ID for the same account and payload returns the original
+sale with 200; the first successful creation returns 201. Changed payloads or
+switching between those two endpoints with the same ID returns 409. Failed
+submissions roll back the key and stock changes together. Retry protection is
+durable across restarts and serializes simultaneous submissions before FEFO.
+IDs remain optional for compatibility: unkeyed requests cannot be safely deduplicated.
+Manual encoding retains its existing required UUID and replay contract.
+
+Admins can cancel any local sale using
+`POST /sales/transactions/{id}/cancel/` with `{}` or an optional `reason` string
+(maximum 2000 characters). Encoded sales also expose
+`POST /sales/encoding/{id}/cancel/`. Existing order cancellation uses the same
+locked transaction workflow. Repeating cancellation returns 400 without another
+stock return. Imported history remains protected. Responses expose `voided_at`,
+`voided_by` and `void_reason`; earlier cancellations retain unknown actor/time.
+
+Transaction responses add nullable `recorded_cashier`. Imported and manually
+encoded invoices return null because their original cashier is unknown;
+`handled_by` still preserves the importer/encoder. Live checkout/order sales
+return their recorded handler. Existing response fields remain compatible.
+
+Deactivation revokes existing access and refresh tokens permanently, including
+after reactivation. Reactivated accounts must log in again.
+
+## Business calendar and live graph values
+
+`DJANGO_TIME_ZONE` is the shared business timezone for HTTP requests, management
+commands and the supervised worker. The settings API reports this value and
+rejects a conflicting timezone update. Legacy database timezone preferences do
+not override it. The supplied systemd timer uses Asia/Manila; update its
+`OnCalendar` if deploying with another business timezone.
+
+Today's sales update graph actuals/evaluation without clearing unchanged saved
+predictions or training during GET. Corrections that change fitting inputs still
+require an offline refresh. Run `venv/bin/python manage.py run_forecast_refresh`
+once after this update to prepare runs using the revised graph identity; older
+issued forecasts and fitted artifacts are retained.
+
+Runtime-settings cache invalidation runs after commit. Uncommitted settings are
+never written to the shared runtime cache.
 
 ## Verify
 

@@ -12,7 +12,7 @@ def deduct_product_batch(product, quantity):
   today = timezone.localdate()
   batches = list(
     ProductBatch.objects.select_for_update()
-    .filter(product=product, status='available', expiration_date__gte=today)
+    .filter(product=product, status='available', expiration_date__gte=today, date_received__lte=today)
     .order_by('expiration_date', 'pk')
   )
   total_available = sum(b.remaining_quantity for b in batches)
@@ -41,7 +41,7 @@ def deduct_ingredient_batch(ingredient, quantity):
   today = timezone.localdate()
   batches = list(
     IngredientBatch.objects.select_for_update()
-    .filter(ingredient=ingredient, status='available', expiration_date__gte=today)
+    .filter(ingredient=ingredient, status='available', expiration_date__gte=today, date_received__lte=today)
     .order_by('expiration_date', 'pk')
   )
   total_avalable = sum(b.remaining_quantity for b in batches)

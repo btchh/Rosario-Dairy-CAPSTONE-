@@ -216,6 +216,11 @@ class DataCacheTests(TestCase):
         )
 
     def test_repeated_lists_and_dashboard_aggregates_avoid_data_queries(self):
+        from systemsetting.runtime import get_runtime_settings
+        # TestCase holds requests in a transaction. Simulate its commit before
+        # measuring the warmed shared cache, as a normal request would do.
+        with self.captureOnCommitCallbacks(execute=True):
+            get_runtime_settings()
         endpoints = [
             '/inventory/products/', '/inventory/ingredients/',
             '/inventory/product-batches/', '/inventory/ingredient-batches/',
@@ -437,18 +442,20 @@ class SecurityHardeningTests(TestCase):
         product, batch = self.product()
         for value in ('0.00', '0.01', None):
             response = self.client.patch(f'/inventory/product-batches/{batch.pk}/', {'unit_price': value}, format='json')
-            self.assertEqual(response.status_code, 400, response.data)
+            self.assertEqual(response.status_code, 403, response.data)
         batch.refresh_from_db()
         self.assertEqual(batch.unit_price, 100)
         response = self.client.post('/sales/checkout/', {'items':[{'product_id':product.pk,'quantity':'1.00', 'unit_price': '100'}], 'amount_tendered':'100.00'}, format='json')
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(Transaction.objects.get().total_amount, 100)
 
-    def test_staff_new_batch_does_not_default_to_a_selling_price(self):
+    def test_staff_receipt_is_denied_and_admin_receipt_does_not_default_to_a_selling_price(self):
         product, _ = self.product()
         values = {'product_id':product.pk, 'quantity':'5.00', 'expiration_date':str(timezone.localdate()+timedelta(days=7))}
         response = self.client.post('/inventory/product-batches/', {**values, 'unit_price':'0.00'}, format='json')
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 403)
+        self.user.role = 'admin'
+        self.user.save(update_fields=['role'])
         response = self.client.post('/inventory/product-batches/', values, format='json')
         self.assertEqual(response.status_code, 201, response.data)
         self.assertIsNone(ProductBatch.objects.get(pk=response.data['id']).unit_price)

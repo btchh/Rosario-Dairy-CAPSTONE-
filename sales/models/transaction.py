@@ -37,6 +37,10 @@ class Transaction(models.Model):
   payment_updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, editable=False, related_name='+')
   delivery_status = models.CharField(max_length=50, blank=True, null=True)
   is_voided = models.BooleanField(default=False)
+  voided_at = models.DateTimeField(null=True, editable=False)
+  voided_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+                               null=True, editable=False, related_name='+')
+  void_reason = models.CharField(max_length=2000, blank=True, editable=False)
   source_reference = models.CharField(max_length=100, unique=True, null=True, blank=True)
   source_invoice_number = models.CharField(max_length=50, blank=True, null=True, default=None)
   source_customer_label = models.CharField(max_length=255, blank=True)

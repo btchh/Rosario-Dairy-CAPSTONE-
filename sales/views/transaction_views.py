@@ -5,6 +5,8 @@ from django.conf import settings
 from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework import serializers
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.renderers import BrowsableAPIRenderer
@@ -14,6 +16,12 @@ from inventory.services.stock_check_service import _available_stock
 from ..models import Transaction, TransactionItem
 from ..serializers import TransactionSerializer
 from ..visibility import visible_transactions
+from ..services.order_service import void_transaction
+from accounts.throttles import SaleWriteRateThrottle
+
+
+class CancellationInput(serializers.Serializer):
+    reason = serializers.CharField(required=False, allow_blank=True, max_length=2000, default='')
 
 
 class TransactionPagination(PageNumberPagination):
@@ -38,9 +46,9 @@ def transaction_history_queryset(user):
 
 class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    Read-only sales history. Transactions are created via CheckoutView or
-    OrderViewSet.fulfill — never directly through this endpoint, so only
-    list/retrieve are exposed.
+    Sales history with an explicit admin cancellation action. Transactions are
+    created through checkout, orders or manual encoding; arbitrary updates and
+    deletion remain unavailable.
 
     Query params (all optional, list endpoint only):
       start_date=YYYY-MM-DD
@@ -57,6 +65,18 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = TransactionPagination
     renderer_classes = [CachedJSONRenderer, BrowsableAPIRenderer]
     data_cache_timeout = settings.HISTORY_CACHE_TIMEOUT
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAdmin],
+            throttle_classes=[SaleWriteRateThrottle])
+    def cancel(self, request, pk=None):
+        sale = self.get_object()
+        values = CancellationInput(data=request.data)
+        values.is_valid(raise_exception=True)
+        try:
+            sale, _ = void_transaction(sale.pk, voided_by=request.user, **values.validated_data)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=400)
+        return Response(self.get_serializer(sale).data)
 
     def get_queryset(self):
         # A batch can appear on hundreds of invoice lines. Fetch it once and

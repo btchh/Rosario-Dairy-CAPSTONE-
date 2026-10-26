@@ -3,7 +3,7 @@ Description=Run Rosario Dairy model maintenance at midnight Asia/Manila
 
 [Timer]
 OnCalendar=*-*-* 00:00:00 Asia/Manila
-Persistent=false
+Persistent=true
 AccuracySec=1s
 RandomizedDelaySec=0
 Unit=rosario-forecast-learning.service

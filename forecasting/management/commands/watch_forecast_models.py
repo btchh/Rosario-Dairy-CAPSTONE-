@@ -15,7 +15,7 @@ def seconds_until_midnight(now=None):
 
 
 class Command(BaseCommand):
-    help = 'Maintain monthly production gates and separate weekly SARIMA research as actual data grows.'
+    help = 'Refresh saved forecasts on startup, then at midnight Asia/Manila (or an explicit interval).'
 
     def add_arguments(self, parser):
         parser.add_argument('--interval', type=int, help='Explicit interval override in seconds; default is midnight Asia/Manila.')
@@ -24,10 +24,14 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         if options['interval'] is not None and options['interval'] < 60:
             raise CommandError('interval must be at least 60 seconds')
+        first_run = True
         try:
             while True:
-                if not options['once'] and options['interval'] is None:
+                # Recover missed maintenance after downtime before waiting for
+                # the next midnight. Unchanged inputs reuse saved model fits.
+                if not first_run and not options['once'] and options['interval'] is None:
                     time.sleep(seconds_until_midnight())
+                first_run = False
                 try:
                     call_command('run_forecast_refresh', stdout=self.stdout)
                 except (CommandError, ValueError, DatabaseError) as exc:

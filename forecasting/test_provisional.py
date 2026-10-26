@@ -114,6 +114,39 @@ class ProvisionalProjectionTests(SimpleTestCase):
             self.assertEqual(train(rows, 'monthly')['status'], 'fit_failed')
         self.assertEqual(future_rows({}, ['2027-01-01'], 'yearly'), [])
 
+    def test_test_failure_cannot_replace_the_validation_winner(self):
+        rows = series(snapshot(), 'feeding', 'monthly')[-10:]
+        def fitted(prefix, name, season):
+            return {'name': name, 'trained_through': prefix[-1]['date']}
+        def evaluated(state, held_out, period):
+            # Six months train validation, eight train the test origin.
+            if state['trained_through'] == rows[7]['date']:
+                raise ValueError('test projection failed')
+            return {'wape': 1 if state['name'] == 'ar1' else 2, 'rows': []}
+        with patch('forecasting.provisional.fit', side_effect=fitted) as fitting, \
+                patch('forecasting.provisional.evaluate', side_effect=evaluated):
+            result = train(rows, 'monthly')
+        self.assertEqual(result['status'], 'fit_failed')
+        self.assertEqual(result['selected_candidate'], 'ar1')
+        self.assertNotIn('state', result)
+        self.assertEqual([(len(c.args[0]), c.args[1]) for c in fitting.call_args_list],
+                         [(6, 'local_level'), (6, 'ar1'), (8, 'ar1')])
+
+    def test_final_refit_failure_cannot_replace_the_validation_winner(self):
+        rows = series(snapshot(), 'feeding', 'monthly')[-10:]
+        def fitted(prefix, name, season):
+            if len(prefix) == len(rows):
+                raise ValueError('final refit failed')
+            return {'name': name, 'trained_through': prefix[-1]['date']}
+        with patch('forecasting.provisional.fit', side_effect=fitted) as fitting, \
+                patch('forecasting.provisional.evaluate', side_effect=lambda state, held, period:
+                      {'wape': 1 if state['name'] == 'ar1' else 2, 'rows': []}):
+            result = train(rows, 'monthly')
+        self.assertEqual(result['status'], 'fit_failed')
+        self.assertEqual(result['selected_candidate'], 'ar1')
+        self.assertEqual([c.args[1] for c in fitting.call_args_list],
+                         ['local_level', 'ar1', 'ar1', 'ar1'])
+
     def test_digest_survives_signed_zero_json_database_roundtrip(self):
         self.assertEqual(digest({'value': -0.0}), digest({'value': 0.0}))
 

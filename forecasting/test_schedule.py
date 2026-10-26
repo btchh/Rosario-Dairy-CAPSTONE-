@@ -15,14 +15,31 @@ class MidnightMaintenanceTests(SimpleTestCase):
         self.assertEqual(seconds_until_midnight(datetime(2026, 12, 31, 23, 59, 59,
                                                      tzinfo=ZoneInfo('Asia/Manila'))), 1)
 
-    def test_default_worker_waits_then_recalculates_midnight_after_work(self):
+    def test_default_worker_catches_up_then_recalculates_midnight_after_work(self):
         namespace = 'forecasting.management.commands.watch_forecast_models.'
+        events = []
+        def maintenance_command(*args, **kwargs):
+            events.append('refresh')
+        def pause(seconds):
+            events.append(('sleep', seconds))
+            if seconds == 86355:
+                raise KeyboardInterrupt
         with patch(namespace+'seconds_until_midnight', side_effect=[60, 86355]), \
-                patch(namespace+'time.sleep', side_effect=[None, KeyboardInterrupt]) as sleep, \
-                patch(namespace+'call_command') as maintenance:
+                patch(namespace+'time.sleep', side_effect=pause) as sleep, \
+                patch(namespace+'call_command', side_effect=maintenance_command) as maintenance:
             call_command('watch_forecast_models', stdout=StringIO())
         self.assertEqual(sleep.call_args_list, [call(60), call(86355)])
-        self.assertEqual([c.args[0] for c in maintenance.call_args_list], ['run_forecast_refresh'])
+        self.assertEqual([c.args[0] for c in maintenance.call_args_list], ['run_forecast_refresh'] * 2)
+        self.assertEqual(events, ['refresh', ('sleep', 60), 'refresh', ('sleep', 86355)])
+
+    def test_interval_worker_catches_up_then_uses_configured_interval(self):
+        namespace = 'forecasting.management.commands.watch_forecast_models.'
+        with patch(namespace+'seconds_until_midnight', side_effect=AssertionError('interval override')), \
+                patch(namespace+'time.sleep', side_effect=[None, KeyboardInterrupt]) as sleep, \
+                patch(namespace+'call_command') as maintenance:
+            call_command('watch_forecast_models', interval=120, stdout=StringIO())
+        self.assertEqual(maintenance.call_count, 2)
+        self.assertEqual(sleep.call_args_list, [call(120), call(120)])
 
     def test_timer_once_run_is_immediate_and_never_sleeps(self):
         namespace = 'forecasting.management.commands.watch_forecast_models.'

@@ -23,7 +23,7 @@ from .provisional import digest, series, train, fit, future_rows, project
 from .seasonal import is_sarima_artifact
 from .chart import period_start, period_end
 
-VERSION = 'centered-beta-sarima-v3'
+VERSION = 'centered-beta-sarima-v4'
 PERIODS = ('weekly', 'monthly', 'yearly')
 SCOPES = ('real', 'demo2026')
 VIEWS = ('combined', 'regular', 'feeding')

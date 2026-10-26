@@ -23,7 +23,7 @@ from .lifecycle import _commit_lock, valid_coverage, coverage_revision, coverage
 from .models import MonthlyModelRun, ProvisionalForecastRun
 from .seasonal import is_sarima_artifact
 
-VERSION = 'actual-provisional-sarima-v2'
+VERSION = 'actual-provisional-sarima-v3'
 PERIODS = ('weekly', 'monthly', 'yearly')
 VIEWS = ('regular', 'feeding', 'combined')
 
@@ -221,19 +221,25 @@ def train(rows, period):
             results[name] = {'error': str(exc), 'wape': None}
     ranked = sorted((n for n in candidates if results[n].get('wape') is not None), key=lambda n: results[n]['wape'])
     failures = []
-    for name in ranked:
-        try:
-            test_state = fit(rows[:test_index], name, season)
-            test = evaluate(test_state, rows[test_index:], period)
-            state = fit(rows, name, season)
-            project(state, 1)
-            return {'status': 'provisional', 'state': state, 'validation': results, 'test': test,
-                    'selection': 'earlier_validation_only; test_not_used_for_selection',
-                    'fit_failures': failures, 'seasonal_terms_enabled': name == 'seasonal_ar',
-                    'observed_periods': len(observed), 'missing_periods': len(rows)-len(observed)}
-        except (ValueError, np.linalg.LinAlgError) as exc:
-            failures.append({'candidate': name, 'error': str(exc)})
-    return {'status': 'fit_failed', 'validation': results, 'fit_failures': failures}
+    # Freeze the validation winner before inspecting any test-period outcomes.
+    # A test/refit failure invalidates that winner; it must not select a runner-up.
+    if not ranked:
+        return {'status': 'fit_failed', 'validation': results, 'fit_failures': failures,
+                'selected_candidate': None}
+    name = ranked[0]
+    try:
+        test_state = fit(rows[:test_index], name, season)
+        test = evaluate(test_state, rows[test_index:], period)
+        state = fit(rows, name, season)
+        project(state, 1)
+        return {'status': 'provisional', 'state': state, 'validation': results, 'test': test,
+                'selection': 'earlier_validation_only; test_not_used_for_selection',
+                'fit_failures': failures, 'seasonal_terms_enabled': name == 'seasonal_ar',
+                'observed_periods': len(observed), 'missing_periods': len(rows)-len(observed)}
+    except (ValueError, np.linalg.LinAlgError) as exc:
+        failures.append({'candidate': name, 'error': str(exc)})
+    return {'status': 'fit_failed', 'validation': results, 'fit_failures': failures,
+            'selected_candidate': name}
 
 
 def future_rows(component, targets, period):

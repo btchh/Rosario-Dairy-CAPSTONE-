@@ -27,6 +27,11 @@ Use either a supervised `venv/bin/python manage.py watch_forecast_models` proces
 or a platform scheduler running `venv/bin/python manage.py run_forecast_refresh`.
 Linux timer examples are in `forecasting/deploy/`; adapt the service account,
 paths and environment file to the selected host before installing them.
+The supervised worker refreshes immediately on startup to catch up after
+downtime, then waits until midnight. The supplied persistent timer catches up a
+missed run when reactivated. Both use the same maintenance lock, so a concurrent
+manual refresh reuses active work. Catch-up refreshes today's graph; it does not
+backdate forecasts for missed days.
 Manual refresh uses the same maintenance lock and saved job status as scheduled
 refresh. The persistent worker/hosting setup still needs to be provisioned.
 
@@ -55,6 +60,19 @@ The primary regular monthly model is seasonal SARIMA. Sparse feeding history can
 produce flat estimates. Below 15% regular monthly WAPE remains a target, not a
 promise or a display blocker. Original forecasts are distinguished from
 reconstructed historical tests; accuracy must be measured against later actuals.
+
+Run `venv/bin/python manage.py audit_forecast_accuracy` for a read-only audit of
+current-source saved results. It recomputes monthly WAPE, MAE, RMSE, signed bias,
+error dispersion and baseline skill on matching test periods, and reports stale
+training and coverage gaps. It never fits or issues forecasts. Currency rounding
+is not forecast precision; error dispersion is not a calibrated probability
+interval. One-month rolling scores do not establish longer-horizon accuracy.
+
+Provisional selection freezes the earlier-validation winner. If its test fit or
+final refit fails, the estimate is unavailable rather than switching to another
+candidate after inspecting the test. The corrected provisional v3 and centered
+graph v4 engines require `venv/bin/python manage.py run_forecast_refresh` after
+updating; older saved model records and issued predictions remain intact.
 
 The dummy-sales generator has been removed; existing dummy receipts are retained.
 Demo comparisons are unavailable in production.

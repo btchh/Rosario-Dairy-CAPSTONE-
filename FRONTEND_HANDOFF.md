@@ -1,10 +1,88 @@
-# Forecasting API guide
+# Implement the current forecasting API in Jaymark's frontend
 
-Updated 2026-10-25 (Asia/Manila). API contract only.
+Updated 2026-10-26 (Asia/Manila).
 
-Before running the system, always run `venv/bin/python manage.py migrate` from
-the backend directory, including after pulling changes. Start the backend only
-after migrations succeed.
+Implement these changes in `JayMarkRocero/Rosario-Dairy-Capstone`. The backend
+already provides the new graph API. This document is an implementation task for
+the frontend developer; backend finalization does not change frontend code.
+
+## Required implementation
+
+1. In `src/features/dashboard/api/forecasting.service.ts`, add typed support for
+   `GET /api/forecasting/graph/` with `period` and explicit `scope=real`. Switch
+   `ForecastChart.tsx` to this call. Keep existing `/chart/` and `/forecast/`
+   callers compatible where still needed; their payloads differ from `/graph/`.
+2. Type the graph response, each view's `points`, nullable `message`, and
+   `evaluation` keyed by `prediction_basis` using the contract below. Do not
+   adapt the new response into the old approval/provisional fields.
+3. Keep Combined, Regular Sales, and Milk Feeding tabs. All three views arrive
+   in one response; switching tabs must not make another request. Fetch on
+   period changes and use separate cache keys for each period and scope.
+4. Render exactly three revenue series from each point: `past_prediction`
+   (Past predictions), `actual` (Recorded sales), and `future_prediction`
+   (Future predictions). Use `date` and `end_date` for labels and tooltips.
+   Remove the old provisional/approved chart series and publication gate banner
+   from this graph. A ready beta graph does not require production approval.
+5. Render the complete server-provided centered calendar. Weekly/monthly have
+   seven buckets; yearly has five. Do not anchor to the latest sale, apply the
+   old eighteen-month history filter, or drop empty buckets. Mark `is_current`.
+   Keep nulls as gaps (`connectNulls={false}`); zero is a valid recorded value.
+6. Format amounts in Philippine pesos. In the current bucket, label actuals as
+   partial when `is_partial_period` is true and identify the prediction as a
+   full-period estimate. Tooltips must show the prediction basis: Original
+   issued forecast, Reconstructed historical test, or Current forecast. Do not
+   describe a reconstructed test as a forecast issued before the period.
+7. Display evaluation separately for each returned basis, including the number
+   of completed periods. Never merge issued forecasts and historical tests into
+   one accuracy claim. Null WAPE means unavailable/undefined, including when
+   actuals total zero. Do not score current partial buckets in the frontend.
+   Below 15% regular monthly WAPE is a target, not a display gate.
+8. For `refresh_required`, keep recorded sales visible, show the view's message
+   when present, and offer manual refresh. Distinguish loading, request errors,
+   insufficient history, and unavailable predictions. Do not replace unknown
+   values with zero or trigger training through a GET request.
+9. Keep the current asynchronous refresh workflow: POST `{}` once, accept 202,
+   poll the returned relative `status_url` every five seconds, and invalidate
+   graph caches for all three periods on completion. Recover queued/running
+   jobs after reload. Handle failure, 409 and 429/`Retry-After`; avoid duplicate
+   starts and stop polling on unmount. Add a readable label for the
+   `refresh_beta_graphs` stage. Refresh success is not an accuracy guarantee.
+10. Use real scope in the production dashboard. Demo scope is development-only
+    and requires an explicit offline refresh; do not expose demo data as real
+    forecast evidence.
+
+## Acceptance checks
+
+- Verify all nine period/view combinations against the graph API, with exact
+  centered bucket counts, calendar boundaries, and three series.
+- Verify null versus zero, partial current actuals alongside the full-period
+  estimate, sparse/flat predictions, and issued versus reconstructed tooltips.
+- Verify separate basis evaluations, null WAPE, `refresh_required`, no history,
+  request errors and retry, and switching periods without stale cross-period data.
+- Verify refresh start, duplicate prevention, reload recovery, success/failure,
+  rate limiting, and cache invalidation for every graph period.
+- Update service and UI tests for `/graph/`, explicit real scope and its actual
+  response fields. Run `npm test` and `npm run build`. Report the test results
+  and any remaining integration limits to the backend developer.
+
+## Backend preparation
+
+Before starting Django after pulling backend changes:
+
+```bash
+venv/bin/python manage.py migrate
+```
+
+A saved real graph for today can be prepared with:
+
+```bash
+venv/bin/python manage.py run_forecast_refresh
+```
+
+GET reads saved forecasts and never trains. The hosting provider must separately
+run supervised midnight maintenance; starting Django does not run the scheduler.
+
+## API contract to implement
 
 ## Authentication
 

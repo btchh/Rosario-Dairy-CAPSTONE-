@@ -9,6 +9,32 @@ Implement the outstanding changes below in
 change requests through this document; do not edit the sibling frontend
 repository.
 
+## Change request: registration field length limits
+
+The backend now enforces these limits on admin-only `POST /accounts/register/`:
+
+| Request field | Accepted length |
+| --- | --- |
+| `username` | Required; maximum 50 characters after trimming and Django NFKC normalization. |
+| `first_name` (fname) | Maximum 50 characters; remains optional. |
+| `last_name` (lname) | Maximum 50 characters; remains optional. |
+| `password` | Required; 8–25 characters inclusive, with existing password-strength checks. |
+
+Apply matching limits to the registration inputs and submit validation, and
+show the limits beside the fields. Use the existing API keys `first_name` and
+`last_name`. Count Unicode code points (`Array.from(value).length`), and apply
+`username.trim().normalize('NFKC')` when validating the username's length. Native
+HTML `minLength`/`maxLength` count UTF-16 units; ensure they do not reject valid
+Unicode values within the backend limits. Backend validation remains authoritative.
+
+Preserve password whitespace; never trim or silently truncate a password.
+Out-of-range values return HTTP 400 with the existing `{"error": "message"}`
+shape; display the server message. Successful registration still returns HTTP
+201 with `{"message": "User registered successfully"}`. Registration remains
+admin-only; these validation changes require no database migration and apply
+to registration. Test 50/51-character text boundaries, 7/8/25/26-character
+passwords, normalized Unicode usernames, and rejection without creating a user.
+
 ## Change request: apply custom dates to inventory and forecast reports
 
 The current frontend deliberately drops the selected dates for `inventory` and

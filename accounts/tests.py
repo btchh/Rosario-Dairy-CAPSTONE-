@@ -241,7 +241,7 @@ class UserDetailDeleteTests(TestCase):
 
 
 class RegisterAndLoginTests(TestCase):
-    """Sanity coverage for register/login — not part of this session's fixes."""
+    """Registration validation and access control."""
 
     def setUp(self):
         self.client = APIClient()
@@ -298,6 +298,107 @@ class RegisterAndLoginTests(TestCase):
             'email': self.admin.email.upper(), 'role': 'staff',
         }, format='json')
         self.assertEqual(response.status_code, 400)
+
+    def registration_payload(self, **overrides):
+        return {
+            'username': 'newuser', 'password': 'ComplexPass123!',
+            'email': 'new@example.com', 'role': 'staff',
+            'first_name': 'New', 'last_name': 'User', **overrides,
+        }
+
+    def test_register_accepts_50_character_username_and_unicode_names(self):
+        self.client.force_authenticate(user=self.admin)
+        payload = self.registration_payload(
+            username='u' * 50, first_name='\u00f1' * 50, last_name='\u674e' * 50,
+        )
+        response = self.client.post('/accounts/register/', payload, format='json')
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data, {'message': 'User registered successfully'})
+        user = User.objects.get(username=payload['username'])
+        self.assertEqual(user.first_name, payload['first_name'])
+        self.assertEqual(user.last_name, payload['last_name'])
+        self.assertTrue(user.check_password(payload['password']))
+
+    def test_register_rejects_51_character_fields_without_creating_user(self):
+        self.client.force_authenticate(user=self.admin)
+        for field, label in (
+            ('username', 'Username'), ('first_name', 'First name'), ('last_name', 'Last name'),
+        ):
+            with self.subTest(field=field):
+                response = self.client.post('/accounts/register/',
+                    self.registration_payload(**{field: 'n' * 51}), format='json')
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.data, {'error': f'{label} must be at most 50 characters.'})
+                self.assertEqual(User.objects.count(), 1)
+
+    def test_register_checks_username_limit_after_unicode_normalization(self):
+        self.client.force_authenticate(user=self.admin)
+        # Each ligature expands to three characters under Django's NFKC normalization.
+        response = self.client.post('/accounts/register/',
+            self.registration_payload(username='\ufb03' * 17), format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data, {'error': 'Username must be at most 50 characters.'})
+        self.assertEqual(User.objects.count(), 1)
+
+    def test_register_preserves_username_normalization_at_limit(self):
+        self.client.force_authenticate(user=self.admin)
+        username = '\ufb03' * 16 + 'ab'
+        response = self.client.post('/accounts/register/',
+            self.registration_payload(username=f'  {username}  '), format='json')
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(User.objects.filter(username='ffi' * 16 + 'ab').exists())
+
+    def test_register_accepts_password_length_boundaries_without_trimming(self):
+        self.client.force_authenticate(user=self.admin)
+        for index, password in enumerate(('Q7!zR2@k', ' V8!qM2@zR5#xT9$pL3%wK6& ')):
+            with self.subTest(length=len(password)):
+                self.assertEqual(len(password), (8, 25)[index])
+                username = f'boundary{index}'
+                response = self.client.post('/accounts/register/', self.registration_payload(
+                    username=username, email=f'{username}@example.com', password=password,
+                ), format='json')
+                self.assertEqual(response.status_code, 201)
+                user = User.objects.get(username=username)
+                self.assertTrue(user.check_password(password))
+                if password != password.strip():
+                    self.assertFalse(user.check_password(password.strip()))
+
+    def test_register_rejects_password_lengths_outside_limits(self):
+        self.client.force_authenticate(user=self.admin)
+        for password in ('Q7!zR2@', 'V8!qM2@zR5#xT9$pL3%wK6&nB0'):
+            with self.subTest(length=len(password)):
+                self.assertIn(len(password), (7, 26))
+                response = self.client.post('/accounts/register/',
+                    self.registration_payload(password=password), format='json')
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.data, {'error': 'Password must be between 8 and 25 characters.'})
+                self.assertEqual(User.objects.count(), 1)
+
+    def test_register_keeps_password_strength_checks(self):
+        self.client.force_authenticate(user=self.admin)
+        for password in ('12345678', 'password', 'newuser!2026'):
+            with self.subTest(password=password):
+                response = self.client.post('/accounts/register/',
+                    self.registration_payload(password=password), format='json')
+                self.assertEqual(response.status_code, 400)
+                self.assertIsInstance(response.data['error'], str)
+                self.assertEqual(User.objects.count(), 1)
+
+    def test_register_keeps_optional_null_names(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/accounts/register/',
+            self.registration_payload(first_name=None, last_name=None), format='json')
+        self.assertEqual(response.status_code, 201)
+        user = User.objects.get(username='newuser')
+        self.assertEqual(user.first_name, '')
+        self.assertEqual(user.last_name, '')
+
+    def test_staff_still_cannot_register_users(self):
+        staff = make_user('staff-register')
+        self.client.force_authenticate(user=staff)
+        response = self.client.post('/accounts/register/', self.registration_payload(), format='json')
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(User.objects.filter(username='newuser').exists())
 
 
 # ---------------------------------------------------------------------------

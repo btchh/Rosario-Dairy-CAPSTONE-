@@ -1,8 +1,10 @@
 import gzip
 from io import StringIO
 import json
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import skipUnless
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -56,10 +58,9 @@ class DummyCleanupTests(TestCase):
             manifest = json.loads((folder/'manifest.json').read_text())
             self.assertTrue(manifest['completed'])
             self.assertTrue(manifest['protected_verified'])
-            with gzip.open(folder/'database-before.json.gz', 'rt') as source:
+            with gzip.open(folder/'database-before.json.gz', 'rt', encoding='utf-8') as source:
                 backup = json.load(source)
             self.assertTrue(any(r['model'] == 'sales.transaction' and r['pk'] == self.dummy.pk for r in backup))
-            self.assertEqual((folder/'database-before.json.gz').stat().st_mode & 0o777, 0o600)
         self.assertFalse(Transaction.objects.filter(source_reference__regex=DEMO_REFERENCE).exists())
         self.assertEqual(set(Transaction.objects.values_list('pk', flat=True)), {s.pk for s in self.real})
         self.assertEqual(Order.objects.count(), 3)
@@ -71,6 +72,15 @@ class DummyCleanupTests(TestCase):
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.remaining_quantity, 10)
         self.assertTrue(Customer.objects.filter(pk=self.customer.pk).exists())
+
+    @skipUnless(os.name == 'posix', 'POSIX modes do not verify Windows ACL protection.')
+    def test_backup_permissions_are_private_on_posix(self):
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)/'recovery'
+            call_command('remove_dummy_data', apply=True, output=folder, stdout=StringIO())
+            self.assertEqual(folder.stat().st_mode & 0o777, 0o700)
+            for filename in ('database-before.json.gz', 'manifest.json'):
+                self.assertEqual((folder/filename).stat().st_mode & 0o777, 0o600)
 
     def test_backup_failure_leaves_sales_and_demo_forecasts_untouched(self):
         with TemporaryDirectory() as directory, \

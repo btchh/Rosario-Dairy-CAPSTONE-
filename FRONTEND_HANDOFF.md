@@ -82,3 +82,75 @@ Forecast response additions under `data` when dates are supplied:
 Keep the existing range-aware cache keys, dated PDF filenames, and reset behavior.
 Verify they also work for inventory and forecast reports after enabling their
 date ranges. Run `npm test` and `npm run build` and report the results.
+
+## Audit follow-up: historical receipt amount labels
+
+In `src/features/sales/utils/receiptDetails.ts`, imported records use
+`source_line_total` for their displayed line amounts. Those source amounts can
+remain gross when a discount was recorded only on the invoice header. The
+`Net amount` heading in `TransactionDetails.tsx` therefore overstates what is
+known about each imported line.
+
+Use **Recorded line amount** for imported receipts and retain **Net amount** for
+ordinary local sales. Explain that historical line amounts are recorded source
+values and may precede an invoice-level discount; line discount allocations
+were not recorded. Preserve the server's subtotal, discount and invoice total.
+Do not allocate header discounts across lines, change historical values, or
+treat missing values as zero. The existing transaction API already supplies
+`source_reference`, `source_line_total`, `subtotal`, `discount_amount` and
+`total_amount`; no backend contract change is needed.
+
+Cover imported invoices with header discounts, missing source amounts, grouped
+lines, and ordinary discounted checkout receipts in the receipt mapping/UI
+tests. Verify invoice totals remain exactly as recorded.
+
+## Audit follow-up: refresh after successful sales
+
+`checkout.service.ts` currently awaits `reportsService.refreshAfterMutation()`
+after every successful sale. Other mutation callers should be reviewed too.
+The explicit refresh endpoint intentionally permits one refresh per minute
+per account and also enforces a global cooldown across accounts/processes.
+Consecutive successful sales can consequently produce a report warning.
+
+Prefer existing mutation-driven client cache invalidation and refetching for
+automatic updates. The backend invalidates business/report cache versions after
+committed writes; preview requests then read the new version. Keep explicit
+`POST /api/reports/refresh/` for the manual refresh action. If an automatic
+refresh is retained, coalesce concurrent work, respect `Retry-After`, and treat
+its 429 as a refresh cooldown rather than a failed sale. Client report/PDF
+caches must still invalidate after **every** committed mutation, even during
+the cooldown. A failed sale must not emit a successful-save message, and a
+refresh failure must not resubmit checkout.
+
+Test two rapid successful checkouts, concurrent mutations, fresh preview/PDF
+data after each sale, and manual refresh throttling. Keep the backend throttle
+and global lock; increasing their rates is not the fix.
+
+## Audit follow-up: forecast availability and evidence
+
+Display `status`, `status_message`, `limitations`, `warnings` and available
+evaluation counts returned by the forecast endpoints. A `stale_data` report is
+unavailable even when centered graph data exists. An empty evaluation is **not
+yet evaluated**; one or two completed periods are limited evidence, not current
+validated predictive accuracy. Research scores and the below-15% WAPE target
+must not be presented as an achieved live accuracy figure. Preserve the existing
+date-range availability rules above and do not trigger fitting from a preview.
+
+## Audit follow-up: deployment origin and dependency review
+
+Set the production build's API origin to the provisioned HTTPS backend and
+verify login, both roles and complete sale/report workflows in staging. The
+local development origin is not a production deployment configuration.
+
+A read-only `npm audit --json` on 2026-10-27 reports **10 affected packages**
+(9 high, 1 moderate) in this checkout's lockfile: `baseline-browser-mapping`,
+`browserslist`, `follow-redirects`, `nanoid`, `postcss`, `react-router`,
+`react-router-dom`, `source-map-js`, `tar`, and `vite`. These are registry advisory
+ratings, not proof of browser exploitability. This updates the pasted audit's
+three-package result; the lockfile was not changed during backend remediation.
+
+Review application, build and development-server reachability; update manifest
+and lockfile together to fixed releases, or record a specific justified
+exception with advisory, affected path and scope. Re-run the current advisory
+audit, frontend tests, strict TypeScript checks and production build after the
+updates. Do not use a forced dependency upgrade without checking compatibility.

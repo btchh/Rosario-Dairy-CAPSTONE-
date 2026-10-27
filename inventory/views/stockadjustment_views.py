@@ -8,7 +8,7 @@ from ..services import batch_service
 from accounts.permissions import IsAdmin, IsStaff
 from decimal import Decimal
 from django.db.models import Q
-from config.api_inputs import parse_decimal
+from config.api_inputs import parse_decimal, parse_positive_id
 from rest_framework import serializers
 
 class StockAdjustmentViewSet(CachedListMixin, viewsets.ModelViewSet):
@@ -54,6 +54,12 @@ class StockAdjustmentViewSet(CachedListMixin, viewsets.ModelViewSet):
         adjustment_type = request.data.get('adjustment_type')
         unit_cost = request.data.get('unit_cost')
         reason = request.data.get('reason')
+
+        try:
+            product_batch_id = parse_positive_id(product_batch_id, 'product_batch_id') if product_batch_id not in (None, '') else None
+            ingredient_batch_id = parse_positive_id(ingredient_batch_id, 'ingredient_batch_id') if ingredient_batch_id not in (None, '') else None
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         valid_adjustment_types = [choice[0] for choice in StockAdjustment.ADJUSTMENT_TYPES]
         if adjustment_type not in valid_adjustment_types:

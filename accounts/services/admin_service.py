@@ -21,6 +21,9 @@ def update_user(pk, data, requesting_user):
     Raises ValueError (with a user-facing message) for any validation failure.
     """
     with db_transaction.atomic():
+        # Use the same lock order as deactivation. Locking each target first
+        # lets concurrent admin changes hold one another's admin rows.
+        list(Users.objects.select_for_update().filter(role='admin', is_active=True).order_by('pk'))
         user = cast(Users, Users.objects.select_for_update().get(pk=pk))
         data = {key: data.get(key) for key in data}
         current_password = data.pop('current_password', None)
@@ -77,7 +80,6 @@ def update_user(pk, data, requesting_user):
         demoting = user.role == 'admin' and data.get('role', user.role) != 'admin'
         deactivating = user.role == 'admin' and user.is_active and data.get('is_active', True) is False
         if demoting or deactivating:
-            list(Users.objects.select_for_update().filter(role='admin', is_active=True))
             remaining_admins = Users.objects.filter(role='admin', is_active=True).exclude(pk=user.pk).count()
             if remaining_admins == 0:
                 raise ValueError("Cannot remove the last active admin.")
@@ -112,7 +114,7 @@ def deactivate_user(pk, requesting_user, reason='suspended'):
         raise ValueError(f"Invalid reason. Must be one of {valid_reasons}.")
 
     with db_transaction.atomic():
-        list(Users.objects.select_for_update().filter(role='admin', is_active=True))
+        list(Users.objects.select_for_update().filter(role='admin', is_active=True).order_by('pk'))
         user = cast(Users, Users.objects.select_for_update().get(pk=pk))
 
         if user.pk == requesting_user.pk:

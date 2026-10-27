@@ -14,6 +14,7 @@ import os
 from hashlib import sha256
 from pathlib import Path
 from datetime import timedelta
+from urllib.parse import urlsplit
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
@@ -58,6 +59,8 @@ ALLOWED_HOSTS = env_list(
 )
 if IS_PRODUCTION and not ALLOWED_HOSTS:
     raise ImproperlyConfigured('DJANGO_ALLOWED_HOSTS is required in production.')
+if IS_PRODUCTION and any('*' in host for host in ALLOWED_HOSTS):
+    raise ImproperlyConfigured('DJANGO_ALLOWED_HOSTS must use explicit hosts in production.')
 
 
 # Application definition
@@ -138,8 +141,14 @@ DATABASES = {
     }
 
 }
-if IS_PRODUCTION and not DATABASES['default']['PASSWORD']:
-    raise ImproperlyConfigured('DB_PASSWORD is required in production.')
+if IS_PRODUCTION:
+    for field in ('NAME', 'USER', 'PASSWORD', 'HOST'):
+        if not os.getenv('DB_' + field, '').strip():
+            raise ImproperlyConfigured(f'DB_{field} is required in production.')
+    if DATABASES['default']['USER'].strip().lower() in {'postgres', 'root'}:
+        raise ImproperlyConfigured('DB_USER must be a dedicated application role in production.')
+    if DATABASES['default']['PASSWORD'] == 'root':
+        raise ImproperlyConfigured('DB_PASSWORD must not use the development password in production.')
 
 REDIS_URL = os.getenv('REDIS_URL', '')
 API_DATA_CACHE_TIMEOUT = int(os.getenv('API_DATA_CACHE_TIMEOUT', '300'))
@@ -259,6 +268,17 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
 ] if not IS_PRODUCTION else []
 
 CSRF_TRUSTED_ORIGINS = env_list('CSRF_TRUSTED_ORIGINS')
+if IS_PRODUCTION:
+    for name, origins in (
+        ('CORS_ALLOWED_ORIGINS', CORS_ALLOWED_ORIGINS),
+        ('CSRF_TRUSTED_ORIGINS', CSRF_TRUSTED_ORIGINS),
+    ):
+        for origin in origins:
+            parsed = urlsplit(origin)
+            if (parsed.scheme != 'https' or not parsed.hostname or '*' in origin
+                    or parsed.username is not None or parsed.password is not None
+                    or parsed.path or parsed.query or parsed.fragment):
+                raise ImproperlyConfigured(f'{name} must contain explicit HTTPS origins in production.')
 
 SECURE_SSL_REDIRECT = env_bool('DJANGO_SECURE_SSL_REDIRECT', IS_PRODUCTION)
 SESSION_COOKIE_SECURE = env_bool('DJANGO_SESSION_COOKIE_SECURE', IS_PRODUCTION)
@@ -270,7 +290,20 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool(
     'DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS', False
 )
 SECURE_HSTS_PRELOAD = env_bool('DJANGO_SECURE_HSTS_PRELOAD', False)
-if env_bool('DJANGO_BEHIND_HTTPS_PROXY', IS_PRODUCTION):
+if IS_PRODUCTION:
+    for name, value in (
+        ('DJANGO_SECURE_SSL_REDIRECT', SECURE_SSL_REDIRECT),
+        ('DJANGO_SESSION_COOKIE_SECURE', SESSION_COOKIE_SECURE),
+        ('DJANGO_CSRF_COOKIE_SECURE', CSRF_COOKIE_SECURE),
+    ):
+        if not value:
+            raise ImproperlyConfigured(f'{name} must be true in production.')
+    if SECURE_HSTS_SECONDS <= 0:
+        raise ImproperlyConfigured('DJANGO_SECURE_HSTS_SECONDS must be positive in production.')
+
+# Trust forwarding headers only after the operator explicitly enables a proxy
+# that strips client-supplied headers and blocks direct application access.
+if env_bool('DJANGO_BEHIND_HTTPS_PROXY', False):
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Django sends OTP messages through any configured SMTP provider. Development

@@ -22,6 +22,7 @@ from psycopg2 import sql
 
 from sales.models import Order, OrderItem, Transaction, TransactionItem
 from inventory.models import Product, Category
+from .security import create_private_directory
 
 
 def select_rows(start_year, end_year):
@@ -125,7 +126,7 @@ def verify_restore(path, selected, before):
                 if model._meta.managed and not model._meta.proxy and not model._meta.swapped:
                     editor.create_model(model)
         with db.cursor() as cursor:
-            cursor.execute(path.read_text())
+            cursor.execute(path.read_text(encoding='utf-8'))
         after = fingerprints(db,selected)
         if after != before:
             raise ValueError('Restored rows do not match the source snapshot.')
@@ -150,7 +151,7 @@ def backup_history(folder, start_year=2023, end_year=2025):
     if not 2000 <= start_year <= end_year < timezone.localdate().year:
         raise ValueError('Choose complete historical years, starting in 2000 or later.')
     folder=Path(folder)
-    folder.mkdir(parents=True,exist_ok=False,mode=0o700)
+    create_private_directory(folder)
     path=folder/f'actual-sales-{start_year}-{end_year}.sql'
     manifest={'completed':False,'scope':'data_only_actual_sales_with_referenced_dependencies',
               'start_year':start_year,'end_year':end_year,'business_timezone':'Asia/Manila',
@@ -169,7 +170,7 @@ def backup_history(folder, start_year=2023, end_year=2025):
         write_sql(path,selected,(start_year,end_year))
     manifest['sql_sha256']=sha256(path.read_bytes()).hexdigest()
     manifest_path=folder/'manifest.json'
-    manifest_path.write_text(json.dumps(manifest,indent=2)+'\n');manifest_path.chmod(0o600)
+    manifest_path.write_text(json.dumps(manifest,indent=2)+'\n', encoding='utf-8');manifest_path.chmod(0o600)
     manifest['restore_verification']=verify_restore(path,selected,manifest['tables'])
     compressed=path.with_suffix('.sql.gz')
     with path.open('rb') as source, gzip.open(compressed,'wb') as target:
@@ -178,5 +179,5 @@ def backup_history(folder, start_year=2023, end_year=2025):
     compressed.chmod(0o600)
     manifest['gzip_sha256']=sha256(compressed.read_bytes()).hexdigest()
     manifest['completed']=True
-    manifest_path.write_text(json.dumps(manifest,indent=2)+'\n')
+    manifest_path.write_text(json.dumps(manifest,indent=2)+'\n', encoding='utf-8')
     return manifest

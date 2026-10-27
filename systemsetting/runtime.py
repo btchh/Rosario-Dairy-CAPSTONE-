@@ -1,4 +1,5 @@
 import logging
+from uuid import uuid4
 
 from django.conf import settings
 from django.core.cache import cache
@@ -7,7 +8,8 @@ from django.db import transaction
 from .models import SystemSettings
 
 
-RUNTIME_SETTINGS_CACHE_KEY = 'systemsetting:runtime:v1'
+RUNTIME_SETTINGS_CACHE_KEY = 'systemsetting:runtime:v2'
+RUNTIME_SETTINGS_VERSION_KEY = 'systemsetting:runtime:version:v2'
 logger = logging.getLogger(__name__)
 
 
@@ -30,10 +32,17 @@ def get_default_runtime_settings():
 
 
 def get_runtime_settings():
+    data_key = None
     try:
-        data = cache.get(RUNTIME_SETTINGS_CACHE_KEY)
+        version = cache.get(RUNTIME_SETTINGS_VERSION_KEY)
+        if version is None:
+            cache.add(RUNTIME_SETTINGS_VERSION_KEY, uuid4().hex, timeout=None)
+            version = cache.get(RUNTIME_SETTINGS_VERSION_KEY)
+        data_key = f'{RUNTIME_SETTINGS_CACHE_KEY}:{version}' if version else None
+        data = cache.get(data_key) if data_key else None
     except Exception:
         logger.exception('Runtime-settings cache read failed; using the database')
+        data_key = None
         data = None
     if data is not None:
         return {**data, 'timezone': settings.TIME_ZONE}
@@ -53,21 +62,29 @@ def get_runtime_settings():
         'business_type': config.business_type,
         'version': config.updated_at.isoformat(),
     }
-    # A transaction may have uncommitted preferences. Never publish those to
-    # another request, or leave them cached if the transaction later rolls back.
+    # The namespace was captured before the read. If an admin commits new
+    # preferences while this reader is in flight, its old namespace is retired;
+    # a late callback cannot overwrite the newer committed preferences.
     def store():
         try:
-            cache.set(RUNTIME_SETTINGS_CACHE_KEY, data, 300)
+            cache.set(data_key, data, 300)
         except Exception:
             logger.exception('Runtime-settings cache write failed')
-    transaction.on_commit(store)
+    # Never publish uncommitted settings or cache under an unverified namespace.
+    if data_key is not None:
+        transaction.on_commit(store)
     return data
 
 
-def invalidate_runtime_settings(*args, using=None, **kwargs):
+def invalidate_runtime_settings(*args, using=None, created=False, **kwargs):
+    # Initial singleton creation replaces no committed preferences. Retain the
+    # namespace captured by its first reader so the committed result stays warm.
+    # Updates and deletions must retire in-flight readers' namespaces.
+    if created:
+        return
     def invalidate():
         try:
-            cache.delete(RUNTIME_SETTINGS_CACHE_KEY)
+            cache.set(RUNTIME_SETTINGS_VERSION_KEY, uuid4().hex, timeout=None)
         except Exception:
             logger.exception('Runtime-settings cache invalidation failed')
     transaction.on_commit(invalidate, using=using)

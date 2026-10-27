@@ -14,7 +14,7 @@ from config.data_cache import data_version
 from sales.visibility import visible_transactions
 
 from inventory.models import FEFOConf, Ingredient, IngredientBatch, Product, ProductBatch, StockAdjustment
-from inventory.services.eligibility import expired_stock_filter
+from inventory.services.eligibility import expired_stock_filter, expiry_cutoff
 from sales.models import Customer, TransactionItem, StockReturn
 from systemsetting.runtime import get_runtime_settings
 
@@ -286,7 +286,7 @@ def monthly_sales(visible_to_staff=False, start_date=None, end_date=None):
 def _inventory_rows(model, relation_name, item_type, visible_to_staff=False):
     today = timezone.localdate()
     config = FEFOConf.get_config()
-    soon = today + timedelta(days=config.near_expiry_threshold)
+    soon = expiry_cutoff(today, config.near_expiry_threshold)
     rows = model.objects.filter(is_active=True)
     if visible_to_staff and model is Product:
         rows = rows.filter(category__is_active=True, category__is_visible_to_staff=True)
@@ -428,7 +428,7 @@ def inventory_ledger(visible_to_staff=False, start_date=None, end_date=None):
 def inventory_status(visible_to_staff=False, start_date=None, end_date=None):
     today = timezone.localdate()
     config = FEFOConf.get_config()
-    soon = today + timedelta(days=config.near_expiry_threshold)
+    soon = expiry_cutoff(today, config.near_expiry_threshold)
     items = _inventory_rows(Product, 'batches', 'product', visible_to_staff)
     items += _inventory_rows(Ingredient, 'batches', 'ingredient')
     available_batches = Q(status='available', remaining_quantity__gt=0, date_received__lte=today)

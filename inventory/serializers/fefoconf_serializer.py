@@ -1,3 +1,6 @@
+from datetime import date
+
+from django.utils import timezone
 from rest_framework import serializers
 from ..models import FEFOConf
 
@@ -22,10 +25,15 @@ class FEFOConfSerializer(serializers.ModelSerializer):
     low_stock = attrs.get('low_stock_threshold', instance.low_stock_threshold)
 
     errors = {}
+    max_expiry_days = (date.max - timezone.localdate()).days
     if near_expiry < 0:
       errors['near_expiry_threshold'] = 'Must be zero or greater.'
+    elif near_expiry > max_expiry_days:
+      errors['near_expiry_threshold'] = f'Must not exceed {max_expiry_days} days (the supported calendar range).'
     if critical_expiry < 0:
       errors['critical_expiry_threshold'] = 'Must be zero or greater.'
+    elif critical_expiry > max_expiry_days:
+      errors['critical_expiry_threshold'] = f'Must not exceed {max_expiry_days} days (the supported calendar range).'
     if critical_expiry > near_expiry:
       errors['critical_expiry_threshold'] = (
         'Must not exceed the near-expiry threshold.'

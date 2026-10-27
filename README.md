@@ -28,6 +28,49 @@ Keep SQL recovery backups and original source files private; they are excluded
 from Git. Apply `sales.0017_transaction_void_reason_transaction_voided_at_and_more`
 along with all other pending migrations before serving requests.
 
+Production requires explicit `DB_NAME`, `DB_USER`, `DB_PASSWORD` and `DB_HOST`;
+it rejects the development `postgres`/`root` users and `root` password. Provision
+a dedicated runtime role with only the required application schema/table/
+sequence access, separate from migration/administration credentials. Validate
+the effective role using the **runtime credentials** before deployment:
+
+```bash
+venv/bin/python manage.py check --deploy --database default
+```
+
+The additional read-only production check rejects superuser, database-creation,
+role-creation, replication and RLS-bypass flags. The database administrator must
+also review grants and role memberships; this check does not prove least
+privilege by itself. SQL backup restore verification creates/drops an isolated
+database and therefore needs separate operator credentials with `CREATEDB`;
+do not grant this privilege to the web application just to run backups.
+
+Production rejects disabled HTTPS redirects/secure cookies, nonpositive HSTS,
+wildcard allowed hosts, and configured browser origins without explicit HTTPS.
+Proxy header trust is off unless `DJANGO_BEHIND_HTTPS_PROXY=true` is explicitly
+set. Enable it only behind a trusted proxy that overwrites forwarding headers
+and blocks direct application access. Configure the real frontend/API hosts,
+Redis and SMTP through the deployment environment; local development remains
+unchanged. A passing configuration check does not verify the hosting setup.
+
+SQL exports and restore verification explicitly use UTF-8, independent of the
+operating system's text encoding. Backup permission tests verify directory mode
+0700 and file mode 0600 on POSIX. On Windows, `chmod` does not establish equivalent
+ACL isolation. Both backup commands require Python 3.12.4+ and an ACL-capable
+Windows filesystem (such as NTFS), checked before output is created. They use
+`mkdir(mode=0o700)` to create a new protected directory whose ACL grants the
+owner, SYSTEM and administrators inheritable access. Existing output directories
+are rejected. Unsupported runtimes, unsupported volumes and failed volume checks
+stop the backup before sensitive files are written. POSIX protection is unchanged.
+Run `python manage.py test sales.test_backup_security sales.test_dummy_cleanup
+sales.test_history_sql_backup` on the intended Windows host to verify native
+directory/file ACLs and isolated restore behavior. Use a development database role
+permitted to create disposable test databases; never point restore tests at live
+data. Native Windows ACL protection has not been verified by this Linux test run.
+See the [Python directory permission documentation](https://docs.python.org/3.12/library/os.html#os.mkdir),
+[Windows persistent ACL documentation](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getvolumeinformationw)
+and [Django deployment checklist](https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/).
+
 ## Retraining
 
 The web process reads saved forecasts. A separate scheduler must run maintenance

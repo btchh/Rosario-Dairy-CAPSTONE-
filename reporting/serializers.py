@@ -302,4 +302,9 @@ class ReportTypeQuerySerializer(serializers.Serializer):
                 raise serializers.ValidationError({'end_date': 'Must not be in the future.'})
             if start.year < 2:
                 raise serializers.ValidationError({'start_date': 'Must be in year 0002 or later.'})
+            if (attrs['type'] in {'daily_sales', 'weekly_sales', 'monthly_sales'}
+                    and start.toordinal() <= (end - start).days + 1):
+                raise serializers.ValidationError({
+                    'start_date': 'The preceding comparison period falls outside the supported calendar.',
+                })
         return attrs

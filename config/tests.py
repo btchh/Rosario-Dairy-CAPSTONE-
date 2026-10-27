@@ -322,7 +322,8 @@ class DataCacheTests(TestCase):
         self.assertEqual(response.data[0]['name'], 'Milk')
 
     def test_forecast_cache_separates_periods_and_supports_force_refresh(self):
-        with patch('reporting.services.sarima_forecast', side_effect=lambda period: {'period': period}) as build:
+        with patch('reporting.services.sarima_forecast',
+                   side_effect=lambda period, start_date=None, end_date=None: {'period': period}) as build:
             self.assertEqual(get_report('sarima_forecast', period='weekly'), {'period': 'weekly'})
             get_report('sarima_forecast', period='weekly')
             get_report('sarima_forecast', period='monthly')

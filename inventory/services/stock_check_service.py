@@ -1,9 +1,9 @@
-from datetime import timedelta
 from decimal import Decimal
 from django.utils import timezone
 from django.db.models import Case, CharField, DecimalField, Prefetch, Q, Sum, Value, When
 from django.db.models.functions import Coalesce
 from ..models import Product, Ingredient, ProductBatch, IngredientBatch, FEFOConf
+from .eligibility import expiry_cutoff
 
 
 STOCK_OUTPUT_FIELD = DecimalField(max_digits=20, decimal_places=2)
@@ -63,8 +63,8 @@ def check_ingredient_stock():
 def check_product_expiration(visible_to_staff=False):
   now = timezone.localdate()
   config = FEFOConf.get_config()
-  near_expiry_threshold = now + timedelta(days=config.near_expiry_threshold)
-  critical_expiry_threshold = now + timedelta(days=config.critical_expiry_threshold)
+  near_expiry_threshold = expiry_cutoff(now, config.near_expiry_threshold)
+  critical_expiry_threshold = expiry_cutoff(now, config.critical_expiry_threshold)
   batches = ProductBatch.objects.filter(
     status='available', expiration_date__range=(now, near_expiry_threshold), date_received__lte=now
   ).annotate(expiry_status=_expiry_status(critical_expiry_threshold)).prefetch_related(Prefetch(
@@ -80,8 +80,8 @@ def check_product_expiration(visible_to_staff=False):
 def check_ingredient_expiration():
   now = timezone.localdate()
   config = FEFOConf.get_config()
-  near_expiry_threshold = now + timedelta(days=config.near_expiry_threshold)
-  critical_expiry_threshold = now + timedelta(days=config.critical_expiry_threshold)
+  near_expiry_threshold = expiry_cutoff(now, config.near_expiry_threshold)
+  critical_expiry_threshold = expiry_cutoff(now, config.critical_expiry_threshold)
   return IngredientBatch.objects.filter(
     status='available', expiration_date__range=(now, near_expiry_threshold), date_received__lte=now
   ).annotate(

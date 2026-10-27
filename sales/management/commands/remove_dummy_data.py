@@ -14,6 +14,7 @@ from django.db import connection, transaction
 from config.data_cache import invalidate_data_cache
 from forecasting.models import ForecastExperiment, GraphForecastRun, GraphPrediction
 from sales.models import Order, OrderItem, StockReturn, Transaction, TransactionItem
+from sales.backups.security import create_private_directory
 
 DEMO_REFERENCE = r'^2026:[0-9]{6}$'
 
@@ -43,7 +44,7 @@ def fingerprint(query):
 def remove_dummy_data(folder):
     if connection.vendor != 'postgresql':
         raise CommandError('Apply requires PostgreSQL for transactional table locking.')
-    folder.mkdir(parents=True, exist_ok=False, mode=0o700)
+    create_private_directory(folder)
     manifest = {'completed': False, 'receipt_pattern': DEMO_REFERENCE}
     with transaction.atomic():
         with connection.cursor() as cursor:

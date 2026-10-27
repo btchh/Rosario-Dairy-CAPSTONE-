@@ -8,7 +8,7 @@ from ..services import SalesService
 from ..serializers.sale_input_serializer import encoded_sale_items
 from ..services.item_pricing import reject_invoice_discount
 from decimal import Decimal
-from config.api_inputs import parse_decimal
+from config.api_inputs import parse_decimal, parse_positive_id
 from accounts.throttles import SaleWriteRateThrottle
 from ..services.submission_service import request_id, submit_sale
 
@@ -27,6 +27,7 @@ class CheckoutView(viewsets.ViewSet):
         customer = None
         if customer_id not in (None, ''):
             try:
+                customer_id = parse_positive_id(customer_id, 'customer_id')
                 customer = Customer.objects.get(pk=customer_id, is_active=True)
             except (Customer.DoesNotExist, ValueError, TypeError):
                 return Response({'error': 'Customer not found.'}, status=400)

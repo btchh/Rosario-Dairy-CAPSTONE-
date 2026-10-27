@@ -299,7 +299,7 @@ class Report:
             widths = [*fixed, *([flexible / len(group)] * len(group) if group else []), ending, remarks]
             if not group:
                 widths[1] += flexible
-            table = Table(data, colWidths=widths, repeatRows=2, hAlign='LEFT')
+            table = Table(data, colWidths=widths, repeatRows=2, splitInRow=1, hAlign='LEFT')
             commands = [
                 ('SPAN', (2, 0), (4, 0)),
                 ('BACKGROUND', (0, 0), (-1, 1), INK),

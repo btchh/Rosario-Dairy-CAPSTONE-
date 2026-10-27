@@ -40,6 +40,19 @@ def require_item_list(value):
     return value
 
 
+def parse_positive_id(value, field_name):
+    """Accept integer IDs and integer strings without lossy ORM coercion."""
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        raise ValueError(f'{field_name} must be a valid positive integer id.')
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise ValueError(f'{field_name} must be a valid positive integer id.') from exc
+    if not 0 < parsed <= 9223372036854775807:
+        raise ValueError(f'{field_name} must be a valid positive integer id.')
+    return parsed
+
+
 def parse_decimal(value, field_name, *, min_value=None, max_digits=10):
     """Validate finite, database-safe decimal input used by manual API views."""
     field = serializers.DecimalField(

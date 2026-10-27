@@ -1,7 +1,10 @@
 from datetime import datetime
 from decimal import Decimal
+import gzip
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 import json
 
@@ -45,12 +48,30 @@ class HistoricalSQLRoundtripTests(TransactionTestCase):
             databases_before={row[0] for row in cursor.fetchall()}
         with TemporaryDirectory() as parent:
             folder=Path(parent)/'dataset'
-            result=backup_history(folder)
+            original_open = Path.open
+
+            def windows_default_open(path, mode='r', buffering=-1, encoding=None, errors=None, newline=None):
+                # Reproduce a Windows cp1252 default even on a UTF-8 Linux host.
+                if 'b' not in mode and encoding in (None, 'locale'):
+                    encoding = 'cp1252'
+                return original_open(path, mode, buffering, encoding, errors, newline)
+
+            with patch.object(Path, 'open', windows_default_open):
+                result=backup_history(folder)
             self.assertTrue(result['completed'])
             self.assertEqual(result['restore_verification']['status'],'passed')
             self.assertEqual(result['tables']['sales_transaction']['count'],1)
             self.assertTrue((folder/'actual-sales-2023-2025.sql').exists())
             self.assertTrue((folder/'actual-sales-2023-2025.sql.gz').exists())
+            sql_path = folder/'actual-sales-2023-2025.sql'
+            self.assertIn("O'Brien dairy — test", sql_path.read_text(encoding='utf-8').replace("''", "'"))
+            self.assertIn('unicode ₱', sql_path.read_text(encoding='utf-8'))
+            self.assertEqual(gzip.decompress((folder/'actual-sales-2023-2025.sql.gz').read_bytes()),
+                             sql_path.read_bytes())
+            if os.name == 'posix':
+                self.assertEqual(folder.stat().st_mode & 0o777, 0o700)
+                for filename in ('actual-sales-2023-2025.sql', 'actual-sales-2023-2025.sql.gz', 'manifest.json'):
+                    self.assertEqual((folder/filename).stat().st_mode & 0o777, 0o600)
             self.assertTrue(json.loads((folder/'manifest.json').read_text())['completed'])
         self.assertEqual(Transaction.objects.values().get(pk=sale.pk),before)
         with connection.cursor() as cursor:

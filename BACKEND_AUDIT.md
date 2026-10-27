@@ -5,6 +5,264 @@ pasted frontend audit. Application code was not changed during that initial
 review. The original findings below describe the pre-fix behavior and distinguish observed behavior from policy decisions and
 deployment work. Severity reflects potential impact, not proof of exploitation.
 
+## Full backend deployment-preparation review — 2026-10-27
+
+This pass reviews the complete backend and preserves the existing working tree,
+frontend, database schema, role permissions and intentional local development
+configuration. All writes, fits and restore tests run only in fresh disposable
+PostgreSQL databases. Live inspection uses database-enforced read-only
+transactions. No deployment, live cleanup, retraining or data correction was run.
+
+Seven confirmed issues were fixed:
+
+| Issue | Previous behavior | Corrected behavior |
+| --- | --- | --- |
+| Report comparison calendar underflow | A valid-looking early/long sales range could overflow its preceding comparison dates and return 500 from preview/PDF. | Shared query validation returns 400 when the required comparison cannot be represented; supported historical ranges remain valid. |
+| Inventory expiry calendar overflow | Admin settings accepted extreme day thresholds that subsequently crashed stock alerts and inventory reports. | New settings reject unrepresentable ranges; shared cutoff calculation safely saturates at the last representable date for legacy values and date advancement. |
+| Long inventory ledger PDF remarks | Ordinary accumulated stock-adjustment reasons could make one table row taller than a page and raise a ReportLab layout error. | Ledger rows can continue across pages, preserving complete remarks and repeated headers. |
+| Lossy record ID coercion | Fractional/boolean batch or checkout-customer IDs could be coerced to another integer record before a mutation. | Those malformed IDs return 400 before lookup/mutation; positive integer strings and supported empty optional fields remain compatible. |
+| Concurrent admin mutation deadlock | Different admin targets were locked before the common active-admin set, allowing PostgreSQL lock inversion. | Both mutation paths lock active admins in primary-key order before the target; the last-active-admin restriction remains enforced. |
+| Logout availability error handling | A database outage was caught as an invalid refresh token and returned 400. | Expected invalid tokens retain 400; database outages reach the existing safe 503 handler without retrying revocation. |
+| Runtime preferences cache race | A cold reader could commit late and overwrite newer committed business preferences for five minutes. | Reads capture a cache namespace before loading data; update/delete commits retire that namespace, so late readers cannot overwrite current preferences. Initial singleton creation retains its namespace to preserve warm-cache query budgets. |
+
+Regression tests reproduce the original calendar errors, malformed-ID stock
+mutation, PostgreSQL admin deadlock and late-reader cache overwrite. PDF tests
+retain all 50 distinct adjustment markers across multiple pages. Existing query
+budgets were retained. The cold singleton and concurrent cache cases both have
+regressions; no query-count limits were increased.
+
+Final complete suite: **756 tests in 384 seconds — 755 passed, one skipped,
+zero failures/errors**. The skip is native Windows ACL verification on this
+Linux host. This includes 23 new regressions. All test databases and their
+parallel clones were removed after the run. Completed component runs also
+include 101 account/security tests, 46 inventory/sales tests, 30 reporting tests
+and a settings/sales run of 248 tests
+(247 passed, one native Windows ACL test skipped). These runs overlap and must
+not be added together. The original full run was interrupted by the host crash;
+five abandoned test databases were removed after confirming no active sessions.
+A resumed run exposed an initial cache-warmup regression; it was corrected
+without increasing any existing query budgets before the final complete rerun.
+
+Django system checks, migration consistency/status, Python syntax (355 files),
+dependency consistency and whitespace checks pass. An isolated-tool `pip-audit`
+scan of all 32 installed backend packages reports zero known advisories and no
+skipped packages. This is advisory coverage, not a security guarantee. A
+production-mode configuration-only check with generated test credentials has
+zero errors and two HSTS policy warnings (`security.W005`, `security.W021`).
+It does not verify a real hosting environment or connect to its services.
+
+Read-only live checks found no invalid product/ingredient batch quantity bounds
+or unvalidated database constraints. One active admin is present. Saved forecast
+object counts match the previous audit; the `stale_data` finding and data/
+coverage/prospective-evidence requirements below remain unchanged.
+
+Valid frontend payloads and response fields are unchanged. The intentional error
+corrections are 400 for the newly rejected malformed IDs/date ranges/thresholds,
+and 503 for logout database unavailability. No frontend change is required for
+valid existing requests. Actual hosting/HTTPS/proxy behavior, runtime database
+grants, Redis/SMTP operations, scheduler/recovery, staging journeys and native
+Windows ACL verification still require validation on the intended deployment
+host. Localhost/development defaults are not treated as defects in this review.
+
+Files changed during this full review (earlier working-tree edits retained):
+
+- `accounts/services/admin_service.py`, `accounts/views/logout_views.py`,
+  `accounts/test_audit_hardening.py`.
+- `config/api_inputs.py`; `inventory/serializers/fefoconf_serializer.py`,
+  `inventory/services/eligibility.py`, `inventory/services/stock_check_service.py`,
+  `inventory/views/stockadjustment_views.py`, `inventory/views/stockcount_views.py`,
+  `inventory/test_audit_hardening.py`.
+- `reporting/serializers.py`, `reporting/services.py`, `reporting/pdf.py`,
+  `reporting/test_audit_hardening.py`; `sales/views/checkout_views.py`.
+- `systemsetting/runtime.py`, `systemsetting/test_audit_hardening.py` and this
+  audit record.
+
+Local settings, deployment environment examples, requirements, frontend and
+frontend handoff content are unchanged by this full review. No model or
+migration changes were made, and no live migrations were applied.
+
+Evidence is retained under `/tmp/rosario-full-backend-zt6grm_f/`, including
+`start-hashes.json`, `runtime-before.log`, `runtime-related-final.log`,
+`cache-sales-final.log`, `readonly-integrity.json`, `python-advisories.json`,
+`production-config-check.log` and `verified-full-tests.log`. The earlier full
+logs retain the interrupted run and the corrected cache-query finding.
+Component logs:
+`/tmp/rosario-auth-review-a0sZKnTA/hardening-tests.log`,
+`/tmp/rosario_sales_review_s3o0y6vu/hardening-final-tests.log` and
+`/tmp/rosario-report-audit-phvlEy/tests.log`.
+
+## Targeted local maintenance verification — 2026-10-27
+
+This later pass follows Jay Mark's backend-only scope. Localhost and development
+settings are intentional. No configuration, frontend/handoff, models, migrations,
+authentication, Staff/Admin permissions, forecasting algorithms or HTTP API
+contracts were changed during this pass. Earlier working-tree edits were
+preserved. Production provisioning remains a separate hosting task.
+
+**Confirmed fixes and backup security.** The previously applied explicit UTF-8
+SQL restore/manifest handling and simulated-cp1252 regression were retained and
+verified. The regression additionally checks literal Unicode in the SQL, exact
+decompressed bytes, source-row preservation, restored fingerprints, and POSIX
+permissions on the directory, SQL, gzip and manifest. Backup content and stored
+sales values were not rewritten.
+
+The Unix 0600 assertion was an OS-specific assumption; it does not measure
+Windows ACLs. Both backup paths now share private directory creation. POSIX
+keeps 0700 directories/0600 files. On Windows the helper checks Python 3.12.4+
+and `FILE_PERSISTENT_ACLS` on the target volume before creating output, then
+uses Python's protected, inheritable 0700 directory ACL for owner, SYSTEM and
+administrators. Existing output directories remain rejected. An unsupported
+runtime/filesystem or failed volume check aborts before writing sensitive data.
+No permissions were broadened or backup-serving routes added.
+
+Native Windows tests read the folder/file ACLs through Windows security APIs,
+checking protected directory ACLs and the absence of unrelated allowed
+principals. These tests are present but **not executed on this Linux host**.
+Mocked failure guards and real POSIX permissions pass. Native Windows backup/
+restore and ACL verification must still be run on the intended Windows machine;
+this report does not claim that its effective ACLs have been verified remotely.
+The implementation uses documented
+[Python directory ACL behavior](https://docs.python.org/3.12/library/os.html#os.mkdir),
+[CPython's protected/inheritable descriptor](https://github.com/python/cpython/blob/3.13/Modules/posixmodule.c)
+and [Windows filesystem ACL capability flags](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getvolumeinformationw).
+
+**SARIMA investigation.** Read-only, repeatable-read PostgreSQL verification on
+2026-10-27 (Asia/Manila) confirms `stale_data` is expected:
+
+- Eligible observed sales span 2022-03-21 through **2025-12-31**; the contiguous
+  monthly fitting series contains 36 months, January 2023–December 2025.
+- Current-source monthly run **4**, engine `regular-monthly-sarima-v2`, matches
+  the 2026-10-01 snapshot cutoff but is trained only through 2025-12-31. Its next
+  saved research target is **2026-01-01**, not October 2026. A recent refresh or
+  cutoff date is not evidence that underlying sales are recent.
+- Gate reasons are `stale_training_data`, `unverified_ledger_coverage` and
+  `needs_12_prospective_reviewed_months`. There are zero coverage attestations,
+  issued monthly forecasts, monthly forecast scores and active deployments.
+- Saved retrospective monthly evidence covers 12 months in 2025: WAPE 10.6433%
+  versus the previous-month baseline's 11.3810%. This is historical research,
+  not current predictive accuracy. The separate weekly research is also stale;
+  its 13-period historical WAPE is 26.8135%, worse than baseline 20.2992%.
+- Centered real graph runs 43/44/45 are ready for 2026-10-27, with 7/7/5 points
+  per view for weekly/monthly/yearly. Weekly/monthly evaluations are empty;
+  yearly historical evaluations contain one period for Combined/Feeding and
+  two for Regular. Graph availability is distinct from forecast approval.
+- There are 51 unclassified invoices requiring source review where relevant.
+  No fit was performed; fitting was explicitly blocked in the read-only probe.
+  Saved forecast object counts were unchanged during and after verification.
+
+No forecasting implementation defect was confirmed by these checks. For defense,
+explain the available historical evidence and show unavailable current forecasts
+honestly. A current October monthly fit needs genuine reconciled history through
+September 2026; missing months must not be assumed to be zero. Review source
+classifications and coverage against original ledgers, then arrange offline
+maintenance as separately authorized data preparation. Approved publication also
+requires 12 consecutive recent reviewed **prospective** monthly outcomes, WAPE
+below 15% and no worse than the baseline, plus the existing remaining gates.
+Retrospective imports cannot create that prospective record. Do not backdate
+issues or fabricate predictions to prepare for defense.
+
+**Report refresh.** No backend endpoint defect was found. Regression tests verify
+per-account and global once-per-minute limits, 429/`Retry-After` on repeats,
+recovery after 61 simulated seconds, safe 503 responses for account-throttle
+cache reads/writes and global-cooldown cache failure, and lock release after
+failure. Two checkouts commit before a subsequent refresh is rejected; a fresh
+database connection verifies that both sales and stock deductions persist.
+The same persistence is verified after refresh returns 503. Rate limits and
+refresh response contracts are unchanged.
+
+**Files changed in this pass:** `sales/backups/security.py`,
+`sales/backups/history_sql.py`, `sales/management/commands/remove_dummy_data.py`,
+`sales/test_backup_security.py`, `sales/test_history_sql_backup.py`,
+`reporting/test_refresh_isolation.py`, `README.md` and this audit document.
+Existing edits in `sales/test_dummy_cleanup.py` and other files were preserved.
+
+**Verification:**
+
+- Initial targeted run: 55 tests, **54 passed, 1 skipped, 0 failures/errors**,
+  including Unicode restore, cleanup preservation, refresh isolation, cache
+  outages, permissions, authentication/concurrency and SARIMA stale-data gates.
+- After final backup guard/test updates: 18 backup/report tests, **17 passed,
+  1 skipped, 0 failures/errors**. The skip is native Windows ACL verification.
+- Final SQL-content/permission update: both SQL backup tests passed. Counts
+  above overlap; they are separate runs, not additional unique coverage.
+- Django system check: no issues. `makemigrations --check --dry-run`: no model
+  changes. `migrate --check`: no unapplied migrations; no application migrations
+  were applied. Python syntax: all 351 files passed. Whitespace checks passed.
+- All write/restore tests used fresh disposable PostgreSQL databases and an
+  isolated in-memory cache. The test and nested restore-verification databases
+  were removed. Live inspection used database-enforced read-only transactions.
+- The complete backend suite was not rerun for this targeted pass. Native
+  Windows ACL/OS restore checks cannot run here; live cleanup/restore was not
+  attempted because it would violate the requested data boundary.
+
+Evidence: `/tmp/rosario-targeted-maintenance-5nh13jb2/forecast-readonly.json`,
+`tests.log`, `final-backup-report-tests.log` and `final-sql-tests.log` in the same
+private temporary directory. Remaining deployment work is host-specific HTTPS,
+hosts/origins, least-privilege credentials, Redis, SMTP, scheduler/recovery,
+backup ACL/restore verification on that host and staging workflows. Local
+development configuration is not a deployment defect in this maintenance pass.
+
+## Deployment/backup audit follow-up — 2026-10-27
+
+Scope: remediate backend findings in the subsequently pasted readiness audit
+and update `FRONTEND_HANDOFF.md`. The sibling frontend repository is unchanged.
+
+- SQL restore verification now reads exported SQL explicitly as UTF-8. Its
+  existing PostgreSQL Unicode/quotes/null/money round-trip regression now forces
+  cp1252 for unspecified `Path.open()` encodings, so the Windows-default failure
+  can be reproduced on Linux. SQL manifests also use explicit UTF-8.
+- Cleanup's functional backup/deletion regression still runs on Windows. Its
+  POSIX directory/file permission assertions are separate and explicitly skip
+  unsupported platforms. This is not Windows ACL verification; deployment-host
+  ACL validation remains outstanding.
+- Production settings require explicit database connection fields, reject the
+  development database users/password, wildcard hosts, insecure configured
+  browser origins, disabled HTTPS redirects/secure cookies and nonpositive
+  HSTS. Proxy-header trust requires explicit opt-in. Existing Redis, SMTP,
+  secret-key and DEBUG production guards remain in force.
+- `check --deploy --database default` adds a read-only production role check for
+  superuser, database/role creation, replication and RLS bypass. A read-only
+  integration probe rejected the current elevated **development** role with
+  `config.E002`; no roles or grants were changed. This flag check does not audit
+  all grants or role memberships. Provision runtime, migration and backup
+  credentials separately; isolated restore verification requires `CREATEDB`.
+- A full-suite attempt exposed an outdated forecast-cache test mock after the
+  earlier report date-range change. Its signature now accepts the optional
+  dates; the period/cache-reuse/forced-refresh assertions are retained.
+- The handoff now requests historical recorded-line labels, mutation-driven
+  client refresh behavior that preserves backend throttling, explicit forecast
+  evidence limits, production API configuration and dependency triage. A new
+  read-only npm advisory audit found 10 affected packages (9 high, 1 moderate),
+  superseding the pasted report's three-package snapshot without establishing
+  browser exploitability or changing frontend dependencies.
+
+Focused verification: 17 backup/deployment regressions and all 105 configuration
+tests pass in disposable PostgreSQL databases with isolated caches and a fast
+test password hasher. The 17 include the Unicode restore and POSIX permission
+tests. Normal system checks, migration consistency, Python syntax (348 files)
+and whitespace checks pass. A production-mode configuration-only check with
+generated test credentials has zero errors and two HSTS policy warnings
+(`security.W005`, `security.W021`); it does not verify running services.
+
+The initial full run attempted **722 tests in 595 seconds: 721 passed and one
+errored**, solely because of the outdated forecast-cache mock described above.
+After correcting it, all 105 configuration tests passed. One additional browser-
+origin configuration test was added while the full run was in progress and
+passed in both focused runs; the current suite contains 723 tests. The complete
+suite was not repeated after the mock-only correction. Logs:
+`/tmp/rosario-deployment-tests.log`,
+`/tmp/rosario-deployment-config-tests.log` and
+`/tmp/rosario-deployment-focused-tests.log`.
+A final database catalog check found no remaining task test databases or
+isolated backup-verification databases.
+
+Actual hosting/HTTPS/proxy behavior, runtime credentials/grants, Redis/SMTP
+operations, Windows ACLs, current forecast evidence, dependency remediation and
+complete staging browser workflows still require deployment verification.
+Production readiness is not established by these source changes. No live
+business data, database roles, hosting configuration or forecast fits were
+modified by this follow-up.
+
 ## Backend fix follow-up
 
 Backend changes now address the findings below; no frontend files were edited.

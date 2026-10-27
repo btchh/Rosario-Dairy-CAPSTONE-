@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.utils import get_md5_hash_password
 from accounts.services import user_service
@@ -53,5 +54,5 @@ class LogoutView(APIView):
     try:
       user_service.logout(refresh_token, request.user)
       return Response({'message': 'Logged out successfully'}, status=status.HTTP_200_OK)
-    except Exception:
+    except (TokenError, ValueError, AuthenticationFailed):
       return Response({'error': 'Invalid or expired refresh token.'}, status=status.HTTP_400_BAD_REQUEST)

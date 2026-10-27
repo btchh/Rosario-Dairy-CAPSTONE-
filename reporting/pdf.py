@@ -168,9 +168,11 @@ class Report:
             'monthly_sales': 'Month-to-date sales', 'inventory': 'Daily inventory breakdown',
             'sarima_forecast': 'Sales forecast', 'customer': 'Customer monthly summary',
         }
-        if self.data.get('is_custom_range'):
+        if self.data.get('is_custom_range') and self.type in ('daily_sales', 'weekly_sales', 'monthly_sales'):
             titles[self.type] = 'Sales summary'
-        if self.type in ('daily_sales', 'weekly_sales', 'monthly_sales', 'customer'):
+        if self.type == 'inventory' and self.data.get('is_custom_range'):
+            titles[self.type] = 'Inventory movement report'
+        if self.type in ('daily_sales', 'weekly_sales', 'monthly_sales', 'customer') or self.data.get('is_custom_range'):
             period = f"{self.data['start_date']} to {self.data['end_date']}"
         elif self.type == 'sarima_forecast':
             period = f"{label(self.data.get('period', 'monthly'))} horizon"
@@ -280,7 +282,9 @@ class Report:
             if sheet:
                 self.story.append(PageBreak())
                 self.header()
-            self.section(f'Daily stock ledger — {ledger["date"]}' + (f' · Sheet {sheet + 1}/{len(groups)}' if len(groups) > 1 else ''))
+            ledger_period = (f'{ledger["start_date"]} to {ledger["end_date"]}'
+                             if self.data.get('is_custom_range') else str(ledger['date']))
+            self.section(f'Stock ledger — {ledger_period}' + (f' · Sheet {sheet + 1}/{len(groups)}' if len(groups) > 1 else ''))
             top = ['No.', 'Description', 'Stocks', '', '', 'Outlet', *(['Customer / outlet allocations'] + [''] * (len(group) - 1) if group else []), 'Total ending inventory', 'Remarks']
             bottom = ['', '', 'Beginning inv. (calc.)', 'Production / received', 'Total', '', *[c['name'] for c in group], '', '']
             data = [[cell(text, True) for text in top], [cell(text, True) for text in bottom]]
@@ -316,14 +320,17 @@ class Report:
                 self.note('No active products to report.')
             self.note('Outlet means sales without a named customer. Customer columns show stock issued to each customer.')
             self.note('Beginning stock is calculated. Ending stock includes expired items still on hand.')
+            if self.data.get('is_custom_range'):
+                self.note('Movements use their recorded physical dates, including the entry date for backdated encoded invoices. Balances are reconstructed from retained movements using the current product catalog; missing legacy movements cannot be recovered.')
             if len(groups) > 1:
                 self.note('Stock balances repeat on each sheet; do not add them together.')
 
     def inventory(self):
         self.inventory_ledger()
         self.story.append(PageBreak())
-        self.section('Inventory health and sellable stock')
+        self.section('Current inventory health and sellable stock')
         d = self.data
+        self.note(f'Current stock as of {str(d["as_of"])[:10]}. Health figures are current; the stock ledger above covers the selected dates.')
         counts = d.get('status_counts', {})
         self.cards([
             ('Active products', str(d['total_products'])),
@@ -412,6 +419,8 @@ class Report:
 
     def forecast(self):
         d = self.data
+        if d.get('range_note'):
+            self.note(d['range_note'])
         regular = d.get('regular') or {}
         ready = d.get('status') == 'ready' and regular.get('predicted_revenue') is not None
         self.cards([

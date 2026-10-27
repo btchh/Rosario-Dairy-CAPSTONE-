@@ -119,15 +119,13 @@ class ReportDateRangeTests(TestCase):
                 self.assertEqual(data['start_date'], '2024-01-15')
                 self.assertEqual(data['end_date'], '2024-01-16')
 
-    def test_invalid_and_unsupported_ranges_are_rejected_by_both_endpoints(self):
+    def test_invalid_ranges_are_rejected_by_both_endpoints(self):
         cases = [
             {'start_date': '2024-01-01'}, {'end_date': '2024-01-31'},
             {'start_date': 'wrong', 'end_date': '2024-01-31'},
             {'start_date': '2024-02-30', 'end_date': '2024-03-01'},
             {'start_date': '2024-02-01', 'end_date': '2024-01-01'},
             {'start_date': '2024-01-01', 'end_date': str(timezone.localdate() + timedelta(days=1))},
-            {'type': 'inventory', 'start_date': '2024-01-01', 'end_date': '2024-01-31'},
-            {'type': 'sarima_forecast', 'start_date': '2024-01-01', 'end_date': '2024-01-31'},
         ]
         for endpoint in ('preview', 'export-pdf'):
             for params in cases:

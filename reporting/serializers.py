@@ -128,11 +128,16 @@ class InventoryLedgerRowSerializer(serializers.Serializer):
 
 class InventoryLedgerSerializer(serializers.Serializer):
     date = serializers.DateField()
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
     columns = serializers.ListField(child=serializers.DictField(child=serializers.CharField()))
     rows = InventoryLedgerRowSerializer(many=True)
 
 
 class InventoryReportSerializer(serializers.Serializer):
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    is_custom_range = serializers.BooleanField()
     ledger = InventoryLedgerSerializer()
     as_of = serializers.DateTimeField()
     total_products = serializers.IntegerField()
@@ -158,6 +163,10 @@ class ForecastPointSerializer(serializers.Serializer):
 
 
 class ForecastReportSerializer(serializers.Serializer):
+    start_date = serializers.DateField(required=False)
+    end_date = serializers.DateField(required=False)
+    is_custom_range = serializers.BooleanField(default=False)
+    range_note = serializers.CharField(required=False)
     model_family = serializers.CharField(required=False, allow_null=True)
     stage = serializers.CharField(required=False)
     model_id = serializers.IntegerField(required=False)
@@ -287,8 +296,6 @@ class ReportTypeQuerySerializer(serializers.Serializer):
             missing = 'end_date' if end is None else 'start_date'
             raise serializers.ValidationError({missing: 'Provide both start_date and end_date.'})
         if start is not None:
-            if attrs['type'] not in ('daily_sales', 'weekly_sales', 'monthly_sales', 'customer'):
-                raise serializers.ValidationError({'start_date': 'Date ranges are supported for sales and customer reports only.'})
             if start > end:
                 raise serializers.ValidationError({'end_date': 'Must be on or after start_date.'})
             if end > timezone.localdate():

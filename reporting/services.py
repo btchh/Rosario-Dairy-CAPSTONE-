@@ -1,5 +1,5 @@
 from calendar import monthrange
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from contextlib import contextmanager
 import logging
@@ -23,7 +23,7 @@ REPORT_TYPES = (
     'daily_sales', 'weekly_sales', 'monthly_sales', 'inventory',
     'sarima_forecast', 'customer',
 )
-CACHE_PREFIX = 'reporting:preview:v9:'
+CACHE_PREFIX = 'reporting:preview:v10:'
 CACHE_TIMEOUT = 300
 logger = logging.getLogger(__name__)
 
@@ -332,13 +332,15 @@ def _inventory_rows(model, relation_name, item_type, visible_to_staff=False):
     return result
 
 
-def inventory_ledger(visible_to_staff=False):
-    """Today's physical product movements, separate from sellable FEFO stock.
+def inventory_ledger(visible_to_staff=False, start_date=None, end_date=None):
+    """Physical product movements for an inclusive business-date range.
 
     Encoding deducts stock at entry time even when the invoice is backdated.
     Opening stock is reconstructed, not a persisted opening count.
     """
-    today = timezone.localdate()
+    custom = start_date is not None
+    end_date = end_date or timezone.localdate()
+    start_date = start_date or end_date
     products = Product.objects.filter(is_active=True).order_by('name', 'variant', 'pk')
     if visible_to_staff:
         products = products.filter(category__is_active=True, category__is_visible_to_staff=True)
@@ -348,22 +350,35 @@ def inventory_ledger(visible_to_staff=False):
         'outlet': Decimal('0'), 'allocations': {}, 'ending': Decimal('0'),
         'adjustments': Decimal('0'), 'remarks': [],
     } for p in products}
-    batches = ProductBatch.objects.filter(product_id__in=rows, is_historical_reference=False, date_received__lte=today)
+    batches = ProductBatch.objects.filter(product_id__in=rows, is_historical_reference=False, date_received__lte=end_date)
+    if custom:
+        batches = batches.filter(created_at__date__lte=end_date)
     for batch in batches:
         row = rows[batch.product_id]
         row['ending'] += batch.remaining_quantity
-        if timezone.localtime(batch.created_at).date() == today:
+        received_on = timezone.localtime(batch.created_at).date()
+        if custom:
+            received_on = max(received_on, batch.date_received)
+        if start_date <= received_on <= end_date:
             row['received'] += batch.initial_quantity
-        if batch.remaining_quantity and (batch.status in ('expired', 'disposed') or batch.expiration_date < today):
+        if not custom and batch.remaining_quantity and (batch.status in ('expired', 'disposed') or batch.expiration_date < end_date):
             row['remarks'].append(f'{batch.remaining_quantity.normalize():f} {batch.status if batch.status in ("expired", "disposed") else "expired"} on hand')
     # Use all physical deductions for visible products, including a visible line
     # in a mixed-category invoice, so the stock equation still reconciles.
     sales = TransactionItem.objects.filter(
         Q(transaction__is_voided=False) | Q(stock_return__isnull=False),
         product_batch__in=batches,
-    ).annotate(movement_at=Coalesce('transaction__encoded_at', 'transaction__created_at')).filter(
-        movement_at__date=today,
-    ).select_related('transaction__customer', 'product_batch')
+    ).annotate(movement_at=Coalesce('transaction__encoded_at', 'transaction__created_at'))
+    # Reverse later recorded movements to recover the selected closing balance.
+    # Receipts after the range are excluded by the batch query above.
+    if custom:
+        for movement in sales.filter(movement_at__date__gt=end_date).values('product_batch__product_id').annotate(quantity=Sum('quantity')):
+            rows[movement['product_batch__product_id']]['ending'] += movement['quantity']
+        for movement in StockAdjustment.objects.filter(product_batch__in=batches, created_at__date__gt=end_date).values('product_batch__product_id').annotate(quantity=Sum('quantity')):
+            rows[movement['product_batch__product_id']]['ending'] += movement['quantity']
+        for movement in StockReturn.objects.filter(sale_item__product_batch__in=batches, created_at__date__gt=end_date).values('sale_item__product_batch__product_id').annotate(quantity=Sum('quantity')):
+            rows[movement['sale_item__product_batch__product_id']]['ending'] -= movement['quantity']
+    sales = sales.filter(movement_at__date__range=(start_date, end_date)).select_related('transaction__customer', 'product_batch')
     visible_ids = set(visible_transactions(True).filter(pk__in=sales.values('transaction_id')).values_list('pk', flat=True)) if visible_to_staff else set()
     columns = {}
     for item in sales:
@@ -381,7 +396,7 @@ def inventory_ledger(visible_to_staff=False):
             continue
         columns[key] = name
         row['allocations'][key] = row['allocations'].get(key, Decimal('0')) + item.quantity
-    for adjustment in StockAdjustment.objects.filter(product_batch__in=batches, created_at__date=today).select_related('product_batch'):
+    for adjustment in StockAdjustment.objects.filter(product_batch__in=batches, created_at__date__range=(start_date, end_date)).select_related('product_batch'):
         row = rows[adjustment.product_batch.product_id]
         row['adjustments'] += adjustment.quantity
         text = f'{adjustment.quantity.normalize():f} {adjustment.get_adjustment_type_display()}'
@@ -392,7 +407,7 @@ def inventory_ledger(visible_to_staff=False):
     # from the original deduction date. Only the quantity actually restored is
     # credited; expired/disposed/capped returns may restore less or nothing.
     for returned in StockReturn.objects.filter(
-            sale_item__product_batch__in=batches, created_at__date=today
+            sale_item__product_batch__in=batches, created_at__date__range=(start_date, end_date)
             ).select_related('sale_item__product_batch'):
         row = rows[returned.sale_item.product_batch.product_id]
         row['adjustments'] -= returned.quantity
@@ -404,13 +419,13 @@ def inventory_ledger(visible_to_staff=False):
         row['beginning'] = row['total'] - row['received']
         row['remarks'] = '; '.join(row['remarks'])
     return {
-        'date': today,
+        'date': end_date, 'start_date': start_date, 'end_date': end_date,
         'columns': [{'key': key, 'name': name} for key, name in sorted(columns.items(), key=lambda entry: (entry[1].casefold(), entry[0]))],
         'rows': list(rows.values()),
     }
 
 
-def inventory_status(visible_to_staff=False):
+def inventory_status(visible_to_staff=False, start_date=None, end_date=None):
     today = timezone.localdate()
     config = FEFOConf.get_config()
     soon = today + timedelta(days=config.near_expiry_threshold)
@@ -433,7 +448,9 @@ def inventory_status(visible_to_staff=False):
     )
     return {
         'as_of': timezone.now(),
-        'ledger': inventory_ledger(visible_to_staff),
+        'start_date': start_date or today, 'end_date': end_date or today,
+        'is_custom_range': start_date is not None,
+        'ledger': inventory_ledger(visible_to_staff, start_date, end_date),
         'total_products': products.count(),
         'total_ingredients': Ingredient.objects.filter(is_active=True).count(),
         'low_stock_count': sum(item['is_low_stock'] for item in items),
@@ -447,13 +464,36 @@ def inventory_status(visible_to_staff=False):
     }
 
 
-def sarima_forecast(period='monthly'):
+def sarima_forecast(period='monthly', start_date=None, end_date=None):
     """Compatibility report key; expose replacement status without fitting."""
     from forecasting.serving import report
-    try:return report(period=period)
+    try:
+        data = report(period=period)
     except ValueError as exc:
-        return {'generated_at':timezone.now(),'horizon_days':30,'method':'unavailable',
+        data = {'generated_at':timezone.now(),'horizon_days':30,'method':'unavailable',
             'is_placeholder':False,'forecast':[],'status':'data_conflict','warnings':[str(exc)]}
+    if start_date is None:
+        return data
+    data = {**data, 'start_date': start_date, 'end_date': end_date, 'is_custom_range': True}
+    # Monthly predictions are indivisible estimates. Include overlapping months
+    # at their full value, retaining their actual dates rather than prorating.
+    def overlaps(point):
+        first = date.fromisoformat(str(point['date']))
+        last = date.fromisoformat(str(point.get('end_date', point['date'])))
+        return first <= end_date and last >= start_date
+    data['forecast'] = [point for point in data.get('forecast', []) if overlaps(point)]
+    projection = data.get('planning_projection')
+    if projection and not overlaps(projection):
+        data['planning_projection'] = None
+    data['range_note'] = ('Predictions overlapping the selected dates are shown at their full period value; '
+                          'monthly estimates are not prorated.')
+    if not data['forecast']:
+        data['regular'] = {key: value for key, value in data.get('regular', {}).items() if key != 'predicted_revenue'}
+        data['range_note'] = 'No approved forecast is available for the selected dates. ' + data['range_note']
+        if data.get('status') == 'ready':
+            data['regular']['status'] = 'no_forecasts_in_range'
+            data.update(status='no_forecasts_in_range', status_message='No approved forecast is available for the selected dates.')
+    return data
 
 
 def customer_report(visible_to_staff=False, start_date=None, end_date=None):
@@ -580,13 +620,11 @@ def get_report(report_type, force_refresh=False, visible_to_staff=False, period=
         if cached is not None:
             return cached
     if report_type == 'sarima_forecast':
-        data = sarima_forecast(period)
-    elif report_type in ('daily_sales', 'weekly_sales', 'monthly_sales', 'customer'):
-        data = REPORT_BUILDERS[report_type](visible_to_staff=visible_to_staff, start_date=start_date, end_date=end_date)
-        if report_type != 'customer':
-            data['is_custom_range'] = start_date is not None
+        data = sarima_forecast(period, start_date, end_date)
     else:
-        data = REPORT_BUILDERS[report_type](visible_to_staff=visible_to_staff)
+        data = REPORT_BUILDERS[report_type](visible_to_staff=visible_to_staff, start_date=start_date, end_date=end_date)
+        if report_type in ('daily_sales', 'weekly_sales', 'monthly_sales'):
+            data['is_custom_range'] = start_date is not None
     try:
         cache.set(key, data, CACHE_TIMEOUT)
     except Exception:

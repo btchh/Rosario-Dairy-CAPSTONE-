@@ -2,6 +2,15 @@
 
 Django/PostgreSQL API for inventory, sales, reporting and SARIMA forecasts.
 
+Report previews and PDF exports accept inclusive `start_date` and `end_date`
+for every report type. Inventory ledgers reconstruct movements and balances for
+the selected dates; their separate health section is explicitly current stock,
+not a historical FEFO snapshot. Reconstruction uses retained stock movements and
+the current product catalog. Forecast reports filter approved, available
+predictions whose periods overlap the range, preserving full-period amounts
+without prorating or training on request. A date range does not create missing
+or historical forecasts. Defaults remain report-specific when dates are omitted.
+
 ## Start
 
 Always apply migrations before starting, including after pulling backend code:

@@ -9,6 +9,119 @@ Implement the outstanding changes below in
 change requests through this document; do not edit the sibling frontend
 repository.
 
+## Change request: connect adjacent past/current forecast predictions
+
+**Frontend implementation pending.** The backend returns consecutive calendar
+buckets and intentionally separates `past_prediction` from
+`future_prediction`. The artificial break at the current-period boundary comes
+from `src/features/dashboard/components/admin/ForecastChart.tsx`: three
+independent Recharts lines have no shared endpoint. There is no missing backend
+bucket to insert. Preserve the existing forecast API and all fitted values.
+
+Remove this artificial connector gap for Weekly, Monthly and Yearly, across
+Combined, Regular and Feeding. Preserve genuine gaps for unavailable values.
+A vertical difference between adjacent predictions can remain: joining the
+points must not flatten, smooth, refit or replace their amounts.
+
+### Implementation
+
+1. In `src/features/dashboard/utils/forecast.ts`, add a pure helper deriving a
+   display-only segment from the bucket immediately before `is_current` to the
+   current bucket. Use the previous `past_prediction` and current
+   `future_prediction`; finite numeric zero is valid.
+2. Require consecutive calendar buckets: previous `end_date + 1 UTC day` must
+   equal current `date`. Reject malformed dates, missing endpoints, no current
+   bucket, or a missing immediate predecessor. Do not search backwards or
+   forwards for another known value.
+3. Render that segment as a dashed green `ReferenceLine`, which is supported by
+   the installed Recharts 2.15.2. Keep the existing three `Line` components and
+   `connectNulls={false}`.
+
+Suggested helper: add `ForecastGraphPoint` to the existing type import from
+`../api/forecasting.service` in `utils/forecast.ts`:
+
+```ts
+type ForecastBoundarySegment = [
+  { x: string; y: number },
+  { x: string; y: number },
+];
+
+export function forecastBoundarySegment(
+  points: readonly ForecastGraphPoint[],
+): ForecastBoundarySegment | null {
+  const index = points.findIndex(point => point.is_current);
+  if (index <= 0) return null;
+  const previous = points[index - 1], current = points[index];
+  const from = previous.past_prediction, to = current.future_prediction;
+  if (typeof from !== "number" || !Number.isFinite(from)
+      || typeof to !== "number" || !Number.isFinite(to)) return null;
+  const previousStart = new Date(previous.date + "T00:00:00Z");
+  const end = new Date(previous.end_date + "T00:00:00Z");
+  const start = new Date(current.date + "T00:00:00Z");
+  if ([previousStart, end, start].some(day => !Number.isFinite(day.getTime()))) return null;
+  if (previousStart.toISOString().slice(0, 10) !== previous.date
+      || end.toISOString().slice(0, 10) !== previous.end_date
+      || start.toISOString().slice(0, 10) !== current.date
+      || previousStart.getTime() > end.getTime()
+      || previousStart.getTime() >= start.getTime()
+      || end.getTime() + 86_400_000 !== start.getTime()) return null;
+  return [{ x: previous.date, y: from }, { x: current.date, y: to }];
+}
+```
+
+Import the helper in `ForecastChart` and derive
+`const boundary = forecastBoundarySegment(chartData)`. `ReferenceLine` is
+already imported there. Before the existing lines, render:
+
+```tsx
+{boundary && <ReferenceLine
+  className="forecast-boundary-connector"
+  segment={boundary}
+  stroke={C.green}
+  strokeWidth={2.5}
+  strokeDasharray="3 4"
+  ifOverflow="discard"
+  aria-hidden="true"
+  pointerEvents="none"
+/>}
+```
+
+This is a presentation overlay. Do not copy a past value into
+`future_prediction`, add synthetic forecast points, interpolate missing data,
+or join actual sales to a prediction. Preserve raw response/cache objects,
+dates, nulls, prediction bases, partial-period flags and backend evaluations.
+The connector must not add a legend item, tooltip value, point, or evaluation
+sample. Keep the tooltip's original issued/reconstructed/current labels.
+Add a short caption explaining that adjacent prediction periods are connected
+for display while their historical/issued provenance remains separate.
+
+### Verification requested
+
+- Cover all three periods and all three sales views.
+- Test zero-valued endpoints, missing/null/non-finite endpoints, absent current
+  prediction, missing immediate predecessor and omitted calendar buckets.
+- Check week/year transitions, unequal month lengths and February in leap years.
+- Assert the helper never mutates original points or changes evaluations.
+- Browser-check the segment touches both plotted endpoints, the legend retains
+  its three existing entries, and tooltips keep their original values/bases.
+- Verify missing actuals, missing Combined components and unavailable saved
+  predictions still leave genuine gaps. A `refresh_required` graph may retain
+  original issues; draw a boundary only if both actual prediction endpoints exist.
+- Run `npm test`, the repository's TypeScript checks and `npm run build`.
+
+Backend-only verification and source review found no API/model defect requiring
+an algorithm, schema or prediction-value change for this visual boundary.
+The sibling frontend has not been modified in this maintenance pass.
+
+Verified on 2026-10-27: the read-only backend check found consecutive calendars
+and both boundary predictions in all nine period/view combinations (seven
+weekly/monthly buckets; five yearly buckets). All 33 focused backend chart
+tests passed in a disposable PostgreSQL database. The suggested helper passed
+17 isolated cases; an in-memory Recharts render produced the SVG connector,
+preserved zero/null values, and retained exactly three existing legend entries.
+These checks verify the contract and proposed code; applying and browser-testing
+the frontend implementation remains pending.
+
 ## Change request: registration field length limits
 
 The backend now enforces these limits on admin-only `POST /accounts/register/`:

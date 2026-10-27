@@ -5,6 +5,18 @@ pasted frontend audit. Application code was not changed during that initial
 review. The original findings below describe the pre-fix behavior and distinguish observed behavior from policy decisions and
 deployment work. Severity reflects potential impact, not proof of exploitation.
 
+## SQL injection and XSS assessment — 2026-10-27
+
+See [PENETRATION_TEST_REPORT.md](PENETRATION_TEST_REPORT.md) for the targeted
+local assessment of backend `e47687a0` and the read-only frontend rendering
+review. No SQL injection or executable XSS was reproduced. Two adjacent findings
+remain open: **Medium** authenticated report work amplification, and **Low**
+malformed forgot-password usernames returning HTTP 500. This assessment adds
+HTTP regression coverage and documentation; production fixes are not included.
+The tests use disposable PostgreSQL data; the excessive report workload was
+measured with database access blocked. Hosting and deployed end-to-end behavior
+remain outside this local test's evidence.
+
 ## Full backend deployment-preparation review — 2026-10-27
 
 This pass reviews the complete backend and preserves the existing working tree,

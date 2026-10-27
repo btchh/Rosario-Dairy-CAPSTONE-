@@ -1,0 +1,872 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="A beginner's illustrated guide to Rosario Dairy's forecasting: SARIMA formulas, chart gaps, data, saved models, accuracy and code.">
+<meta name="color-scheme" content="dark light">
+<script>
+try {
+  const savedTheme = localStorage.getItem("sarima-guide-theme");
+  if (savedTheme === "light" || savedTheme === "dark") document.documentElement.dataset.theme = savedTheme;
+} catch (_) { /* Dark remains the default when storage is unavailable. */ }
+</script>
+<title>Understand your forecast — Rosario Dairy SARIMA guide</title>
+<style>
+:root{color-scheme:dark;--paper:#0B1220;--surface:#131F30;--ink:#E6EDF5;--muted:#A5B4C6;--line:#2A3B50;--blue:#72B7FF;--orange:#FFB86B;--green:#63D6B1;--soft:#142B3D;--gold:#342818;--control-border:#71869F;--inline-code:#203047;--code-bg:#09111C;--code-ink:#DCEAF5;--table-head:#1A2A3E;--active-bg:#193347;--route-bg:#152A40;--route-ink:#E6EDF5;--route-link:#9BD4FF;--lab-border:#415972;--output-bg:#142E2A;--metric-bg:#101D2D;--training-bg:#193347;--validation-bg:#3B2D1B;--test-bg:#153A2D;--future-bg:#1B2737;--current-bg:#19352F;--reference:#8FA6BC;--bridge:#C1CCDA;--focus:#FFD166;--sans:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--serif:Georgia,"Times New Roman",serif;--mono:ui-monospace,SFMono-Regular,Consolas,monospace;}
+:root[data-theme="light"]{color-scheme:light;--paper:#F6F5EF;--surface:#FFFFFF;--ink:#172E3B;--muted:#4E6570;--line:#D8E1DF;--blue:#126DA0;--orange:#A7500D;--green:#087B61;--soft:#E9F2F4;--gold:#FFF3DA;--control-border:#71869F;--inline-code:#E9EFEE;--code-bg:#122C3A;--code-ink:#E3F2F7;--table-head:#E9F0F0;--active-bg:#E7EFEE;--route-bg:#172E3B;--route-ink:#FFFFFF;--route-link:#B0E5F4;--lab-border:#AEC8CF;--output-bg:#EDF5F3;--metric-bg:#F8FBFA;--training-bg:#DEEBED;--validation-bg:#F9E4BC;--test-bg:#D5EDE2;--future-bg:#F0F0ED;--current-bg:#EDF4F1;--reference:#71888D;--bridge:#6C757C;--focus:#B77518;}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:40px}body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.8 var(--sans)}a{color:var(--blue);text-underline-offset:4px}a:hover{text-decoration-thickness:2px}button,input,select{font:inherit}button,select,input{min-height:44px}button{cursor:pointer}button:disabled{cursor:default}button,.button{border:1px solid var(--line);border-radius:7px;padding:8px 14px;background:var(--surface);color:var(--ink);font-weight:600;text-decoration:none}button:hover,.button:hover{background:var(--soft)}:focus-visible{outline:3px solid var(--focus);outline-offset:4px}input,select{max-width:100%;border:1px solid var(--control-border);border-radius:6px;padding:7px;background:var(--surface);color:var(--ink)}input[type=range]{padding:0;width:100%;accent-color:var(--blue)}code,kbd{font-family:var(--mono);font-size:.87em}p code,li code,td code{overflow-wrap:anywhere;background:var(--inline-code);border-radius:3px;padding:2px 4px}pre{margin:18px 0;padding:22px;background:var(--code-bg);color:var(--code-ink);border-radius:9px;overflow:auto;font:13px/1.8 var(--mono);tab-size:4}pre code{font-size:inherit}h1,h2,h3,h4{line-height:1.2;letter-spacing:-.03em}h1{font-size:clamp(2.7rem,5.8vw,5rem);max-width:820px;margin:20px 0 26px;font-weight:750}h2{font-size:clamp(1.9rem,3.2vw,2.65rem);margin:12px 0 28px}h3{font-size:1.35rem;margin:34px 0 15px}h4{font-size:1.06rem;margin:24px 0 10px}p{margin:16px 0}strong{font-weight:700}small,.small{font-size:.84rem;line-height:1.65;color:var(--muted)}ul,ol{padding-left:25px}li{margin:8px 0}figure{margin:22px 0}figcaption{font-size:.86rem;color:var(--muted);margin-top:9px}table{border-collapse:collapse;width:100%;font-size:.88rem;background:var(--surface)}th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}th{background:var(--table-head);font-weight:700}caption{text-align:left;font-weight:650;margin:12px 0}.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;margin:20px 0}table.wide{min-width:650px}.skip{position:absolute;top:-100px;left:15px;background:var(--surface);padding:12px;z-index:5}.skip:focus{top:10px}.reading-progress{height:4px;background:var(--green);position:fixed;top:0;left:0;width:0;z-index:8}.shell{display:grid;grid-template-columns:255px minmax(0,1000px);max-width:1440px;margin:auto;gap:60px;padding:0 48px}.sidebar{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:36px 0 30px}.brand{font-size:.73rem;font-weight:800;text-transform:uppercase;letter-spacing:.16em;color:var(--green)}.sidebar h2{font-size:1.12rem;letter-spacing:0;margin:20px 0 10px}.sidebar nav a{display:block;font-size:.79rem;line-height:1.55;text-decoration:none;color:var(--muted);padding:7px 10px;border-left:2px solid transparent}.sidebar nav a.active{color:var(--blue);border-color:var(--blue);background:var(--active-bg);font-weight:700}.sidebar .small{font-size:.74rem}.nav-actions{display:flex;gap:7px;flex-wrap:wrap;margin:20px 0}.nav-actions button{font-size:.72rem;padding:6px 8px}.main{min-width:0}.hero{padding:66px 0 50px;border-bottom:1px solid var(--line)}.eyebrow{font-size:.75rem;font-weight:800;text-transform:uppercase;letter-spacing:.15em;color:var(--green)}.lead{font-size:1.2rem;line-height:1.7;max-width:760px;color:var(--muted)}.hero-meta{display:flex;flex-wrap:wrap;gap:10px 24px;font-size:.77rem;color:var(--muted);margin-top:28px}.route{margin-top:25px;padding:20px 24px;background:var(--route-bg);color:var(--route-ink);border-radius:8px;font-size:.94rem}.route a{color:var(--route-link)}.chapter{padding:62px 0;border-bottom:1px solid var(--line);scroll-margin-top:22px}.chapter-number{font:700 .77rem var(--mono);color:var(--green);letter-spacing:.09em}.note{border-left:4px solid var(--blue);background:var(--soft);padding:16px 22px;margin:24px 0;border-radius:0 7px 7px 0}.note.warm{border-color:var(--orange);background:var(--gold)}.note p:first-child{margin-top:0}.note p:last-child{margin-bottom:0}.two{display:grid;grid-template-columns:1fr 1fr;gap:22px}.panel{border:1px solid var(--line);border-radius:9px;padding:22px;background:var(--surface);margin:20px 0}.two .panel{margin:0}.panel h3:first-child{margin-top:0}.equation{overflow-x:auto;background:var(--surface);padding:22px;border:1px solid var(--line);border-radius:8px;font:1.15rem/2 var(--serif);margin:20px 0;white-space:nowrap}.equation .label{display:block;white-space:normal;font:600 .72rem/1.5 var(--sans);color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px}.symbols{display:grid;grid-template-columns:80px 1fr;gap:8px 16px}.symbols dt{font:italic 1.1rem var(--serif)}.symbols dd{margin:0;font-size:.94rem}.source{font-size:.76rem;color:var(--muted);overflow-wrap:anywhere}.pill{display:inline-block;border:1px solid var(--line);padding:3px 9px;border-radius:30px;font-size:.69rem;font-weight:700;letter-spacing:.03em;color:var(--muted);background:var(--surface)}.steps{display:flex;gap:10px;flex-wrap:wrap;margin:24px 0}.steps span{background:var(--surface);border:1px solid var(--line);padding:12px;font-size:.87rem;border-radius:6px}.steps b{color:var(--green);margin-right:5px}.controls{display:flex;gap:15px;flex-wrap:wrap;align-items:end}.controls label{display:grid;gap:5px;font-size:.82rem;font-weight:650;min-width:170px}.check{display:flex!important;align-items:center;gap:9px!important}.check input{min-height:24px;width:20px;height:20px}.lab{margin:24px 0;background:var(--surface);border:1px solid var(--lab-border);border-radius:11px;padding:24px}.lab-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:18px}.lab h3{margin:0}.toy{font-size:.72rem;font-weight:800;color:var(--orange);text-transform:uppercase;letter-spacing:.06em}.chart{display:block;width:100%;height:auto;margin:18px 0;overflow:visible}.legend{display:flex;gap:18px;flex-wrap:wrap;font-size:.77rem}.legend span::before{content:"";display:inline-block;width:19px;height:3px;background:currentColor;vertical-align:middle;margin-right:7px}.orange{color:var(--orange)}.blue{color:var(--blue)}.green{color:var(--green)}.output{background:var(--output-bg);border-radius:6px;padding:15px 18px;font-size:.91rem;margin-top:16px}.metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:20px 0}.metric{border:1px solid var(--line);padding:12px;border-radius:6px;background:var(--metric-bg)}.metric .value{display:block;font-weight:750;font-size:1.3rem;color:var(--blue)}.metric .name{font-size:.75rem;color:var(--muted)}.metric-input{width:110px!important;min-width:70px}.timeline{display:grid;grid-template-columns:18fr 6fr 12fr;gap:4px;margin:25px 0}.timeline div{padding:20px 10px;font-size:.81rem;text-align:center;background:var(--training-bg);border-radius:5px}.timeline div:nth-child(2){background:var(--validation-bg)}.timeline div:nth-child(3){background:var(--test-bg)}details{border-bottom:1px solid var(--line);padding:17px 0}summary{cursor:pointer;font-weight:700;line-height:1.6}details p:last-child{margin-bottom:0}.glossary{display:grid;grid-template-columns:1fr 1fr;gap:0 28px}.glossary div{padding:16px 0;border-bottom:1px solid var(--line)}.glossary dt{font-weight:750;font-size:.93rem}.glossary dd{margin:5px 0 0;font-size:.88rem;line-height:1.7;color:var(--muted)}.quiz fieldset{border:1px solid var(--line);border-radius:8px;padding:18px;margin:18px 0}.quiz legend{font-size:.95rem;font-weight:700;padding:0 8px}.quiz label{display:block;font-size:.9rem;margin:9px 0}.quiz input{min-height:0;margin-right:8px}.quiz-result{font-weight:700}.footer{padding:40px 0 60px;font-size:.83rem;color:var(--muted)}.mobile-toc{display:none}.print-only{display:none}svg text{font-family:var(--sans)}noscript .note{margin-top:20px}
+.hero-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}.theme-toggle{font-size:.8rem;white-space:nowrap;border-color:var(--control-border)}
+.two{grid-template-columns:repeat(2,minmax(0,1fr))}.two>.panel{min-width:0}
+@media(max-width:1100px){.shell{padding:0 28px;gap:30px;grid-template-columns:215px minmax(0,1fr)}.sidebar nav a{font-size:.74rem}.metric-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:780px){.shell{display:block;padding:0 21px}.sidebar{display:none}.hero{padding-top:32px}.mobile-toc{display:block;margin-top:25px}.mobile-toc select{width:100%}.chapter{padding:42px 0}.two,.glossary{grid-template-columns:1fr}.lab{padding:17px}.controls label{min-width:145px}.lead{font-size:1.07rem}body{font-size:16px}.equation{font-size:1.05rem}.timeline div{padding:16px 5px;font-size:.72rem}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+@media print{:root,:root[data-theme="dark"],:root[data-theme="light"]{color-scheme:light;--paper:#FFFFFF;--surface:#FFFFFF;--ink:#172E3B;--muted:#4E6570;--line:#D8E1DF;--blue:#126DA0;--orange:#A7500D;--green:#087B61;--soft:#E9F2F4;--gold:#FFF3DA;--control-border:#71869F;--inline-code:#E9EFEE;--code-bg:#F2F3F3;--code-ink:#111111;--table-head:#E9F0F0;--active-bg:#E7EFEE;--route-bg:#FFFFFF;--route-ink:#111111;--route-link:#17475F;--lab-border:#AEC8CF;--output-bg:#EDF5F3;--metric-bg:#F8FBFA;--training-bg:#DEEBED;--validation-bg:#F9E4BC;--test-bg:#D5EDE2;--future-bg:#F0F0ED;--current-bg:#EDF4F1;--reference:#71888D;--bridge:#6C757C;--focus:#B77518;}body{background:var(--surface);font-size:11pt;line-height:1.65;color:#111}.shell{display:block;padding:0;max-width:none}.sidebar,.mobile-toc,.reading-progress,.no-print,.controls,button{display:none!important}.hero{padding:0 0 20px}h1{font-size:35pt}h2{font-size:24pt}.chapter{padding:25px 0;break-before:auto}.note,.lab,.panel,.equation,pre,table{break-inside:avoid}.chapter>h2{break-after:avoid}pre{color:#111;background:#f2f3f3;white-space:pre-wrap;overflow-wrap:anywhere;font-size:8pt}.table-wrap{overflow:visible}table.wide{min-width:0}.print-only{display:block}.chart{max-height:230px}.hero-meta{font-size:9pt}a{color:#17475f}details{break-inside:avoid}.footer{padding-bottom:0}}
+</style>
+</head>
+<body>
+<a class="skip" href="#start">Skip to the guide</a>
+<div class="reading-progress" id="progress" aria-hidden="true"></div>
+<div class="shell">
+<aside class="sidebar" aria-label="Guide navigation">
+  <div class="brand">Rosario Dairy · Field guide</div>
+  <h2>Understand your forecast</h2>
+  <p class="small">Start with no background. Follow the story from a recorded sale to a plotted estimate.</p>
+  <nav id="toc">
+    <a href="#start">01 · Start from zero</a><a href="#targets">02 · What is being predicted?</a><a href="#gaps">03 · Why the chart has gaps</a><a href="#data">04 · From invoices to a series</a><a href="#dates">05 · Dates, cutoffs and horizons</a><a href="#formula">06 · Decode the SARIMA formula</a><a href="#fitting">07 · How the model learns</a><a href="#evaluation">08 · Training without cheating</a><a href="#paths">09 · Weeks, months and years</a><a href="#metrics">10 · Understand error and accuracy</a><a href="#uncertainty">11 · What forecast bounds mean</a><a href="#status">12 · Status and saved evidence</a><a href="#refresh">13 · Refreshing and preparing data</a><a href="#code">14 · Your code, step by step</a><a href="#defense">15 · Explain it in your defense</a><a href="#glossary">16 · Glossary and self-check</a><a href="#sources">17 · Sources and reading map</a>
+  </nav>
+  <div class="nav-actions"><button id="print-guide" type="button">Print / save PDF</button><button id="expand-details" type="button">Open explanations</button></div>
+  <p class="small">Works offline. No installation, API calls, database connection, or model training.</p>
+</aside>
+<main class="main" id="main">
+<header class="hero">
+  <div class="hero-toolbar"><div class="eyebrow">A beginner's guide, built from your actual code</div><button id="theme-toggle" class="theme-toggle no-print" type="button" aria-label="Switch to light mode">Light mode</button></div>
+  <h1>Understand<br>your forecast.</h1>
+  <p class="lead">What SARIMA means, how your system turns invoices into predictions, why its lines do not always meet, and what you can honestly say about its accuracy.</p>
+  <div class="hero-meta"><span>Rosario Dairy Management System</span><span>Code reviewed: 27 October 2026</span><span id="reading-time">Detailed, self-paced guide</span></div>
+  <div class="route"><strong>New to everything?</strong> Read in order. Start with the idea, then the chart, then the mathematics. <a href="#gaps">Only wondering about the gap? Start at chapter 03.</a></div>
+  <label class="mobile-toc">Jump to a chapter <select id="mobile-chapters" aria-label="Jump to a chapter"><option value="#start">01 · Start from zero</option><option value="#targets">02 · What is being predicted?</option><option value="#gaps">03 · Chart gaps</option><option value="#data">04 · Data</option><option value="#dates">05 · Dates</option><option value="#formula">06 · Formula</option><option value="#fitting">07 · Learning</option><option value="#evaluation">08 · Evaluation</option><option value="#paths">09 · Forecast horizons</option><option value="#metrics">10 · Accuracy calculator</option><option value="#uncertainty">11 · Uncertainty</option><option value="#status">12 · Status</option><option value="#refresh">13 · Refresh and preparation</option><option value="#code">14 · Code walkthrough</option><option value="#defense">15 · Defense questions</option><option value="#glossary">16 · Glossary and quiz</option><option value="#sources">17 · Sources</option></select></label>
+</header>
+<noscript><div class="note">The complete written guide works without JavaScript. Enable JavaScript for the interactive charts and calculators.</div></noscript>
+
+<section class="chapter" id="start">
+<div class="chapter-number">01 / THE IDEA</div><h2>Forecasting is an educated estimate.</h2>
+<p>Imagine that your dairy shop writes down its revenue every month. You notice that nearby months often resemble each other, some times of year repeat, and large feeding orders behave differently from ordinary sales. A forecasting model turns those patterns into a mathematical estimate of a later total.</p>
+<p>It does not know the future. It asks: <strong>“Given the recorded past and the patterns my model can represent, what value should I expect next?”</strong> Once the target period ends, you compare the estimate with what actually happened.</p>
+<div class="two"><div class="panel"><h3>Actual</h3><p>The eligible sales revenue recorded for a period. A completed month's actual is an observation. Today's running total is still partial.</p></div><div class="panel"><h3>Prediction / forecast</h3><p>A model's estimate of a target period. It can be close or far from the outcome. The time it was made matters as much as the number.</p></div></div>
+<p>Suppose a model estimates next month's revenue at <strong>₱100,000</strong>, and the completed month's actual is <strong>₱110,000</strong>. The model underpredicted by ₱10,000. These are teaching amounts, not values pulled from your business.</p>
+<p>A <strong>time series</strong> is simply a list of observations in time order: January revenue, February revenue, March revenue, and so on. A <strong>bucket</strong> is one time container, such as a Monday–Sunday week or a calendar month. SARIMA works with a regular sequence of these buckets.</p>
+<div class="steps" aria-label="Forecasting workflow"><span><b>1</b> Record sales</span><span><b>2</b> Prepare periods</span><span><b>3</b> Learn patterns</span><span><b>4</b> Estimate future</span><span><b>5</b> Compare outcomes</span></div>
+<h3>Three facts to keep with you</h3>
+<ol><li><strong>Predicted revenue is not guaranteed revenue.</strong> A nice-looking line can still be wrong.</li><li><strong>A graph is not proof of accuracy.</strong> Accuracy needs predictions paired with later, trustworthy actuals.</li><li><strong>Missing data is not automatically zero sales.</strong> An absent record might mean “not encoded yet,” not “the business earned nothing.”</li></ol>
+<details><summary>Is SARIMA “AI” or a neural network?</summary><p>SARIMA is a statistical time-series model. It learns numerical relationships from the sequence of past values. This implementation is not a neural network, large language model, or rule that simply increases revenue by a fixed percentage. The library performs numerical estimation of coefficients and uncertainty.</p></details>
+</section>
+
+<section class="chapter" id="targets">
+<div class="chapter-number">02 / YOUR SYSTEM'S TARGET</div><h2>First, know what the number means.</h2>
+<p>Your current forecast graph shows <strong>Philippine-peso revenue</strong>. It is not forecasting liters, stock levels, number of customers, profit, or cash already collected. Those would require different targets and evaluation.</p>
+<div class="table-wrap"><table><thead><tr><th>View</th><th>Meaning in this project</th><th>Important boundary</th></tr></thead><tbody>
+<tr><td><strong>Regular sales</strong></td><td>Eligible ordinary dairy-sales revenue.</td><td>The strict monthly SARIMA and its below-15% WAPE target apply here.</td></tr>
+<tr><td><strong>Milk feeding</strong></td><td>Revenue classified as feeding sales, often containing large or sparse orders.</td><td>A feeding amount is still currency, not milk volume. Sparse schedules can make forecasts unreliable.</td></tr>
+<tr><td><strong>Combined</strong></td><td>Regular revenue plus feeding revenue.</td><td>Unclassified revenue is excluded. A Combined prediction requires both component predictions.</td></tr>
+</tbody></table></div>
+<div class="equation"><span class="label">An accounting relationship between forecast components</span>ŷ<sub>combined,t</sub> = ŷ<sub>regular,t</sub> + ŷ<sub>feeding,t</sub></div>
+<p>The little hat on <strong>ŷ</strong> means “estimated.” The subscript <strong>t</strong> means “at period t.” If either predicted component is unavailable, the code returns a missing Combined forecast rather than pretending that component is zero. Recorded Combined actuals, however, sum the eligible segment entries that actually exist in the bucket; that is not a completeness certificate.</p>
+<h3>There are multiple forecasting paths in the application</h3>
+<p>This is easy to miss: the dashboard, the older research chart, and the strict published forecast do not use one identical approval contract.</p>
+<div class="table-wrap"><table class="wide"><thead><tr><th>Path</th><th>What it is for</th><th>What to conclude</th></tr></thead><tbody>
+<tr><td><code>/api/forecasting/graph/</code></td><td>The current dashboard's centered weekly, monthly and yearly graph.</td><td>Beta/research estimates and retained issues can be displayed. <code>ready</code> means a matching saved graph exists.</td></tr>
+<tr><td><code>/api/forecasting/forecast/</code><br><code>/api/forecasting/models/</code></td><td>The strict Regular monthly SARIMA lifecycle.</td><td>Publication requires current data, reviewed sources, prospective evidence and an approved active model.</td></tr>
+<tr><td><code>/api/forecasting/chart/</code></td><td>An older chart contract with history and separate provisional/approved arrays.</td><td>Its yearly historical sums are not the same construction as the centered graph's annual forecasts.</td></tr>
+<tr><td><code>/api/forecasting/evidence/</code></td><td>Evidence for provisional projections.</td><td>Evidence collection does not itself grant production approval.</td></tr>
+</tbody></table></div>
+<div class="note"><p><strong>Available on screen ≠ validated for production.</strong> You can have a dashboard graph and a separate forecast report saying <code>stale_data</code>. They answer different questions.</p></div>
+<p class="source">Project sources: <a href="forecasting/views.py">forecasting/views.py</a>, <a href="forecasting/serving.py">serving.py:10–29, 71–115</a>, <a href="forecasting/beta_graph.py">beta_graph.py:288–303</a>. All forecast GET endpoints require Admin permission.</p>
+</section>
+
+<section class="chapter" id="gaps">
+<div class="chapter-number">03 / THE GAP YOU ASKED ABOUT</div><h2>A gap can mean several different things.</h2>
+<p><strong>The main orange-to-green break is explained directly by your code.</strong> Past predictions are one line. Current and future predictions are another line. Neither line has both endpoints across the boundary, so the chart does not draw a connecting segment.</p>
+<p>That is different from a <strong>vertical jump</strong>, where adjacent forecasts have different peso values, or a <strong>missing observation</strong>, where no number exists at all. Use the lab to see the distinction.</p>
+<div class="lab" id="gap-lab">
+<div class="lab-head"><h3>Chart gap explorer</h3><span class="toy">Teaching data · not business predictions</span></div>
+<div class="controls">
+<label>Time bucket<select id="gap-period"><option value="weekly">Weekly</option><option value="monthly" selected>Monthly</option><option value="yearly">Yearly</option></select></label>
+<label>Situation<select id="gap-scenario"><option value="boundary">Two separate prediction lines</option><option value="missing">An actual observation is missing</option><option value="component">A component forecast is missing</option><option value="refresh">Matching saved graph is absent</option></select></label>
+<label class="check"><input type="checkbox" id="gap-bridge"> Show a teaching bridge</label>
+</div>
+<figure><svg class="chart" id="gap-chart" viewBox="0 0 840 300" role="img" aria-labelledby="gap-svg-title gap-svg-description"><title id="gap-svg-title">Separate past and future predictions</title><desc id="gap-svg-description">Interactive teaching chart. The complete values are also available in the table below.</desc></svg><figcaption>All example amounts are invented and shown in ₱ thousands. The bridge, when enabled, is an explanation overlay; it does not modify your application or make separate model origins equivalent.</figcaption></figure>
+<div class="legend"><span class="orange">Past prediction</span><span class="blue">Recorded actual</span><span class="green">Current / future prediction</span></div>
+<div class="output" id="gap-explanation" aria-live="polite"></div>
+<details open><summary>See the exact values behind the chart</summary><div class="table-wrap"><table><thead><tr><th>Bucket starts</th><th>Past prediction</th><th>Actual</th><th>Current / future</th></tr></thead><tbody id="gap-values"></tbody></table></div><p class="small">An em dash means <code>null</code> / unknown. A numeric 0 means a value of zero. They are not interchangeable.</p></details>
+</div>
+<h3>Why your orange and green lines stop at different points</h3>
+<pre><code># Real excerpt: forecasting/beta_graph.py:233–234
+'past_prediction': predicted if target &lt; current else None,
+'future_prediction': predicted if target &gt;= current else None,</code></pre>
+<p><code>None</code> means there is no value for that series at that date. For September, the past-prediction field can contain a number and the future field is empty. For October, the past field is empty and the future field can contain a number.</p>
+<pre><code>// Actual dashboard rendering, abbreviated: ForecastChart.tsx:116–118
+&lt;Line dataKey="past_prediction" connectNulls={false} ... /&gt;
+&lt;Line dataKey="actual" connectNulls={false} ... /&gt;
+&lt;Line dataKey="future_prediction" connectNulls={false} ... /&gt;</code></pre>
+<p>Each <code>Line</code> is drawn independently. The orange line has no October point; the green line has no September point. <strong>There is no line segment spanning those two series.</strong> Changing <code>connectNulls</code> alone would not merge two separate lines. This guide explains the behavior; it does not change the frontend.</p>
+<h3>A vertical jump is a separate question</h3>
+<p>September's estimate may be reconstructed from records dated before September, or retained from a genuinely issued earlier forecast. October's can use the later cutoff before October. Historical reconstruction can include later ledger corrections; it does not prove that the estimate existed before September. The origin, parameters, latest observation, horizon and genuine issued-forecast provenance can differ. Forecasts are not required to “start exactly where the last prediction ended.” Forcing them to meet would alter the displayed estimates.</p>
+<h3>Four other causes of missing or separated points</h3>
+<ol><li><strong>Unknown actual:</strong> no eligible invoices in a bucket produces a missing value, not an automatic zero.</li><li><strong>Missing component:</strong> Regular is available but Feeding is not; therefore Combined cannot be calculated.</li><li><strong>Saved graph unavailable:</strong> the exact date, source revision or engine has no matching saved graph. Retained issued predictions may still remain.</li><li><strong>Different quantities being compared:</strong> current actual is partial, while the forecast estimates the whole week, month or year.</li></ol>
+<div class="note warm"><p><strong>Example:</strong> on Tuesday, ₱2,000 of recorded weekly revenue versus a ₱10,000 full-week forecast is not yet an ₱8,000 completed-week error. Most of the week has not finished. These amounts are illustrative.</p></div>
+<p>Without a particular screenshot or API response, we cannot assign every gap you saw to one cause. The separate-series boundary is confirmed; the other causes should be checked using the point's dates, values, status and <code>prediction_basis</code>.</p>
+</section>
+
+<section class="chapter" id="data">
+<div class="chapter-number">04 / DATA BEFORE MATHEMATICS</div><h2>From an invoice to a training observation.</h2>
+<p>The model does not read a screenshot of the chart. It receives an ordered numeric series built from database records. Bad classification or missing source records can matter more than the choice of forecasting formula.</p>
+<ol>
+<li><strong>Read eligible transactions.</strong> Exclude voided transactions and limit dates using an exclusive business-time cutoff.</li>
+<li><strong>Exclude generated demonstration invoices.</strong> Reserved references matching <code>^2026:[0-9]{6}$</code> do not train the real model.</li>
+<li><strong>Determine the sales segment.</strong> Imported <code>source_sales_segment</code> takes precedence. Otherwise the recorded customer name/label containing <code>feedin</code>, ignoring case, is a Feeding signal; other eligible sales are Regular.</li>
+<li><strong>Apply product classification to ordinary transactions without an imported segment.</strong> The approved product policy identifies dairy and non-dairy lines. Unknown classifications, missing lines or unsuitable totals become Unclassified. Known entirely non-dairy invoices are excluded. Preclassified imported records retain their source-prepared segment and amount; they rely on the earlier import review.</li>
+<li><strong>Use eligible revenue.</strong> The transaction's final amount is the starting revenue. For an ordinary mixed approved dairy/non-dairy invoice without an imported segment, allocate that amount by the eligible dairy share.</li>
+<li><strong>Group by local calendar bucket.</strong> Add eligible amounts into weeks or months, keeping the segment separate.</li>
+<li><strong>Fingerprint the source.</strong> A SHA-256 revision identifies the relevant records, policy and timezone so stale fitted results are not silently attached to different inputs.</li>
+</ol>
+<div class="equation"><span class="label">Mixed-invoice allocation used during source preparation</span>Eligible dairy revenue = final invoice total × (dairy line amount / total line amount)</div>
+<p>For a teaching invoice totaling ₱900 after an invoice-level discount, with ₱800 dairy and ₱200 non-dairy in the underlying line amounts, eligible dairy revenue is ₱900 × 800 / 1,000 = <strong>₱720</strong>. That prepares the forecast target; it is not a claim that the original receipt recorded a per-line discount allocation.</p>
+<h3>Revenue, cash and demand are different</h3>
+<p>The snapshot deliberately does not filter by payment status. A recorded sale can contribute revenue even if collection is outstanding. Profit would require cost information. True demand may exceed observed sales during a stockout, so this model should not be described as measuring all customer demand.</p>
+<h3>Missing is not zero</h3>
+<div class="table-wrap"><table><thead><tr><th>Recorded series</th><th>Strict monthly training</th><th>Beta / provisional model</th></tr></thead><tbody>
+<tr><td>Jan 100, Feb 110, March absent, Apr 120, May 125</td><td>The missing month breaks continuity. The latest usable block becomes April–May.</td><td>The calendar can contain <code>None</code> for March, converted to <code>NaN</code> for the state-space model.</td></tr>
+<tr><td>March reviewed and confirmed as truly zero</td><td>A matching coverage attestation can include a real zero in the strict monthly history.</td><td>Numeric zero and unknown observations remain conceptually different; beta <code>series()</code> itself does not load monthly coverage attestations.</td></tr>
+</tbody></table></div>
+<p>Unknown observations can be handled by advancing the model state without a measurement update; they do not magically provide information. A sparse series may still yield an estimate, but that is weaker evidence than a complete observed history.</p>
+<pre><code># Real logic, forecasting/learning.py:75–80
+contiguous = []
+for month, total in sorted(months.items()):
+    if contiguous and month != shift_month(
+            date.fromisoformat(contiguous[-1]['month'])):
+        contiguous = []
+    contiguous.append({'month': month.isoformat(), 'revenue': float(total)})</code></pre>
+<p><code>contiguous = []</code> resets the current training block after a missing month. The code does not delete invoices. A gap early in the ledger can therefore leave fewer usable consecutive months than the total number of calendar months since the business began.</p>
+<p class="source">Project sources: <a href="forecasting/data.py">data.py:44–109</a>, <a href="forecasting/learning.py">learning.py:65–80</a>, <a href="forecasting/provisional.py">provisional.py:39–50, 144–146</a>. Source policy and classification require human review; the customer-name heuristic is not business omniscience.</p>
+</section>
+
+<section class="chapter" id="dates">
+<div class="chapter-number">05 / THE CLOCK</div><h2>Four dates that must not be confused.</h2>
+<div class="table-wrap"><table><thead><tr><th>Term</th><th>Meaning</th><th>Why it matters</th></tr></thead><tbody>
+<tr><td><strong>Cutoff</strong></td><td>The exclusive boundary before which training records are allowed.</td><td>Before October 1 means September 30 and earlier, not October's partial sales.</td></tr>
+<tr><td><strong>Trained through</strong></td><td>The latest observed period actually included in the model.</td><td>An October cutoff can coexist with December 2025 as the latest available observation.</td></tr>
+<tr><td><strong>Issued at</strong></td><td>The timestamp when the prediction was originally saved.</td><td>It proves whether the number existed before the target started.</td></tr>
+<tr><td><strong>Target</strong></td><td>The period the prediction is about.</td><td>A date like October 26 can label the full October 26–November 1 week.</td></tr>
+</tbody></table></div>
+<p>A <strong>forecast origin</strong> is the point from which the estimate is made. A <strong>horizon</strong> is how many steps ahead the target is. If each observation is monthly, <code>steps=3</code> means three months, not three days. The strict path sometimes records <code>trained_through</code> as a month-end date while a fitted-series artifact labels that monthly observation with its first day; always read the field's representation.</p>
+<h3>The dashboard's calendar on 27 October 2026</h3>
+<div class="table-wrap"><table class="wide"><thead><tr><th>View</th><th>Past bucket starts</th><th>Current bucket</th><th>Future bucket starts</th></tr></thead><tbody>
+<tr><td>Weekly</td><td>Oct 5, 12, 19</td><td>Oct 26–Nov 1</td><td>Nov 2, 9, 16</td></tr>
+<tr><td>Monthly</td><td>Jul 1, Aug 1, Sep 1</td><td>Oct 1–31</td><td>Nov 1, Dec 1, Jan 1 2027</td></tr>
+<tr><td>Yearly</td><td>Jan 1 2024; Jan 1 2025</td><td>Jan 1–Dec 31 2026</td><td>Jan 1 2027; Jan 1 2028</td></tr>
+</tbody></table></div>
+<p>“Centered” means the <em>current period</em> is the middle bucket. Dates still label period starts, not the visual middle of each week. Weekly buckets start Monday. Months have their real calendar lengths; they are not all 30 days. Years are calendar years.</p>
+<h3>What data can each prediction see?</h3>
+<ul><li><strong>Past weekly/monthly target:</strong> use a snapshot before that target starts.</li><li><strong>Current and future weekly/monthly targets:</strong> use the current period's start as the cutoff, so the current incomplete period is excluded from training.</li><li><strong>Past/current yearly target:</strong> use the start of that target year.</li><li><strong>Future yearly target:</strong> use the first day of the current month. This can be a more recent origin than the current-year estimate.</li></ul>
+<p>For example, the current 2026 annual estimate uses data before January 1, 2026, but the future 2027 estimate as of October 27 can use data before October 1, 2026. They are not necessarily two values from one identically dated fit. If no newer actuals exist, their last observed training date can nevertheless remain the same.</p>
+<h3>Training stops earlier than displayed actuals</h3>
+<p>The centered graph can show actual sales through the selected <code>as_of</code> day, including today's running total. Training snapshots stop before the appropriate closed-period cutoff. This lets the blue line grow during the current period without using incomplete current sales to train its full-period prediction.</p>
+<div class="note"><p><strong>Timezone:</strong> business dates use <code>Asia/Manila</code>. A timestamp near midnight UTC can belong to a different local day. The code converts timestamps before assigning their calendar bucket.</p></div>
+<p class="source">Project sources: <a href="forecasting/chart.py">chart.py:45–58</a>, <a href="forecasting/beta_graph.py">beta_graph.py:39–42, 95–109, 222–236</a>.</p>
+</section>
+
+<section class="chapter" id="formula">
+<div class="chapter-number">06 / THE MATHEMATICS, IN SMALL STEPS</div><h2>Decode SARIMA without memorizing symbols.</h2>
+<p><strong>SARIMA</strong> stands for <strong>Seasonal AutoRegressive Integrated Moving Average</strong>. Each word describes a kind of relationship that can be included in the model. Not every fitted configuration uses every part.</p>
+<div class="table-wrap"><table><thead><tr><th>Part</th><th>Plain meaning</th><th>A useful mental picture</th></tr></thead><tbody>
+<tr><td>AutoRegressive (AR)</td><td>Past values help explain the next value.</td><td>Recent revenue gives information about near-future revenue.</td></tr>
+<tr><td>Integrated (I)</td><td>Model changes after differencing, then reconstruct the original level.</td><td>Understand “how much it changed,” then add that change back.</td></tr>
+<tr><td>Moving Average (MA)</td><td>Past unpredicted shocks help explain current values.</td><td>Correct for a recent model surprise; this is not a simple rolling average of revenue.</td></tr>
+<tr><td>Seasonal (S)</td><td>Include relationships separated by a repeating cycle.</td><td>Monthly observations can relate to the same month 12 steps earlier.</td></tr>
+</tbody></table></div>
+<h3>Read the model label</h3>
+<div class="equation"><span class="label">The standard notation</span>SARIMA(p, d, q)(P, D, Q)<sub>m</sub></div>
+<div class="table-wrap"><table><thead><tr><th>Symbol</th><th>What it counts</th><th>Example</th></tr></thead><tbody>
+<tr><td><strong>p</strong></td><td>Ordinary AR lag order</td><td>p = 1 includes a one-period AR relationship.</td></tr><tr><td><strong>d</strong></td><td>Ordinary differencing count</td><td>d = 1 models y<sub>t</sub> − y<sub>t−1</sub>.</td></tr><tr><td><strong>q</strong></td><td>Ordinary MA lag order</td><td>q = 1 includes the preceding innovation/shock term.</td></tr><tr><td><strong>P</strong></td><td>Seasonal AR order</td><td>P = 1 adds an AR effect one seasonal cycle back.</td></tr><tr><td><strong>D</strong></td><td>Seasonal differencing count</td><td>D = 1 models a difference y<sub>t</sub> − y<sub>t−m</sub>.</td></tr><tr><td><strong>Q</strong></td><td>Seasonal MA order</td><td>Q = 1 adds the error effect one seasonal cycle back.</td></tr><tr><td><strong>m</strong></td><td>Observations per seasonal cycle</td><td>m = 12 for an annual cycle in monthly data; m = 52 is an annual approximation in weekly data.</td></tr>
+</tbody></table></div>
+<p>“Seasonal” means a repeating time pattern, not necessarily weather. Selecting Weekly does not automatically mean <code>m=7</code>: your weekly observations use a possible annual cycle of roughly 52 weeks.</p>
+<h3>Start with the simplest useful equations</h3>
+<div class="equation"><span class="label">Ordinary AR(1), teaching example</span>y<sub>t</sub> = c + φy<sub>t−1</sub> + ε<sub>t</sub></div>
+<dl class="symbols"><dt>y<sub>t</sub></dt><dd>Actual revenue at period t.</dd><dt>c</dt><dd>A fitted intercept. It is not automatically the mean revenue.</dd><dt>φ</dt><dd>A learned coefficient controlling the relationship to the prior period.</dd><dt>ε<sub>t</sub></dt><dd>A new unexpected shock. The model cannot know this future surprise in advance.</dd></dl>
+<p>For an ordinary stationary AR(1), the long-run mean is μ = c / (1 − φ), provided |φ| &lt; 1. The forecast mean replaces future unknown shocks with their assumed mean of zero. That does not claim the actual shock will literally be zero.</p>
+<div class="lab"><div class="lab-head"><h3>Change the model's memory</h3><span class="toy">AR(1) illustration · not your fitted coefficients</span></div>
+<p>Here the previous actual is ₱120,000 and the illustrative long-run mean is ₱100,000. We set c = (1 − φ) × ₱100,000 so changing φ changes persistence without moving that mean.</p>
+<label for="ar-phi">Memory φ: <output id="ar-phi-value">0.60</output></label><input id="ar-phi" type="range" min="0" max="0.95" value="0.6" step="0.05">
+<div class="equation" id="ar-formula">ŷ<sub>t+1|t</sub> = (1 − φ) × 100,000 + φ × 120,000</div><div class="output" id="ar-output" aria-live="polite"></div>
+<p class="small">Larger φ holds on to the last observation more strongly. Repeated AR(1) mean forecasts tend toward the fixed mean here. This calculator does not fit a SARIMA model or reproduce your business forecasts.</p></div>
+<h3>Differencing: predict the change, then restore the level</h3>
+<div class="equation"><span class="label">Ordinary and seasonal differences</span>Δy<sub>t</sub> = y<sub>t</sub> − y<sub>t−1</sub><br>Δ<sub>m</sub>y<sub>t</sub> = y<sub>t</sub> − y<sub>t−m</sub></div>
+<p>If monthly revenue goes from ₱100,000 to ₱106,000, the first difference is ₱6,000. Modeling these changes can help with a drifting level. Differencing is not the same as subtracting a prior forecast. An ARIMA(0,1,0) with no drift is a random walk: its future mean can stay at the last observed level, which explains some flat beta projections.</p>
+<h3>The complete formula</h3>
+<div class="equation" aria-label="Ordinary and seasonal autoregressive polynomials times differenced revenue equals a constant plus ordinary and seasonal moving-average polynomials times the shock"><span class="label">General multiplicative seasonal ARIMA form</span>φ(B)Φ(B<sup>m</sup>)(1 − B)<sup>d</sup>(1 − B<sup>m</sup>)<sup>D</sup> y<sub>t</sub><br>= c + θ(B)Θ(B<sup>m</sup>) ε<sub>t</sub></div>
+<p><strong>B is the backshift operator:</strong> By<sub>t</sub> = y<sub>t−1</sub>, and B<sup>12</sup>y<sub>t</sub> = y<sub>t−12</sub>. It means “look this many steps back.” Lowercase polynomials describe ordinary lags; uppercase polynomials describe seasonal lags. In this convention, φ(B) = 1 − φ₁B − … − φ<sub>p</sub>B<sup>p</sup> and θ(B) = 1 + θ₁B + … + θ<sub>q</sub>B<sup>q</sup>. Seasonal polynomials use B<sup>m</sup> instead of B.</p>
+<p>You do not need to manually multiply this expression to operate the system. The <code>SARIMAX</code> library builds the state-space representation and estimates the unknown coefficients. The formula tells you what relationships the chosen configuration is allowed to represent. <a href="#ref-statmodel">[S1]</a></p>
+<details><summary>What does multiplication of ordinary and seasonal effects do?</summary><p>For SARIMA(1,0,0)(1,0,0)₁₂ with an intercept, expanding the AR side gives:</p><div class="equation">y<sub>t</sub> = c + φy<sub>t−1</sub> + Φy<sub>t−12</sub> − φΦy<sub>t−13</sub> + ε<sub>t</sub></div><p>The lag-13 term comes from multiplying the two lag polynomials. It is not just “last month plus last year.” Here Φ is the seasonal coefficient and φ is the ordinary coefficient.</p></details>
+<h3>The configuration actually selected in the read-only check</h3>
+<p>On 27 October 2026, strict monthly run 4 selected <code>sarima_010_100_12</code>: SARIMA(0,1,0)(1,0,0)₁₂, with no intercept. This says seasonal AR on the once-differenced monthly series:</p>
+<div class="equation">(1 − ΦB<sup>12</sup>)(1 − B)y<sub>t</sub> = ε<sub>t</sub><br>Δy<sub>t</sub> = ΦΔy<sub>t−12</sub> + ε<sub>t</sub></div>
+<p>In an idealized worked example, if the last monthly level is ₱50,000, the relevant prior-year monthly change is ₱4,000, and an <em>invented</em> fitted Φ is 0.6, the next mean is ₱50,000 + 0.6 × ₱4,000 = <strong>₱52,400</strong>. That illustrates the formula. It is not the saved coefficient or an actual business forecast.</p>
+<div class="note"><p><strong>SARIMAX versus SARIMA:</strong> the Python class has an X because it can accept external explanatory inputs. Your current model calls do not supply <code>exog</code>. Weather, promotions, future prices and feeding contracts are not directly fed into this model. The library name alone does not mean those causes are included.</p></div>
+<p class="source">General mathematics: <a href="#ref-book-models">[S2]</a>. Exact project choices: <a href="forecasting/seasonal.py">seasonal.py:12–25</a>. Saved-run observation is a dated read-only check, not a permanent model choice.</p>
+</section>
+
+<section class="chapter" id="fitting">
+<div class="chapter-number">07 / HOW THE COMPUTER LEARNS</div><h2>The formula is a shape. Fitting finds its numbers.</h2>
+<p>Picking <code>(0,1,0)(1,0,0,12)</code> does not tell you the seasonal coefficient Φ. The program must estimate it from the historical series. <strong>Model orders</strong> describe allowed relationships; <strong>parameters</strong> are the numerical strengths learned inside those relationships.</p>
+<h3>The strict monthly candidate list is small and fixed</h3>
+<div class="table-wrap"><table><thead><tr><th>Candidate key</th><th>Ordinary order</th><th>Seasonal order</th><th>Intercept</th></tr></thead><tbody>
+<tr><td><code>sarima_000_100_12</code></td><td>(0, 0, 0)</td><td>(1, 0, 0, 12)</td><td>Yes</td></tr>
+<tr><td><code>sarima_100_100_12</code></td><td>(1, 0, 0)</td><td>(1, 0, 0, 12)</td><td>Yes</td></tr>
+<tr><td><code>sarima_010_100_12</code></td><td>(0, 1, 0)</td><td>(1, 0, 0, 12)</td><td>No</td></tr>
+<tr><td><code>sarima_110_100_12</code></td><td>(1, 1, 0)</td><td>(1, 0, 0, 12)</td><td>No</td></tr>
+<tr><td><code>sarima_011_100_12</code></td><td>(0, 1, 1)</td><td>(1, 0, 0, 12)</td><td>No</td></tr>
+</tbody></table></div>
+<p>Every strict monthly candidate has <strong>P = 1, D = 0, Q = 0, m = 12</strong>. That is annual seasonal autoregression, not annual seasonal differencing. The engine does not try every imaginable model or automatically run an unrestricted <code>auto_arima</code> search.</p>
+<h3>Step 1: scale the currency values</h3>
+<pre><code># Exact excerpt: forecasting/seasonal.py:32–33
+scale = max(float(np.mean(values)), 1.0)
+history = (values / scale).tolist()</code></pre>
+<p><code>values</code> is the array of monthly revenue totals. The code divides it by its mean, with a minimum scale of 1, so numerical estimation works with manageable magnitudes. If the mean is ₱100,000, a ₱120,000 observation becomes 1.2. Multiply the output by the same scale to return to pesos. This is <strong>not a logarithmic transform</strong> and does not change any ledger record.</p>
+<h3>Step 2: construct the state-space model</h3>
+<pre><code># Exact construction: forecasting/seasonal.py:23–25
+return SARIMAX(history, order=tuple(spec['order']),
+               seasonal_order=tuple(spec['seasonal_order']), trend=spec['trend'],
+               enforce_stationarity=True, enforce_invertibility=True)</code></pre>
+<ul><li><code>history</code> supplies the observed sequence.</li><li><code>order</code> supplies p, d and q.</li><li><code>seasonal_order</code> supplies P, D, Q and m.</li><li><code>trend='c'</code> includes a constant; <code>'n'</code> includes no trend term.</li><li><code>enforce_stationarity</code> constrains the AR part; differencing can still produce a nonstationary original revenue level.</li><li><code>enforce_invertibility</code> constrains the MA part to an identifiable, stable representation.</li></ul>
+<h3>Step 3: estimate by maximum likelihood</h3>
+<p>The library uses a <strong>Kalman filter</strong> to track an internal state and calculate one-step prediction errors as it moves through the historical sequence. An optimizer adjusts parameters to make the observed sequence more plausible under the model.</p>
+<p><strong>Maximum likelihood</strong> means choosing parameters that maximize the probability density assigned to the observations. It is not a promise to minimize the exact future WAPE. Parameters are fitted inside each candidate; validation then compares candidates.</p>
+<details><summary>Optional: what likelihood and Kalman filtering mean mathematically</summary>
+<p>A generic state-space description is x<sub>t+1</sub> = Tx<sub>t</sub> + Rη<sub>t</sub> and y<sub>t</sub> = Zx<sub>t</sub> + measurement terms. The hidden state x contains information needed to represent the lag structure. The library generates the appropriate matrices for the selected SARIMA orders.</p>
+<div class="equation"><span class="label">Schematic scalar Gaussian innovation log-likelihood</span>log L = −½ Σ<sub>t</sub> [log(2π) + log F<sub>t</sub> + v<sub>t</sub><sup>2</sup>/F<sub>t</sub>]</div>
+<p>v<sub>t</sub> is the innovation, the difference between the next observation and its conditional prediction. F<sub>t</sub> is its forecast variance. This schematic formula omits initialization details; statsmodels handles those. The optimizer changes the parameter vector to increase the resulting likelihood. A filter update incorporates a new observation; missing observations provide no measurement update.</p>
+</details>
+<p>The strict monthly fitter tries <strong>L-BFGS</strong> and, if needed, <strong>Powell</strong>, with at most 150 iterations per attempt. It requires convergence and finite parameters, likelihood and output. It records warnings. A failed fit is an unavailable model, not a prediction of zero revenue.</p>
+<h3>Step 4: save, then reuse the fitted state</h3>
+<p>The saved artifact contains the orders, trend, scale, normalized history, parameter vector, library version and diagnostics. A checksum helps detect an inconsistent artifact. The implementation uses structured JSON-compatible values rather than loading an arbitrary pickled Python object.</p>
+<pre><code># Exact read/replay logic: forecasting/seasonal.py:70–71
+filtered = _model(state['normalized_history'], state).filter(
+    state['params'], cov_type='none')
+return float(filtered.forecast(1)[0] * state['scale'])</code></pre>
+<p><code>.filter(saved_parameters)</code> reconstructs the model state from the saved coefficients. It is different from <code>.fit()</code>, which optimizes parameters. A page GET does not start new model training.</p>
+<details><summary>Stationarity, ACF, PACF, AIC and BIC: do I need these?</summary>
+<p><strong>Stationarity</strong> roughly means the modeled series has stable statistical behavior over time. Differencing can remove changes in level. <strong>ACF</strong> measures correlation at different lags; <strong>PACF</strong> studies a lag after accounting for intervening lags. They can help diagnose potential AR/MA structure.</p>
+<p><strong>AIC</strong> = 2k − 2 log L and <strong>BIC</strong> = k log n − 2 log L balance fit against complexity, with k parameters and n observations. They are common model-selection tools. Your primary engine instead chooses among its predefined SARIMA candidates by earlier validation WAPE. Do not claim it automatically chose orders using AIC, an ADF test, or a complete residual-diagnostic procedure.</p>
+<p>Useful further diagnostics include residual plots, remaining autocorrelation and outliers. A convergence flag alone does not prove the assumptions are right or future predictions are accurate.</p>
+</details>
+<p class="source">Exact implementation: <a href="forecasting/seasonal.py">seasonal.py:28–71</a>. General library behavior: <a href="#ref-statmodel">[S1]</a>. Locally inspected statsmodels version: <strong>0.14.6</strong>.</p>
+</section>
+
+<section class="chapter" id="evaluation">
+<div class="chapter-number">08 / TESTING WITHOUT LOOKING INTO THE FUTURE</div><h2>Good evaluation respects time.</h2>
+<p>If you ask whether a model could have predicted January, it must not be trained with February's actual revenue. That would be <strong>data leakage</strong>: accidentally giving the model information that would not have existed when the prediction was needed.</p>
+<p>Your strict monthly engine needs at least <strong>36 contiguous completed monthly observations</strong>. At the minimum length, the first 18 months support the initial fit, the next 6 are validation targets, and the last 12 are test targets.</p>
+<div class="timeline" aria-label="Minimum monthly research split: 18 initial training months, 6 validation targets, 12 test targets"><div><strong>18 initial months</strong><br>Jan 2023–Jun 2024</div><div><strong>6 validation</strong><br>Jul–Dec 2024</div><div><strong>12 test</strong><br>Jan–Dec 2025</div></div>
+<p>This date example matches a 36-month sequence ending in December 2025. The split is chronological, not a random mix of months.</p>
+<h3>The model walks forward</h3>
+<pre><code># Core loop, abbreviated from forecasting/learning.py:163–172
+for index in range(start, end):
+    fitted = fit_model(name, rows[:index])
+    result.append({
+        'month': rows[index]['month'],
+        'trained_through': rows[index - 1]['month'],
+        'actual': rows[index]['revenue'],
+        'predicted': predict_model(fitted),
+    })</code></pre>
+<p><code>rows[:index]</code> means “all observations before the target index.” For July 2024, train through June. For August, train through July. For January 2025, train through December 2024. Parameters are refitted with the earlier observations at each origin.</p>
+<div class="lab"><div class="lab-head"><h3>Move the forecast origin</h3><span class="toy">Calendar illustration · no fitting</span></div>
+<label for="roll-origin">Choose a target month</label><input id="roll-origin" type="range" min="18" max="35" value="24" step="1"><div id="roll-output" class="output" aria-live="polite"></div><div id="roll-calendar" class="steps" aria-label="Training and future months"></div>
+<p class="small">Earlier test-month actuals can become training data for later one-step test forecasts once those months have finished. The model structure remains the validation-selected choice; later test outcomes do not choose a replacement winner.</p></div>
+<h3>What validation chooses, and what testing measures</h3>
+<ol><li>Run the fixed SARIMA candidates on the earlier validation targets.</li><li>Choose the candidate with the lowest validation WAPE; predefined order breaks ties toward simpler candidates.</li><li>Choose a simple baseline using validation too.</li><li>Evaluate the frozen candidate choice on the later test months.</li><li>Refit that selected structure on all available completed training months to produce its next estimate.</li></ol>
+<p>The primary selection is SARIMA-only. Simple exponential smoothing, damped Holt and ridge autoregression are comparison methods, not secret replacements for a failed SARIMA winner. If the selected candidate fails during later fitting, the engine reports a failure rather than choosing whichever candidate looked best on the test set.</p>
+<h3>What counts as a baseline?</h3>
+<div class="table-wrap"><table><thead><tr><th>Baseline</th><th>Next prediction</th></tr></thead><tbody>
+<tr><td>Previous month</td><td>ŷ<sub>t+1</sub> = y<sub>t</sub></td></tr><tr><td>Trailing 3-month mean</td><td>ŷ<sub>t+1</sub> = (y<sub>t</sub> + y<sub>t−1</sub> + y<sub>t−2</sub>) / 3</td></tr><tr><td>Trailing 6-month mean</td><td>The mean of the six preceding observations.</td></tr><tr><td>Trailing 3-month median</td><td>The middle value of the last three observations.</td></tr><tr><td>Same month last year</td><td>ŷ<sub>t+1</sub> = y<sub>t+1−12</sub></td></tr>
+</tbody></table></div>
+<p>A complicated model should justify itself against these simple alternatives. Better historical fit is not enough if a basic “use last month” forecast is more accurate on the same targets.</p>
+<div class="note warm"><p><strong>Retrospective versus prospective:</strong> reconstructing forecasts now from historical records is a backtest. A genuinely prospective forecast was saved before its target outcome was known. The already-inspected 2025 data is retrospective research; rerunning it cannot create twelve months of new, untouched real-world evidence.</p></div>
+<p class="source">Project sources: <a href="forecasting/learning.py">learning.py:23–29, 163–250</a>, <a href="forecasting/benchmarks.py">benchmarks.py:4–20</a>. General rolling-origin evaluation: <a href="#ref-book-evaluation">[S3]</a>.</p>
+</section>
+
+<section class="chapter" id="paths">
+<div class="chapter-number">09 / DIFFERENT HORIZONS, DIFFERENT EVIDENCE</div><h2>A weekly chart is not a monthly score.</h2>
+<p>Changing Weekly to Yearly changes the meaning of each point. It does not simply zoom the same daily forecast. The data grouping, training requirements, possible candidates and forecast horizon can change.</p>
+<div class="table-wrap"><table class="wide"><thead><tr><th>Path</th><th>What it requires / chooses</th><th>What it establishes</th></tr></thead><tbody>
+<tr><td>Strict Regular monthly</td><td>36 contiguous completed months; 5 seasonal configurations; 6 validation and 12 test targets.</td><td>Research on one-month-ahead Regular revenue. Publication has additional gates.</td></tr>
+<tr><td>Strict weekly research</td><td>At least 130 consecutive complete weeks; at the minimum, 104 initial training, 13 validation, 13 test. Longer histories have more initial training weeks. Three seasonal configurations use m = 52.</td><td>Weekly retrospective evidence. It is not production-approved and does not inherit the monthly 15% target.</td></tr>
+<tr><td>Provisional / centered beta</td><td>Can use sparse histories with unknown periods. Selection may use local level, AR(1), or seasonal AR when enough earlier data exists.</td><td>Exploratory estimates. Fewer requirements do not create stronger accuracy evidence.</td></tr>
+<tr><td>Yearly centered beta</td><td>Uses monthly component models and sums the 12 months belonging to each target year.</td><td>An annual estimate from a monthly forecast path; not a seasonal model fitted to a few annual totals.</td></tr>
+</tbody></table></div>
+<h3>The permissive beta path can show a very simple model</h3>
+<p>With six or more observed periods, the provisional engine reserves <code>h = min(6, max(1, floor(observed_count / 5)))</code> observed targets for validation and h for testing. It selects using the earlier validation outcomes. Seasonal AR is considered only when the initial training slice contains at least two seasonal cycles of both calendar positions and observed values: 24 months or 104 weeks.</p>
+<p>The centered graph permits an additional sparse-data case: <strong>two to five observed periods can fit a local-level ARIMA(0,1,0)</strong> without validation. It also has an explicitly unvalidated local-level fallback when validation percentage error has a zero denominator. This means an estimate can appear even when annual seasonality has not been established.</p>
+<div class="table-wrap"><table><thead><tr><th>Beta candidate</th><th>Specification</th><th>Typical interpretation</th></tr></thead><tbody>
+<tr><td><code>local_level</code></td><td>ARIMA(0,1,0), no drift or seasonality</td><td>The mean forecast can be flat at the last estimated level.</td></tr><tr><td><code>ar1</code></td><td>ARIMA(1,0,0), constant, no seasonality</td><td>Recent memory and a stable long-run level.</td></tr><tr><td><code>seasonal_ar</code></td><td>SARIMA(1,0,0)(1,0,0,m), constant</td><td>Recent memory plus a repeating seasonal relationship.</td></tr>
+</tbody></table></div>
+<p>When an exact-source saved primary monthly SARIMA is available, the Regular monthly component can reuse that checked fit. The strict primary pipeline itself does not silently fall back to an ordinary AR model. Therefore the name “SARIMA estimates” on the graph does not prove that every component point used annual seasonal terms.</p>
+<h3>Why a flat line can be a legitimate output</h3>
+<p>For a random walk with no drift, future expected changes are zero, so multiple future means can be equal. An AR model's means can also flatten as its horizon grows. Sparse Feeding invoices do not automatically reveal the next contract schedule. Flatness can be a mathematical consequence of a chosen simple model, not a broken refresh; it can still be unhelpful for planning.</p>
+<h3>Why long forecast gaps do not disappear when you refresh</h3>
+<p>If the model ends in December 2025 and you ask about October 2026, it must project the intervening steps. The code generates a path from <code>trained_through</code> and selects the requested targets. Those hidden intermediate predictions are not observed 2026 invoices. A ten-month-ahead estimate is not validated by a one-month-ahead backtest score.</p>
+<h3>The yearly sum</h3>
+<div class="equation"><span class="label">One annual target from one monthly forecast origin o</span>Ŷ<sub>year|o</sub> = Σ<sub>m=1…12</sub> ŷ<sub>year,m|o</sub></div>
+<p>For each annual point, all twelve monthly values come from one origin's projected path. But adjacent annual points in the centered graph can use different cutoffs, as explained in chapter 05. The older <code>chart.py</code> yearly historical comparison instead sums twelve rolling one-month predictions with different monthly origins. <strong>That older sum is not a year-ahead forecast issued before the year started.</strong></p>
+<details><summary>Why is weekly seasonality 52 instead of 7?</summary><p>The input observations are already weekly totals. A lag of 7 would mean seven weeks, not seven days. The weekly research uses 52 weekly observations as an approximate year. Calendars can contain an ISO week 53; the implementation does not merge it into another week. Monthly and weekly models have distinct calendar and evidence limitations.</p></details>
+<p class="source">Project sources: <a href="forecasting/weekly.py">weekly.py:21–39, 54–84</a>, <a href="forecasting/provisional.py">provisional.py:136–266</a>, <a href="forecasting/beta_graph.py">beta_graph.py:45–74, 136–159</a>, <a href="forecasting/chart.py">chart.py:91–101</a>.</p>
+</section>
+
+<section class="chapter" id="metrics">
+<div class="chapter-number">10 / DID IT WORK?</div><h2>Learn to read an error score.</h2>
+<p>Use a completed period with both an actual and a comparable prediction. For this project, signed error is defined as <strong>prediction minus actual</strong>. Positive means overprediction; negative means underprediction.</p>
+<div class="equation"><span class="label">Per-period signed error</span>e<sub>i</sub> = ŷ<sub>i</sub> − y<sub>i</sub></div>
+<div class="table-wrap"><table><thead><tr><th>Metric</th><th>Formula</th><th>How to interpret it</th></tr></thead><tbody>
+<tr><td><strong>WAPE</strong></td><td>100 × Σ|e<sub>i</sub>| / Σ|y<sub>i</sub>|</td><td>Total absolute error as a percentage of total actual magnitude. Lower is better; undefined at zero total actual.</td></tr>
+<tr><td><strong>MAE</strong></td><td>Σ|e<sub>i</sub>| / n</td><td>Average absolute peso error per evaluated period.</td></tr>
+<tr><td><strong>RMSE</strong></td><td>√(Σe<sub>i</sub>² / n)</td><td>Peso error that gives more weight to large misses.</td></tr>
+<tr><td><strong>Bias</strong></td><td>Σe<sub>i</sub> / n</td><td>Average signed peso error. Opposite errors can cancel.</td></tr>
+<tr><td><strong>Error standard deviation</strong></td><td>√(Σ(e<sub>i</sub> − ē)² / n)</td><td>Dispersion around mean error, using the population convention in this code.</td></tr>
+</tbody></table></div>
+<p>Here <strong>Σ</strong> means “sum across periods,” <strong>|…|</strong> means absolute value, <strong>n</strong> is the evaluated period count, and <strong>ē</strong> is mean signed error.</p>
+<div class="lab" id="metric-lab"><div class="lab-head"><h3>Try the error calculator</h3><span class="toy">Invented completed periods · pesos</span></div>
+<p>Change a value and watch the scores. The baseline is a simple comparator evaluated on exactly the same actuals.</p>
+<div class="table-wrap"><table><thead><tr><th>Period</th><th>Actual ₱</th><th>Model ₱</th><th>Baseline ₱</th></tr></thead><tbody>
+<tr><th scope="row">A</th><td><input class="metric-input" aria-label="Actual A" id="a0" type="number" min="0" max="1000000000000" step="1" value="1000"></td><td><input class="metric-input" aria-label="Prediction A" id="p0" type="number" min="0" max="1000000000000" step="1" value="900"></td><td><input class="metric-input" aria-label="Baseline A" id="b0" type="number" min="0" max="1000000000000" step="1" value="1100"></td></tr>
+<tr><th scope="row">B</th><td><input class="metric-input" aria-label="Actual B" id="a1" type="number" min="0" max="1000000000000" step="1" value="2000"></td><td><input class="metric-input" aria-label="Prediction B" id="p1" type="number" min="0" max="1000000000000" step="1" value="2300"></td><td><input class="metric-input" aria-label="Baseline B" id="b1" type="number" min="0" max="1000000000000" step="1" value="1700"></td></tr>
+<tr><th scope="row">C</th><td><input class="metric-input" aria-label="Actual C" id="a2" type="number" min="0" max="1000000000000" step="1" value="0"></td><td><input class="metric-input" aria-label="Prediction C" id="p2" type="number" min="0" max="1000000000000" step="1" value="100"></td><td><input class="metric-input" aria-label="Baseline C" id="b2" type="number" min="0" max="1000000000000" step="1" value="0"></td></tr>
+</tbody></table></div>
+<div class="controls"><button id="metric-reset" type="button">Reset example</button><button id="metric-zero" type="button">Try all-zero actuals</button></div>
+<div class="metric-grid" aria-live="polite"><div class="metric"><span class="name">WAPE</span><output class="value" id="metric-wape">16.67%</output></div><div class="metric"><span class="name">MAE</span><output class="value" id="metric-mae">₱166.67</output></div><div class="metric"><span class="name">RMSE</span><output class="value" id="metric-rmse">₱191.49</output></div><div class="metric"><span class="name">Bias</span><output class="value" id="metric-bias">₱100.00</output></div></div>
+<div class="output" id="metric-detail" aria-live="polite"></div>
+</div>
+<h3>What WAPE does not mean</h3>
+<p>WAPE of 10% means the absolute errors sum to 10% of the evaluated actual total. It does <strong>not</strong> mean every forecast is within 10%, that there is a 90% probability of success, or that the model is “90% accurate.” Large-revenue periods carry more weight. A low overall WAPE can hide serious errors in smaller periods.</p>
+<p>If all actuals total zero, WAPE is undefined even if the predictions are zero too. The code returns <code>None</code>, and the frontend should show “not available,” not 0% error by assumption. MAE can still be defined. Do not substitute zero for an empty evaluation.</p>
+<h3>Compare like with like</h3>
+<div class="equation"><span class="label">Baseline skill on identical targets and actuals</span>Error reduction % = 100 × (1 − Σ|e<sub>model</sub>| / Σ|e<sub>baseline</sub>|)</div>
+<p>Positive reduction means the model improves on the baseline; negative means it is worse. A perfectly error-free baseline makes this ratio undefined. You must compare the same segment, periods, target actuals and forecast horizon. Monthly Regular WAPE cannot be reused as Combined, Feeding, Weekly or Yearly accuracy.</p>
+<h3>Why there may be no score under the graph</h3>
+<p>The centered graph evaluates only completed past buckets where both actual and prediction exist. It keeps <code>historical_test</code> and <code>issued_forecast</code> evidence separate. The current partial bucket is excluded. With only three past points in the displayed weekly/monthly window, there may be zero usable pairs. An empty evaluation is “not yet evaluated”; one or two evaluated periods is limited evidence.</p>
+<p class="source">Exact score formulas: <a href="forecasting/benchmarks.py">benchmarks.py:7–12</a>, <a href="forecasting/accuracy.py">accuracy.py:17–48</a>. Graph evaluation: <a href="forecasting/beta_graph.py">beta_graph.py:229–240</a>.</p>
+</section>
+
+<section class="chapter" id="uncertainty">
+<div class="chapter-number">11 / HOW CERTAIN IS THE ESTIMATE?</div><h2>A forecast band is not a guarantee.</h2>
+<p>A point estimate is one expected value. A band tries to describe possible error around it. Your project has more than one type of band, and they should not be called the same thing.</p>
+<h3>Strict monthly: a historical absolute-error band</h3>
+<p>The primary engine sorts the absolute errors from its test periods and selects a high order statistic:</p>
+<div class="equation"><span class="label">One-based selected rank, capped at n</span>k = min(n, ⌈0.9(n + 1)⌉), &nbsp; w = k-th smallest |e|<br>Lower = max(0, ŷ − w), &nbsp; Upper = ŷ + w</div>
+<p>The ceiling symbol ⌈…⌉ rounds upward. With 12 monthly test points, k = min(12, 12) = 12, so w is the largest observed absolute test error. The weekly research with 13 test points also chooses the largest error under this rule.</p>
+<p>If the largest past test error were an illustrative ₱12,000 and the prediction were ₱100,000, the displayed band would be ₱88,000–₱112,000. This summarizes historical error. It is <strong>not a validated claim that 90% of future outcomes will fall in that band</strong>.</p>
+<h3>Provisional path: nominal model-based intervals</h3>
+<pre><code># Exact calls: forecasting/provisional.py:172–175
+result = model_for(state['values'], state['specification']).filter(
+    state['parameters'])
+future = result.get_forecast(steps=steps)
+values = np.asarray(future.predicted_mean) * state['scale']
+bounds = np.asarray(future.conf_int(alpha=.1)) * state['scale']</code></pre>
+<p><code>alpha=.1</code> requests a nominal 90% model interval. Under a Gaussian approximation this is often represented as ŷ ± 1.645 × forecast standard error. That statement depends on the fitted model's assumptions; it has not been calibrated to all actual business risks in your system. <a href="#ref-statforecast">[S4]</a></p>
+<p>The code checks finite values, clips negative point predictions to zero, keeps bounds around the point, and rounds to cents. These are practical output constraints. Rounding to ₱0.01 does not mean uncertainty is only one cent.</p>
+<h3>Yearly and Combined ranges need special care</h3>
+<p>Adding twelve monthly lower bounds and twelve upper bounds is not automatically a calibrated annual interval. Monthly errors can be correlated. Adding Regular and Feeding bounds does not calculate their joint uncertainty either.</p>
+<div class="equation"><span class="label">Why dependence matters</span>Var(R + F) = Var(R) + Var(F) + 2 Cov(R, F)</div>
+<p><strong>Variance</strong> measures uncertainty; <strong>covariance</strong> describes how the two errors move together. If both segments miss high or low at the same time, their combined error differs from an independence assumption. An annual total likewise depends on the covariances between all monthly errors.</p>
+<div class="note"><p>The current centered beta graph returns scalar predicted points; it does not expose those provisional lower/upper fields in its point contract. A line without a shaded band does not mean the model has no uncertainty.</p></div>
+<details><summary>“Coverage” is used in two different ways</summary><p><strong>Ledger coverage</strong> means a human reconciled the source records for a period, including whether a missing month is truly zero. <strong>Interval coverage</strong> is the share of evaluated outcomes that fall within forecast bounds. A source-coverage attestation is not evidence of 90% statistical interval coverage.</p></details>
+<p class="source">Project sources: <a href="forecasting/learning.py">learning.py:223–241</a>, <a href="forecasting/provisional.py">provisional.py:167–183, 245–266, 309–320</a>, <a href="forecasting/beta_graph.py">beta_graph.py:126–133</a>.</p>
+</section>
+
+<section class="chapter" id="status">
+<div class="chapter-number">12 / SAVED MODELS AND TRUST</div><h2>“Fitted,” “available” and “approved” are different.</h2>
+<p>A model can fit successfully, create a research prediction, and still be withheld from the strict production forecast. That is the intended evidence lifecycle.</p>
+<div class="table-wrap"><table><thead><tr><th>Record / model</th><th>Think of it as…</th></tr></thead><tbody>
+<tr><td><code>MonthlyModelRun</code></td><td>A sealed research notebook: fitted parameters, source revision, configuration and historical evaluation.</td></tr><tr><td><code>MonthlyCoverage</code></td><td>A reviewer's signed reconciliation of the exact records for a completed month.</td></tr><tr><td><code>MonthlyIssuedForecast</code></td><td>An original monthly estimate saved on the legitimate issue date, before its outcome is known.</td></tr><tr><td><code>MonthlyForecastScore</code></td><td>A comparison with a specific actual-data revision once the target has finished.</td></tr><tr><td><code>MonthlyDeployment</code></td><td>The pointer to the active approved monthly model.</td></tr><tr><td><code>MonthlyPromotion</code></td><td>The history of activation decisions and supporting evidence.</td></tr><tr><td><code>GraphForecastRun</code></td><td>A separate saved centered graph plus reusable fitted artifacts.</td></tr><tr><td><code>GraphPrediction</code></td><td>An original future graph prediction retained before its target starts.</td></tr>
+</tbody></table></div>
+<h3>The strict monthly status decision</h3>
+<div class="table-wrap"><table><thead><tr><th>Status</th><th>Meaning</th><th>Likely next step</th></tr></thead><tbody>
+<tr><td><code>training_required</code></td><td>No current matching run and no earlier model.</td><td>Prepare suitable data and arrange offline maintenance.</td></tr><tr><td><code>refresh_required</code></td><td>An earlier run exists but source, coverage or cutoff no longer matches.</td><td>Review the change and refresh saved fits.</td></tr><tr><td><code>insufficient_history</code></td><td>The strict research history is too short or fragmented.</td><td>Resolve genuine source gaps; do not invent months.</td></tr><tr><td><code>stale_data</code></td><td>A valid research candidate's next target is behind the current month.</td><td>Supply actual recent completed history and review it.</td></tr><tr><td><code>research_only</code></td><td>A fitted research model exists, but publication conditions are unmet.</td><td>Read the quality-gate reasons and collect evidence.</td></tr><tr><td><code>ready</code></td><td>Eligible current model, active deployment and current issued forecast are present.</td><td>Use within its approved one-month Regular scope.</td></tr><tr><td><code>unsupported_horizon</code></td><td>The strict replacement does not publish that requested horizon.</td><td>Do not treat beta Weekly/Yearly graphs as approved strict forecasts.</td></tr>
+</tbody></table></div>
+<p>These labels belong to particular endpoints. The centered graph's <code>ready</code> only means its saved graph matches the requested context and passes its checksum check. It does not mean the strict gates have passed. Invalid fitting states can also be returned directly; the table is not an exhaustive list of every failure code.</p>
+<h3>What the strict publication gate checks</h3>
+<ol><li>A genuine, valid SARIMA artifact with matching checksum and engine.</li><li>A target equal to the current month, rather than a stale next target.</li><li>Reviewed source coverage for the latest twelve training/held-out months.</li><li>Retrospective WAPE <strong>strictly below 15%</strong>, and no worse than the validation-selected baseline on the same test targets.</li><li>Twelve consecutive recent months of genuinely issued, source-reviewed prospective outcomes.</li><li>Prospective WAPE strictly below 15%, no worse than baseline, with evidence current through the latest closed month.</li></ol>
+<p>An eligible model must also be the active deployment, with an issue for the current month, before the strict serving path returns it. Manual activation uses the same gate; it cannot create missing evidence.</p>
+<div class="panel"><span class="pill">Dated read-only observation · 27 October 2026, 21:02 Asia/Manila</span><h3>What your saved monthly model currently says</h3>
+<ul><li>Strict status: <strong><code>stale_data</code></strong>.</li><li>Research model: run <strong>4</strong>, engine <code>regular-monthly-sarima-v2</code>, 36 monthly observations.</li><li>Cutoff: <strong>2026-10-01</strong>; latest eligible history and training end: <strong>2025-12-31</strong>.</li><li>Selected candidate: <code>sarima_010_100_12</code>.</li><li>Historical 12-month test WAPE: <strong>10.6433%</strong>; baseline: <strong>11.3810%</strong>.</li><li>Strict monthly coverage attestations, issued forecasts, scores and active deployments: <strong>0 each</strong>.</li><li>Gate reasons: <code>stale_training_data</code>, <code>unverified_ledger_coverage</code>, <code>needs_12_prospective_reviewed_months</code>.</li></ul>
+<p>There are also saved centered graph records for October 27. Their existence does not change these strict monthly findings. This box is a dated observation, not a live status panel. It will not update when your database changes.</p></div>
+<p>The historical score is numerically better than baseline, but that does not solve missing 2026 history, prove source completeness, or replace prospective testing. A model ending in December 2025 naturally has January 2026 as its next one-month research target; October 2026 requires genuinely newer input history.</p>
+<h3>What the graph's prediction-basis labels mean</h3>
+<div class="table-wrap"><table><thead><tr><th>Label</th><th>What happened</th></tr></thead><tbody>
+<tr><td><code>historical_test</code></td><td>Reconstructed now using records dated before an old target. Corrected historical records may be included; this is not proof a prediction existed back then.</td></tr><tr><td><code>issued_forecast</code></td><td>A retained graph value was genuinely saved before its target began.</td></tr><tr><td><code>forecast</code></td><td>A current/new future estimate without that retained original-issue provenance.</td></tr><tr><td><code>fixed_origin_demo</code></td><td>Explicit demonstration context. It is not real prospective accuracy evidence.</td></tr>
+</tbody></table></div>
+<p>The graph prefers a coherent retained issue across all three views, keeping Combined = Regular + Feeding. If only original component issues are available, it does not manufacture an allegedly original Combined issue by summing a new pair.</p>
+<p class="source">Project sources: <a href="forecasting/models.py">models.py:22–125, 221–249</a>, <a href="forecasting/lifecycle.py">lifecycle.py:73–177</a>, <a href="forecasting/serving.py">serving.py:10–29</a>, <a href="forecasting/beta_graph.py">beta_graph.py:162–183, 277–303</a>.</p>
+</section>
+
+<section class="chapter" id="refresh">
+<div class="chapter-number">13 / WHAT “REFRESH” ACTUALLY DOES</div><h2>Refreshing runs maintenance, not time travel.</h2>
+<p>Opening the graph reads saved results. A separate refresh flow queues work outside the HTTP request, so an expensive fitting process does not run while the browser waits for a normal GET.</p>
+<div class="steps"><span><b>1</b> Admin requests refresh</span><span><b>2</b> Job queued</span><span><b>3</b> Worker fits / reuses</span><span><b>4</b> Results saved</span><span><b>5</b> Browser reloads</span></div>
+<pre><code>POST /api/forecasting/refresh/
+Authorization: Bearer &lt;admin token&gt;
+Content-Type: application/json
+
+{}
+
+# The normal queue response is HTTP 202.
+# Poll the returned status URL until the job succeeds or fails.</code></pre>
+<p>The current endpoint accepts an empty object. The worker performs pattern investigation, strict monthly research, weekly research, provisional forecasts, centered graphs and projection-evidence maintenance. A PostgreSQL advisory lock gives one process ownership of maintenance. Fits happen outside short consistency/save locks; sources are rechecked before saving.</p>
+<h3>Same data can reuse a fit</h3>
+<p>Saved artifacts are keyed to their actual training input. Within a week or month, new current-period invoices can change displayed partial actuals without changing the closed training history. A new day's graph still needs a matching date identity, but unchanged training signatures can reuse fitted state. A period boundary or correction to training records can require new work.</p>
+<p>The graph's <code>as_of</code> date is part of its identity. A new day, changed source, absent graph or failed checksum can produce <code>refresh_required</code>. GET deliberately avoids repairing that by training on the fly.</p>
+<h3>The midnight scheduler is separate from the web server</h3>
+<p>The provided worker/timer runs at midnight in the business timezone, normally Asia/Manila. Starting Django or deploying the web app does not install that scheduler. The supervised worker refreshes on startup to catch up today after downtime, then waits for the next run. It does not forge predictions for missed past dates.</p>
+<p>The strict monthly issue is created only on its legitimate first-day timing when the model's next target matches today. Running a refresh on October 27 cannot create an authentic October 1 issue.</p>
+<h3>A safe learning workflow</h3>
+<div class="two"><div class="panel"><h4>Inspect without fitting</h4><pre><code>venv/bin/python manage.py audit_forecast_accuracy</code></pre><p class="small">This command reads saved results and evidence, reports accuracy and gaps, and performs no fits. Its output can contain business metrics; keep it private as appropriate.</p></div><div class="panel"><h4>Maintenance that writes saved model records</h4><pre><code>venv/bin/python manage.py run_forecast_refresh</code></pre><p class="small">This is an operator action, not part of opening this guide. Arrange and authorize it in the intended environment after reviewing the source data. It can consume CPU and save new model/evidence records.</p></div></div>
+<p class="small">On Windows, the virtual-environment Python path is commonly <code>venv\Scripts\python.exe</code>. The guide itself needs no Python command. No commands shown here are executed by this HTML file.</p>
+<h3>Prepare honestly for the academic defense</h3>
+<ol><li><strong>Reconcile the actual ledger.</strong> Check dates, duplicates, cancellations, imported labels, product policy and segment classification with the responsible source owner.</li><li><strong>Resolve missing versus zero.</strong> Encode missing genuine records where authorized. Confirm a zero period only when source reconciliation establishes it.</li><li><strong>Provide recent completed history.</strong> For an October 2026 strict monthly forecast, that means real, usable history through September 2026, with the required continuous window.</li><li><strong>Review coverage.</strong> A source attestation belongs to a particular month and source revision. Correcting those records can invalidate the earlier review.</li><li><strong>Run authorized offline maintenance.</strong> Read status and gate reasons afterwards. A successful worker job does not promise publication.</li><li><strong>Distinguish research from live evidence.</strong> Show retrospective results as research, explain the simple baseline, and state the prospective evidence still missing.</li></ol>
+<div class="note warm"><p>Do not fill unexplained months with zero, copy old predictions into “actual,” backdate issue records, generate demo invoices as real history, or change thresholds just to get a green status. These actions would remove the meaning of the evaluation.</p></div>
+<p class="source">Project sources: <a href="forecasting/refresh_jobs.py">refresh_jobs.py:25–139</a>, <a href="forecasting/management/commands/watch_forecast_models.py">watch_forecast_models.py:11–48</a>, <a href="forecasting/lifecycle.py">lifecycle.py:192–237</a>, <a href="README.md">README.md:74–94</a>.</p>
+</section>
+
+<section class="chapter" id="code">
+<div class="chapter-number">14 / A GUIDED TOUR OF YOUR CODE</div><h2>Read the program as a story.</h2>
+<p>You do not need to understand every Python or TypeScript feature first. A <code>function</code> is a named operation, a <code>list</code> holds ordered items, a <code>for</code> loop repeats work, an <code>if</code> chooses a branch, and a <code>dictionary</code> stores named values. <code>return</code> sends the result back to the caller.</p>
+<h3>1. Select earlier sales</h3>
+<pre><code># Actual selection, abbreviated from forecasting/data.py:54
+Transaction.objects.filter(
+    is_voided=False,
+    created_at__lt=cutoff
+)</code></pre>
+<p><code>Transaction</code> is a database model. <code>.filter()</code> asks Django's ORM for matching rows. <code>created_at__lt</code> means “created_at is less than the cutoff.” It is not less-than-or-equal, so a sale exactly at the boundary is excluded. This is how an earlier-only training snapshot starts.</p>
+<h3>2. Build a calendar with unknown periods preserved</h3>
+<pre><code># Exact core, forecasting/provisional.py:45–49
+if totals:
+    day = min(totals)
+    while day &lt;= max(totals):
+        rows.append({'date': day.isoformat(),
+                     'actual': float(totals[day]) if day in totals else None})
+        day = advance(day, period)</code></pre>
+<p>The real source formats this append on one line; it is wrapped here for reading. The loop starts at the earliest recorded bucket and ends at the latest. A missing interior bucket becomes <code>None</code>. The series does not extend today's missing tail with invented observations.</p>
+<h3>3. Represent unknowns inside the model</h3>
+<pre><code># Exact core, forecasting/provisional.py:144–146
+return SARIMAX(
+    np.asarray([np.nan if v is None else v for v in values]),
+    **spec, enforce_stationarity=True, enforce_invertibility=True
+)</code></pre>
+<p>The actual source wraps the call differently. <code>np</code> is NumPy, a numerical-array library. <code>NaN</code> marks an unavailable observation. <code>**spec</code> passes the chosen configuration into the model. The missing value is not changed to numeric zero.</p>
+<h3>4. Project from the saved origin to the requested target</h3>
+<pre><code># Logic excerpt: forecasting/provisional.py:249–254
+steps = ((end - origin).days // 7 if unit == 'weekly'
+         else (end.year - origin.year) * 12 + end.month - origin.month)
+
+# project(state, steps) generates every required intermediate step.</code></pre>
+<p>For monthly data, counting years × 12 plus month difference gives the number of month steps. If the origin is December 2025 and the target is October 2026, that is 10 steps. The path can cross unobserved months, but crossing them does not establish what the real revenue was.</p>
+<h3>5. Keep past and future series separate</h3>
+<pre><code># forecasting/beta_graph.py:233–236
+'past_prediction': predicted if target &lt; current else None,
+'future_prediction': predicted if target &gt;= current else None,
+'prediction_basis': basis,
+'is_current': target == current,
+'is_partial_period': partial,</code></pre>
+<p>These fields become JSON sent to the browser. <code>prediction_basis</code> tells the UI whether a point is reconstructed, retained from an original issue, or a current estimate. <code>is_partial_period</code> tells it not to present the current running actual as a completed outcome.</p>
+<h3>6. Read a graph without fitting</h3>
+<pre><code># Exact decision, forecasting/beta_graph.py:296–303, abbreviated
+data = build(ctx, allow_training=False,
+             saved_views=saved['views'] if saved else None)
+return {**data,
+        'status': 'ready' if saved is not None else 'refresh_required',
+        'model_id': run.pk if run else None}</code></pre>
+<p><code>allow_training=False</code> is the important boundary. This read path reuses saved predictions and updates displayed actuals/evaluations. Missing required saved work does not trigger a surprise fit during a GET.</p>
+<h3>7. Draw the data in React</h3>
+<p>The browser's <code>centeredForecastSeries()</code> copies backend points while preserving unknown values and calendar buckets. <code>ForecastChart</code> gives those points to Recharts, which draws the three independent lines. The tooltip shows actual, past prediction, current/future prediction, full period dates and prediction basis.</p>
+<div class="table-wrap"><table><thead><tr><th>File</th><th>Read it to answer…</th></tr></thead><tbody>
+<tr><td><a href="forecasting/data.py"><code>data.py</code></a></td><td>Which invoices and amounts are eligible?</td></tr><tr><td><a href="forecasting/learning.py"><code>learning.py</code></a></td><td>How are strict monthly history, selection and tests organized?</td></tr><tr><td><a href="forecasting/seasonal.py"><code>seasonal.py</code></a></td><td>Which SARIMA orders are fitted, and how are parameters saved/replayed?</td></tr><tr><td><a href="forecasting/provisional.py"><code>provisional.py</code></a></td><td>How do sparse data, multi-step paths, component forecasts and bounds work?</td></tr><tr><td><a href="forecasting/beta_graph.py"><code>beta_graph.py</code></a></td><td>How does the current dashboard build centered points and preserve issues?</td></tr><tr><td><a href="forecasting/serving.py"><code>serving.py</code></a> / <a href="forecasting/lifecycle.py"><code>lifecycle.py</code></a></td><td>Why is the strict forecast withheld or approved?</td></tr><tr><td><a href="forecasting/benchmarks.py"><code>benchmarks.py</code></a> / <a href="forecasting/accuracy.py"><code>accuracy.py</code></a></td><td>How are errors, baselines and evidence checked?</td></tr><tr><td><a href="forecasting/refresh_jobs.py"><code>refresh_jobs.py</code></a></td><td>What runs when Refresh forecast is pressed?</td></tr><tr><td><code>ForecastChart.tsx</code> / <code>utils/forecast.ts</code> in the sibling frontend</td><td>Why are lines separated, and how are nulls, tooltips and scores displayed?</td></tr>
+</tbody></table></div>
+<p class="small">Snippets marked “abbreviated,” “core” or “logic excerpt” intentionally omit surrounding code or wrap lines. They explain the checked implementation; they are not replacement patches. Local source links work when this HTML stays in the backend root.</p>
+</section>
+
+<section class="chapter" id="defense">
+<div class="chapter-number">15 / SPEAK ABOUT IT CLEARLY</div><h2>Questions you may be asked.</h2>
+<p>Use these as explanations to understand, not statements to memorize without checking the current evidence.</p>
+<details><summary>“What does your forecasting feature predict?”</summary><p>It estimates eligible dairy-sales revenue in Philippine pesos. The dashboard separates Regular, Feeding and their Combined total. The strict approved-model lifecycle evaluates one-month-ahead Regular revenue. It does not establish accuracy for liters, stock, profit or every displayed horizon.</p></details>
+<details><summary>“Why SARIMA?”</summary><p>Revenue is time-ordered and can have recent dependence and recurring calendar patterns. SARIMA can represent those relationships through ordinary and seasonal AR/MA terms and differencing. The implementation compares fixed candidates and simple baselines. Suitability still depends on data and measured evidence; selecting the model family alone does not prove it is best.</p></details>
+<details><summary>“What is the formula in your implementation?”</summary><p>The general family is SARIMA(p,d,q)(P,D,Q)ₘ. The checked strict model chose (0,1,0)(1,0,0)₁₂: monthly changes are related to changes twelve months earlier. The model estimates the seasonal coefficient from historical data. That was run 4 on the dated read-only check; future model selection can differ.</p></details>
+<details><summary>“Why is there a break from last month's prediction to this month's?”</summary><p>The current dashboard deliberately places past estimates and current/future estimates in separate chart series. There is no connecting segment across them. A difference in their heights can additionally reflect a new origin or fit. Missing values, absent saved work and partial current actuals are different cases that must be checked separately.</p></details>
+<details><summary>“Why can the forecast be higher than today's recorded amount?”</summary><p>The forecast is a full-period estimate, while today's actual is only the running total. A current week, month or year is incomplete. Accuracy should be evaluated after the period closes and its source records are reviewed.</p></details>
+<details><summary>“Your WAPE is 10.64%; is the system 89.36% accurate?”</summary><p>No. The historical test's absolute errors total about 10.64% of the actual revenue total for that evaluated scope. It is not a per-prediction success probability or a universal accuracy percentage. The 2025 result is retrospective research, and it must be compared with the same-target baseline and prospective evidence.</p></details>
+<details><summary>“Why is the status stale_data if the graph shows forecasts?”</summary><p>The graph and the strict publication endpoint are separate. A saved exploratory graph can be available while the strict one-month model ends too far in the past. On the dated check, genuine eligible sales ended December 2025, the strict next target was behind October 2026, and reviewed/prospective publication evidence was absent.</p></details>
+<details><summary>“Did the model train on the future while testing?”</summary><p>The walk-forward loop fits only the rows before each target. Earlier target outcomes can join later training once they are in the past. Candidate choice is frozen from the earlier validation window; later test results do not select a replacement winner. Reconstructed tests still use corrected historical ledger records, so they are not proof of the information actually available at the old date.</p></details>
+<details><summary>“Does a yearly point use a model trained on annual totals?”</summary><p>The centered graph's annual point sums twelve monthly forecasts from one origin. Adjacent annual points can use different origin cutoffs. The older chart's yearly historical sum uses rolling monthly predictions and is not the same as an annual forecast issued before January.</p></details>
+<details><summary>“Why is Feeding sometimes flat or unavailable?”</summary><p>Feeding sales may be sparse and depend on schedules not provided as external inputs. A simple local-level model can produce flat mean forecasts; too little usable history can withhold a prediction. A plotted estimate is not a validated contract schedule.</p></details>
+<details><summary>“What happens if records are corrected?”</summary><p>The source fingerprint changes. A saved fit or coverage attestation for older records may no longer match. New maintenance can save a new version, while original issued forecasts and revision-specific scores are retained. This makes the provenance inspectable instead of rewriting old predictions.</p></details>
+<details><summary>“What still needs to happen before relying on this operationally?”</summary><p>Reconcile source completeness and classification, supply recent genuine data, review coverage, run appropriate maintenance and collect current prospective issued-forecast evidence. Assess the actual error and baseline for the intended horizon and segment. Configure and verify the deployment scheduler and monitoring. The existing gates should report the missing evidence honestly.</p></details>
+</section>
+
+<section class="chapter" id="glossary">
+<div class="chapter-number">16 / KEEP THIS PAGE NEARBY</div><h2>A glossary and a quick self-check.</h2>
+<label for="glossary-search" class="small no-print">Find a term</label><input type="search" id="glossary-search" class="no-print" placeholder="Try: origin, WAPE, artifact…" autocomplete="off" style="width:100%;margin:8px 0 18px"><p class="small no-print" id="glossary-count" aria-live="polite"></p>
+<dl class="glossary" id="glossary-terms">
+<div><dt>Actual</dt><dd>Recorded eligible revenue. Check whether its period is complete or partial.</dd></div>
+<div><dt>Artifact</dt><dd>Saved fitted model information: orders, scale, history, parameters and diagnostics.</dd></div>
+<div><dt>Autoregression</dt><dd>Predictive relationships involving earlier values of the same series.</dd></div>
+<div><dt>Baseline</dt><dd>A simple prediction method used to judge whether the model adds value.</dd></div>
+<div><dt>Bias</dt><dd>Mean signed prediction error. Positive means overprediction under this project's convention.</dd></div>
+<div><dt>Bucket</dt><dd>A calendar container such as one week, month or year.</dd></div>
+<div><dt>Convergence</dt><dd>The numerical optimizer reached its stopping criteria. This alone is not proof of good forecasting.</dd></div>
+<div><dt>Coverage attestation</dt><dd>A source reconciliation for a specific completed month and exact data revision.</dd></div>
+<div><dt>Cutoff</dt><dd>The exclusive date boundary beyond which a training snapshot cannot read sales.</dd></div>
+<div><dt>Data leakage</dt><dd>Using information in a prediction or model choice that would not have been available at its origin.</dd></div>
+<div><dt>Differencing</dt><dd>Replacing levels with changes, such as this month minus last month.</dd></div>
+<div><dt>Exogenous variable</dt><dd>An outside input such as price or weather. Current SARIMA calls do not supply exogenous predictors.</dd></div>
+<div><dt>Fit / training</dt><dd>Estimate model parameters using the historical sequence.</dd></div>
+<div><dt>Forecast origin</dt><dd>The information point from which a forecast is produced.</dd></div>
+<div><dt>Horizon</dt><dd>The number of time steps from origin to target. Its unit follows the series frequency.</dd></div>
+<div><dt>Hyperparameters / orders</dt><dd>The selected model structure, such as p, d, q, P, D, Q and m.</dd></div>
+<div><dt>Innovation</dt><dd>The new observation minus its conditional model prediction, before updating the state.</dd></div>
+<div><dt>Interval coverage</dt><dd>The fraction of evaluated actuals inside the forecast bounds. Different from ledger coverage.</dd></div>
+<div><dt>Issued forecast</dt><dd>An original estimate retained at a legitimate issue time before the outcome.</dd></div>
+<div><dt>Kalman filter</dt><dd>A recursive state-estimation procedure used here to evaluate and update the state-space model.</dd></div>
+<div><dt>Lag</dt><dd>A backward step: lag 1 is the preceding observation; lag 12 in monthly data is twelve months earlier.</dd></div>
+<div><dt>Likelihood</dt><dd>How plausible the observed sequence is under particular model parameters.</dd></div>
+<div><dt>MAE / RMSE</dt><dd>Peso-valued error summaries; RMSE penalizes large misses more strongly.</dd></div>
+<div><dt>Moving average term</dt><dd>In ARIMA, dependence on earlier shocks. Different from a trailing mean baseline.</dd></div>
+<div><dt>NaN / None / null</dt><dd>Representations of unavailable information in numerical Python, Python objects and JSON respectively.</dd></div>
+<div><dt>Parameter</dt><dd>A fitted number such as an AR coefficient or disturbance variance.</dd></div>
+<div><dt>Partial period</dt><dd>A week, month or year that has started but has not fully closed.</dd></div>
+<div><dt>Point forecast</dt><dd>One central predicted amount, rather than a probability distribution or band.</dd></div>
+<div><dt>Promotion / deployment</dt><dd>Activating a model that passes the publication checks; separate from saving a research fit.</dd></div>
+<div><dt>Prospective</dt><dd>Prediction saved genuinely before the later actual outcome.</dd></div>
+<div><dt>Residual</dt><dd>An observed value minus a fitted conditional prediction, using a clearly stated sign convention.</dd></div>
+<div><dt>Retrospective / backtest</dt><dd>Evaluation reconstructed from historical records. It cannot manufacture an old issue timestamp.</dd></div>
+<div><dt>Seasonality</dt><dd>A repeating pattern at a calendar cycle, such as an annual pattern in monthly observations.</dd></div>
+<div><dt>Source revision</dt><dd>A fingerprint identifying which records and policies a fit or review used.</dd></div>
+<div><dt>Stationarity</dt><dd>Stable statistical behavior of the modeled series; differencing may be needed before modeling.</dd></div>
+<div><dt>Target</dt><dd>The specific future or historical period the prediction describes.</dd></div>
+<div><dt>Test set</dt><dd>The later chronological evaluation window after candidate selection is frozen.</dd></div>
+<div><dt>Trained through</dt><dd>The final observed period used, which can be much older than the requested cutoff.</dd></div>
+<div><dt>Validation set</dt><dd>The earlier chronological evaluation window used to select the model configuration.</dd></div>
+<div><dt>Walk-forward</dt><dd>Repeatedly fit on earlier observations, predict the next target, then advance the origin.</dd></div>
+<div><dt>WAPE</dt><dd>Weighted Absolute Percentage Error: total absolute error divided by total actual magnitude, times 100.</dd></div>
+</dl>
+<h3>Can you explain these five things?</h3>
+<form class="quiz" id="quiz">
+<fieldset><legend>1. Orange and green predictions stop at adjacent dates. What is confirmed in the code?</legend><label><input type="radio" name="q1" value="0"> SARIMA forgot one month.</label><label><input type="radio" name="q1" value="1"> They are separate chart series without an overlapping endpoint.</label><label><input type="radio" name="q1" value="0"> The actual revenue must be zero.</label></fieldset>
+<fieldset><legend>2. No invoice is recorded for March. What should you conclude?</legend><label><input type="radio" name="q2" value="1"> March is unknown until source completeness is established.</label><label><input type="radio" name="q2" value="0"> March certainly earned zero.</label></fieldset>
+<fieldset><legend>3. What does 10% WAPE establish?</legend><label><input type="radio" name="q3" value="0"> Every future forecast has a 90% chance of being correct.</label><label><input type="radio" name="q3" value="1"> Evaluated absolute errors total 10% of evaluated actual magnitude.</label></fieldset>
+<fieldset><legend>4. A graph is ready. Is the strict production forecast approved?</legend><label><input type="radio" name="q4" value="0"> Yes, those statuses are identical.</label><label><input type="radio" name="q4" value="1"> Check the separate strict lifecycle and its evidence gates.</label></fieldset>
+<fieldset><legend>5. A Tuesday actual is below the full-week prediction. Is that the completed-week error?</legend><label><input type="radio" name="q5" value="1"> No; the actual period is still partial.</label><label><input type="radio" name="q5" value="0"> Yes; subtract them and report the error immediately.</label></fieldset>
+<button type="submit">Check my understanding</button><p class="quiz-result" id="quiz-result" role="status"></p>
+</form>
+<details><summary>Answer explanations (also available without JavaScript)</summary><p>1: Separate orange/green series. 2: Unknown is not zero. 3: WAPE is an aggregate error ratio. 4: Graph readiness and publication approval differ. 5: Wait for a completed, reviewed actual before treating it as the final error.</p></details>
+</section>
+
+<section class="chapter" id="sources">
+<div class="chapter-number">17 / WHERE THESE EXPLANATIONS COME FROM</div><h2>A map back to the evidence.</h2>
+<p>This guide combines the actual source code, a dated read-only check of saved monthly metadata, original teaching examples and primary references for general forecasting theory. Its interactive amounts and coefficients are invented teaching examples. They are never written to your application or presented as model output.</p>
+<h3>Code versions inspected</h3>
+<p>Backend: <a href="https://github.com/btchh/Rosario-Dairy-CAPSTONE-/tree/e47687a091bf4ba008f0d0c77b1d34259d44e828">e47687a0</a>. Read-only sibling frontend: <code>3a0be9c98aadcbed3dcac8a63602799df5cf2b50</code>. Line numbers refer to those inspected files. Future code changes can change the behavior described here.</p>
+<p>The database check used a PostgreSQL-enforced read-only connection. No sales, model fits, coverage attestations, issue timestamps or deployment pointers were created or modified to make this guide.</p>
+<h3>Primary references</h3>
+<ol>
+<li id="ref-statmodel"><strong>[S1] statsmodels 0.14.6, <a href="https://www.statsmodels.org/v0.14.6/generated/statsmodels.tsa.statespace.sarimax.SARIMAX.html">SARIMAX API</a>.</strong> Defines model orders, seasonal orders, trend, constraints and fitting behavior. This version matches the locally inspected package.</li>
+<li id="ref-book-models"><strong>[S2] Hyndman &amp; Athanasopoulos, <a href="https://otexts.com/fpp3/arima.html">Forecasting: Principles and Practice — ARIMA models</a>.</strong> General background on differencing, autoregression, moving-average errors and seasonal model notation. Its general teaching does not replace your project's exact candidate list.</li>
+<li id="ref-book-evaluation"><strong>[S3] Hyndman &amp; Athanasopoulos, <a href="https://otexts.com/fpp3/toolbox.html">The forecaster's toolbox</a>.</strong> Background on baseline methods, forecast errors, chronological evaluation and rolling forecasting origins.</li>
+<li id="ref-statforecast"><strong>[S4] statsmodels 0.14.6, <a href="https://www.statsmodels.org/v0.14.6/generated/statsmodels.tsa.statespace.sarimax.SARIMAXResults.get_forecast.html">get_forecast API</a>.</strong> Explains out-of-sample forecast results and their model-based intervals. An API-provided interval is not a business calibration study.</li>
+</ol>
+<p class="small">The entire guide, formulas, illustrations and calculators work offline. External references need an internet connection when clicked. The embedded interactive demos use ordinary JavaScript arithmetic and SVG; they do not run Python, contact the API, fit SARIMA or replace the backend model.</p>
+</section>
+<footer class="footer"><strong>The key habit:</strong> before trusting a number, ask what it predicts, which data it used, when it was issued, which period it covers, and what completed evidence supports it.<p>Standalone learning document · Rosario Dairy Management System · 27 October 2026</p><p><a href="SARIMA_GUIDE_STYLE.md">Color palette and font reference</a></p><p><a href="#start">Return to the beginning</a></p></footer>
+</main>
+</div>
+<script>
+/* All calculations below are local teaching examples. No network or app access. */
+(function () {
+  'use strict';
+  const byId = function (id) { return document.getElementById(id); };
+  function updateThemeControl() {
+    const nextTheme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    const label = 'Switch to ' + nextTheme + ' mode';
+    byId('theme-toggle').textContent = nextTheme === 'light' ? 'Light mode' : 'Dark mode';
+    byId('theme-toggle').setAttribute('aria-label', label);
+    byId('theme-toggle').title = label;
+  }
+  byId('theme-toggle').addEventListener('click', function () {
+    const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = theme;
+    try { localStorage.setItem('sarima-guide-theme', theme); } catch (_) {}
+    updateThemeControl();
+  });
+  updateThemeControl();
+  const money = function (value) {
+    return '₱' + Number(value).toLocaleString('en-PH', {
+      minimumFractionDigits: 2, maximumFractionDigits: 2
+    });
+  };
+  const dateText = function (value, options) {
+    return new Date(value + 'T00:00:00Z').toLocaleDateString('en-PH',
+      Object.assign({ timeZone: 'UTC' }, options || { year: 'numeric', month: 'short', day: 'numeric' }));
+  };
+  const calendars = {
+    weekly: ['2026-10-05', '2026-10-12', '2026-10-19', '2026-10-26', '2026-11-02', '2026-11-09', '2026-11-16'],
+    monthly: ['2026-07-01', '2026-08-01', '2026-09-01', '2026-10-01', '2026-11-01', '2026-12-01', '2027-01-01'],
+    yearly: ['2024-01-01', '2025-01-01', '2026-01-01', '2027-01-01', '2028-01-01']
+  };
+  function svgNode(tag, attributes, text) {
+    const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    Object.entries(attributes || {}).forEach(function (pair) { node.setAttribute(pair[0], pair[1]); });
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+  function renderGap() {
+    const period = byId('gap-period').value;
+    const scenario = byId('gap-scenario').value;
+    const dates = calendars[period];
+    const current = period === 'yearly' ? 2 : 3;
+    const past = dates.map(function (_, i) { return i < current ? 89 + i * 5 : null; });
+    const actual = dates.map(function (_, i) { return i < current ? 94 + i * 3 : i === current ? 26 : null; });
+    const future = dates.map(function (_, i) { return i >= current ? 109 + (i - current) * 4 : null; });
+    const explanations = {
+      boundary: 'Both adjacent predictions exist, but the last orange point belongs to a different series from the first green point. The blank connector is a series boundary, not an absent period. The height difference is a separate change in predicted value.',
+      missing: 'The blue actual for the last completed bucket is unknown. Its line breaks instead of treating that bucket as zero. The separate orange/green boundary still exists as well.',
+      component: 'Here the current Combined forecast is unavailable because one component has no prediction. A later forecast can still exist. A missing component cannot be silently replaced with zero.',
+      refresh: 'This example has no matching saved graph for new predictions. One retained original issued point remains, along with recorded actuals. Opening the graph does not train a replacement.'
+    };
+    if (scenario === 'missing') actual[current - 1] = null;
+    if (scenario === 'component') future[current] = null;
+    if (scenario === 'refresh') {
+      future.fill(null);
+      past.forEach(function (_, i) { if (i !== current - 1) past[i] = null; });
+    }
+    const svg = byId('gap-chart');
+    svg.replaceChildren(
+      svgNode('title', { id: 'gap-svg-title' }, 'Teaching example: ' + period + ' chart gaps'),
+      svgNode('desc', { id: 'gap-svg-description' }, explanations[scenario] + ' Values are available in the following table.')
+    );
+    const x = function (i) { return 64 + i * 710 / (dates.length - 1); };
+    const y = function (v) { return 235 - v * 1.32; };
+    svg.appendChild(svgNode('rect', { x: x(current) - 24, y: 24, width: 48, height: 219, fill: 'var(--current-bg)' }));
+    [0, 40, 80, 120, 160].forEach(function (tick) {
+      svg.appendChild(svgNode('line', { x1: 54, x2: 790, y1: y(tick), y2: y(tick), stroke: 'var(--line)' }));
+      svg.appendChild(svgNode('text', { x: 42, y: y(tick) + 4, 'text-anchor': 'end', fill: 'var(--muted)', 'font-size': 12 }, String(tick)));
+    });
+    svg.appendChild(svgNode('text', { x: 54, y: 15, fill: 'var(--muted)', 'font-size': 12 }, '₱ thousands · invented values'));
+    svg.appendChild(svgNode('line', { x1: x(current), x2: x(current), y1: 24, y2: 243, stroke: 'var(--reference)', 'stroke-dasharray': '4 4' }));
+    dates.forEach(function (day, i) {
+      const label = dateText(day, period === 'yearly' ? { year: 'numeric' } :
+        period === 'weekly' ? { month: 'short', day: 'numeric' } : { month: 'short', year: '2-digit' });
+      svg.appendChild(svgNode('text', { x: x(i), y: 263, 'text-anchor': 'middle', fill: 'var(--muted)', 'font-size': 12 }, label));
+    });
+    svg.appendChild(svgNode('text', { x: x(current), y: 286, 'text-anchor': 'middle', fill: 'var(--ink)', 'font-size': 12 }, 'Current period'));
+    function line(values, color, dash, name) {
+      let segment = [];
+      function flush() {
+        if (segment.length > 1) svg.appendChild(svgNode('polyline', {
+          points: segment.join(' '), fill: 'none', stroke: color,
+          'stroke-width': 3, 'stroke-dasharray': dash || ''
+        }));
+        segment = [];
+      }
+      values.forEach(function (value, i) {
+        if (value === null) { flush(); return; }
+        segment.push(x(i) + ',' + y(value));
+      });
+      flush();
+      values.forEach(function (value, i) {
+        if (value === null) return;
+        const label = name + ', ' + dates[i] + ': ' + money(value * 1000);
+        const dot = svgNode('circle', { cx: x(i), cy: y(value), r: 4, fill: color, tabindex: 0, role: 'img', 'aria-label': label });
+        dot.appendChild(svgNode('title', {}, label));
+        svg.appendChild(dot);
+      });
+    }
+    if (byId('gap-bridge').checked && past[current - 1] !== null && future[current] !== null) {
+      const bridge = svgNode('line', { x1: x(current - 1), y1: y(past[current - 1]),
+        x2: x(current), y2: y(future[current]), stroke: 'var(--bridge)', 'stroke-width': 2, 'stroke-dasharray': '2 6' });
+      bridge.appendChild(svgNode('title', {}, 'Teaching connector only; not a forecast or a frontend change.'));
+      svg.appendChild(bridge);
+    }
+    line(past, 'var(--orange)', '5 4', 'Past prediction');
+    line(actual, 'var(--blue)', '', 'Recorded actual');
+    line(future, 'var(--green)', '3 4', 'Current/future prediction');
+    let explanation = explanations[scenario];
+    if (byId('gap-bridge').checked) {
+      explanation += future[current] === null ? ' No teaching bridge is drawn because the current endpoint is unknown.' :
+        ' The gray dotted bridge is an overlay showing how the missing connector differs from the two actual series.';
+    }
+    byId('gap-explanation').textContent = explanation;
+    const body = byId('gap-values');
+    body.replaceChildren();
+    dates.forEach(function (day, i) {
+      const row = document.createElement('tr');
+      const dateCell = document.createElement('th');
+      dateCell.scope = 'row';
+      dateCell.textContent = day + (i === current ? ' · current' : '');
+      row.appendChild(dateCell);
+      [past[i], actual[i], future[i]].forEach(function (value) {
+        const td = document.createElement('td');
+        td.textContent = value === null ? '— (null)' : money(value * 1000);
+        row.appendChild(td);
+      });
+      body.appendChild(row);
+    });
+  }
+  ['gap-period', 'gap-scenario', 'gap-bridge'].forEach(function (id) { byId(id).addEventListener('change', renderGap); });
+  renderGap();
+
+  function renderAR() {
+    const phi = Number(byId('ar-phi').value);
+    byId('ar-phi-value').textContent = phi.toFixed(2);
+    byId('ar-output').textContent = 'Next period: ' + money((1 - phi) * 100000 + phi * 120000) +
+      '. Two steps ahead: ' + money(100000 + Math.pow(phi, 2) * 20000) +
+      '. Four steps ahead: ' + money(100000 + Math.pow(phi, 4) * 20000) +
+      '. Future shocks are replaced by their assumed mean of zero for this mean path.';
+  }
+  byId('ar-phi').addEventListener('input', renderAR);
+  renderAR();
+  const months = Array.from({ length: 36 }, function (_, i) {
+    return new Date(Date.UTC(2023, i, 1)).toISOString().slice(0, 10);
+  });
+  function renderOrigin() {
+    const index = Number(byId('roll-origin').value);
+    const target = dateText(months[index], { month: 'long', year: 'numeric' });
+    const last = dateText(months[index - 1], { month: 'long', year: 'numeric' });
+    byId('roll-output').textContent = 'Target: ' + target + ' (' + (index < 24 ? 'validation' : 'test') +
+      '). Fit on ' + index + ' earlier months, January 2023 through ' + last +
+      '. The target actual and later months cannot train this prediction.';
+    const calendar = byId('roll-calendar');
+    calendar.replaceChildren();
+    months.forEach(function (day, i) {
+      const item = document.createElement('span');
+      item.textContent = day.slice(0, 7);
+      item.style.background = i < index ? 'var(--training-bg)' : i === index ? 'var(--validation-bg)' : 'var(--future-bg)';
+      item.title = i < index ? 'Available earlier training observation' : i === index ? 'Target to predict' : 'Future relative to this origin';
+      item.style.fontSize = '0.69rem';
+      item.style.padding = '6px';
+      calendar.appendChild(item);
+    });
+  }
+  byId('roll-origin').addEventListener('input', renderOrigin);
+  renderOrigin();
+
+  function metricValue(id) {
+    const field = byId(id);
+    if (field.value.trim() === '' || !field.validity.valid) return null;
+    const value = Number(field.value);
+    return Number.isFinite(value) && value >= 0 && value <= 1e12 ? value : null;
+  }
+  function renderMetrics() {
+    const actual = [0, 1, 2].map(function (i) { return metricValue('a' + i); });
+    const predicted = [0, 1, 2].map(function (i) { return metricValue('p' + i); });
+    const baseline = [0, 1, 2].map(function (i) { return metricValue('b' + i); });
+    if (actual.concat(predicted, baseline).some(function (v) { return v === null; })) {
+      ['metric-wape', 'metric-mae', 'metric-rmse', 'metric-bias'].forEach(function (id) { byId(id).textContent = '—'; });
+      byId('metric-detail').textContent = 'Enter valid nonnegative amounts in every field. Blank is unknown, not zero. This calculator needs three complete matched periods.';
+      return;
+    }
+    const errors = predicted.map(function (p, i) { return p - actual[i]; });
+    const absError = errors.reduce(function (sum, e) { return sum + Math.abs(e); }, 0);
+    const total = actual.reduce(function (sum, a) { return sum + Math.abs(a); }, 0);
+    const baselineError = baseline.reduce(function (sum, p, i) { return sum + Math.abs(p - actual[i]); }, 0);
+    const bias = errors.reduce(function (sum, e) { return sum + e; }, 0) / 3;
+    const rmse = Math.sqrt(errors.reduce(function (sum, e) { return sum + e * e; }, 0) / 3);
+    byId('metric-wape').textContent = total ? (100 * absError / total).toFixed(2) + '%' : 'Undefined';
+    byId('metric-mae').textContent = money(absError / 3);
+    byId('metric-rmse').textContent = money(rmse);
+    byId('metric-bias').textContent = (bias > 0 ? '+' : '') + money(bias);
+    const skill = baselineError ? (100 * (1 - absError / baselineError)).toFixed(2) + '%' : 'undefined (baseline error is zero)';
+    byId('metric-detail').textContent = 'Signed errors A/B/C: ' + errors.map(money).join(', ') +
+      '. Absolute errors total ' + money(absError) + '; actuals total ' + money(total) +
+      '. Baseline absolute error: ' + money(baselineError) + '. Model error reduction versus baseline: ' + skill +
+      (baselineError && absError > baselineError ? ' — the model is worse here.' : '.') +
+      (total === 0 ? ' WAPE is undefined because its denominator is zero; a valid currency error can still be calculated.' : '');
+  }
+  document.querySelectorAll('.metric-input').forEach(function (input) { input.addEventListener('input', renderMetrics); });
+  byId('metric-reset').addEventListener('click', function () {
+    [[1000, 900, 1100], [2000, 2300, 1700], [0, 100, 0]].forEach(function (row, i) {
+      ['a', 'p', 'b'].forEach(function (prefix, j) { byId(prefix + i).value = row[j]; });
+    });
+    renderMetrics();
+  });
+  byId('metric-zero').addEventListener('click', function () {
+    [0, 1, 2].forEach(function (i) { byId('a' + i).value = '0'; });
+    renderMetrics();
+  });
+  renderMetrics();
+
+  const terms = Array.from(document.querySelectorAll('#glossary-terms > div'));
+  function filterGlossary() {
+    const query = byId('glossary-search').value.trim().toLocaleLowerCase();
+    let visible = 0;
+    terms.forEach(function (term) {
+      term.hidden = !term.textContent.toLocaleLowerCase().includes(query);
+      if (!term.hidden) visible++;
+    });
+    byId('glossary-count').textContent = visible + ' of ' + terms.length + ' terms shown.';
+  }
+  byId('glossary-search').addEventListener('input', filterGlossary);
+  filterGlossary();
+  byId('quiz').addEventListener('submit', function (event) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    let answered = 0;
+    let score = 0;
+    for (let i = 1; i <= 5; i++) {
+      if (data.has('q' + i)) answered++;
+      if (data.get('q' + i) === '1') score++;
+    }
+    byId('quiz-result').textContent = answered < 5 ? 'Answer all five questions first. You have answered ' + answered + '.' :
+      score + ' / 5 correct. ' + (score === 5 ? 'You can distinguish the main forecast concepts.' :
+        'Revisit the explanations under the questions, especially unknown versus zero and the difference between graph readiness and approval.');
+  });
+  byId('mobile-chapters').addEventListener('change', function () { window.location.hash = this.value; });
+  byId('expand-details').addEventListener('click', function () {
+    const open = this.textContent === 'Open explanations';
+    document.querySelectorAll('details').forEach(function (detail) { detail.open = open; });
+    this.textContent = open ? 'Close explanations' : 'Open explanations';
+  });
+  byId('print-guide').addEventListener('click', function () { window.print(); });
+  let printDetails = [];
+  let printTerms = [];
+  window.addEventListener('beforeprint', function () {
+    printDetails = Array.from(document.querySelectorAll('details')).map(function (detail) { return [detail, detail.open]; });
+    printDetails.forEach(function (entry) { entry[0].open = true; });
+    printTerms = terms.map(function (term) { return [term, term.hidden]; });
+    printTerms.forEach(function (entry) { entry[0].hidden = false; });
+  });
+  window.addEventListener('afterprint', function () {
+    printDetails.forEach(function (entry) { entry[0].open = entry[1]; });
+    printTerms.forEach(function (entry) { entry[0].hidden = entry[1]; });
+  });
+  const links = Array.from(document.querySelectorAll('#toc a'));
+  const observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting) return;
+      links.forEach(function (link) {
+        const active = link.hash === '#' + entry.target.id;
+        link.classList.toggle('active', active);
+        if (active) link.setAttribute('aria-current', 'location'); else link.removeAttribute('aria-current');
+      });
+    });
+  }, { rootMargin: '-8% 0px -65% 0px', threshold: 0 });
+  document.querySelectorAll('.chapter').forEach(function (chapter) { observer.observe(chapter); });
+  function progress() {
+    const available = document.documentElement.scrollHeight - window.innerHeight;
+    byId('progress').style.width = (available > 0 ? 100 * window.scrollY / available : 0) + '%';
+  }
+  window.addEventListener('scroll', progress, { passive: true });
+  window.addEventListener('resize', progress);
+  progress();
+  const wordCount = byId('main').textContent.trim().split(/\s+/).length;
+  byId('reading-time').textContent = 'About ' + Math.ceil(wordCount / 200) + ' minutes of reading + interactive examples';
+}());
+</script>
+</body>
+</html>

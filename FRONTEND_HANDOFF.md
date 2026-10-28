@@ -2,48 +2,69 @@
 
 Updated 2026-10-29 (Asia/Manila).
 
-Implement the outstanding changes below in
-`JayMarkRocero/Rosario-Dairy-Capstone`. The backend support is ready.
+**Overall status: partially satisfied.** Implement the outstanding changes below
+in `JayMarkRocero/Rosario-Dairy-Capstone`. The backend exposes the required API
+fields; this does not imply production forecast approval.
 
-**Work boundary:** frontend change requests normally go through this document.
-On 2026-10-29, the user explicitly authorized applying the forecasting UI changes
-to the local sibling frontend for a testable preview. That exception covers the
-local forecast preview below; it does not authorize publishing or pushing it.
+**Work boundary:** make backend changes in this repository. Communicate frontend
+implementation requests through this document; do not edit the sibling frontend
+repository during backend maintenance.
 
-Remote completion checked on 2026-10-28: frontend `origin/main` commit
-[`d4d35f44`](https://github.com/JayMarkRocero/Rosario-Dairy-Capstone/commit/d4d35f44)
-implements the earlier connector, registration limits, report date ranges,
-historical receipt labels and mutation/report-refresh requests. The local
-frontend checkout was pulled to `d4d35f44` at the user's request. The local preview
-now implements the origin/outlook and model/readiness presentation requests;
-these changes have not been committed or pushed upstream.
+Checked on 2026-10-29: the local frontend matches `origin/main` commit
+[`de34e12c`](https://github.com/JayMarkRocero/Rosario-Dairy-Capstone/commit/de34e12c8fcfbe40c0737559b20e28b322b31e5a)
+and has a clean working tree. The temporary local forecast preview was archived
+and removed before pulling this update. It was never committed or pushed to the
+frontend repository, so its features are not completed upstream.
 
-## Local forecast preview for review
+## Current completion checklist
 
-Open the local frontend at `http://127.0.0.1:5173/`, sign in as an Admin and use
-the Dashboard's Sales Forecast card. The preview uses the authenticated real-sales
-graph endpoint and its saved amounts; it creates no simulated sales or forecasts.
+| Requirement | Status in frontend `de34e12c` |
+| --- | --- |
+| Registration length limits and Unicode handling | Complete; retained from `d4d35f44` |
+| Selected dates on all six report previews and PDF exports | Complete; retained from `d4d35f44` |
+| Historical receipt amount labels and preserved source values | Complete; retained from `d4d35f44` |
+| Mutation cache invalidation and manual report-refresh cooldown handling | Complete; retained from `d4d35f44` |
+| Adjacent past/current chart connector | Basic gap fix complete; green connector still needs the origin/outlook distinction below |
+| Historical date controls on the dashboard forecast chart | Complete; new upstream behavior described below |
+| Explicit 52-week/12-month Seasonal outlook display | Pending |
+| Latest outlook labeling, origin/horizon tooltips and separate issued comparisons | Pending |
+| Per-component model details, source freshness, production approval and baseline comparison | Pending |
+| Current-year nowcast calculation, missing months and actual-floor explanations | Pending |
+| Node 26 browser-storage test isolation | Pending; default test run still has seven failures |
+| Production origin, staging workflows and dependency review | Pending deployment follow-up |
 
-- Weekly and Monthly retain the centered chart and add **Seasonal outlook** for
-  the returned 52-week/12-month path. Yearly retains its five returned buckets.
-- The current/future series is **Latest outlook**. Earlier issued forecasts are
-  an optional, separately labeled purple comparison with their own provenance.
-- The past/current display bridge is neutral gray and explicitly explained.
-  Null gaps, numeric zero and the server's current/partial flags are preserved.
-- Tooltips expose training cutoff, calendar horizon and actual fitted-model
-  steps. Model cards show separate Combined components, fitted history,
-  freshness, available evaluation evidence and baseline comparisons.
-- Saved availability, source freshness and production approval appear
-  separately. Annual outlooks disclose missing months and any actual floor.
+The graph interfaces and chart still use the earlier centered fields. They do
+not consume `seasonal_outlook`, `model_details`, graph `readiness`, origin/horizon
+metadata, issued comparisons or annual-outlook details. The chart still uses
+generic "SARIMA estimates" and "Future predictions" labels. The implementation
+requirements below remain outstanding even though the existing chart renders.
 
-Local verification: 379 frontend tests, TypeScript checks and the Vite build
-pass. Browser checks cover all nine view/period combinations, the separate
-issued comparison and a mobile viewport with horizontal chart scrolling.
+Verification of `de34e12c`: Vite build and strict TypeScript checks pass.
+The complete suite passes **378/378** with the documented Node storage flag;
+the default Node 26.12.1 run passes **371/378** and fails seven POS UI tests.
+The archived preview's earlier 379-test and browser results do not verify this
+upstream version's outstanding forecast presentation.
 
-The sections below remain the backend contract and upstream review checklist.
-"Frontend adoption pending" refers to upstream adoption, not the local preview.
+## Completed upstream: dashboard forecast historical dates
+
+The new Dates control sends its To date as `as_of` to
+`GET /api/forecasting/graph/` and uses a separate cache key for that extraction
+date. Requests retain `scope=real` and reject invalid/future dates in the
+Asia/Manila business timezone. Graph dates support years 0003 through 9997;
+the existing report date contract below is separate.
+
+The frontend keeps whole returned buckets overlapping the selected range,
+without prorating amounts or changing nulls. The From date filters the returned
+centered window; it does not retrieve arbitrary earlier history. If the range
+starts before that window, the chart explains that those earlier periods were
+not retrieved. Historical `refresh_required` results retain recorded sales and
+available original issues and explain that Refresh forecast updates the current
+window only. These date controls do not implement the longer seasonal outlook
+or the pending model/readiness presentation.
 
 ## Forecast response and full seasonal outlook
+
+**Backend implemented; frontend display pending in `de34e12c`.**
 
 Graph engine `centered-beta-sarima-v6` and provisional engine
 `actual-provisional-sarima-v4` expose the selected model through the response
@@ -91,6 +112,10 @@ one-period evidence; do not display it as the accuracy of a 52-week path.
 `baseline_comparison.result=worse` must remain visible when applicable.
 
 ## Data freshness and cache alignment
+
+**Partially implemented.** Existing forecast-refresh and business-mutation
+invalidation includes graph, report and PDF cache groups. Source-freshness,
+approval and annual-null explanations still need the presentation below.
 
 Read available history dates, source freshness and approval from the server.
 Refreshing saved forecasts does not make stale observations current. Keep
@@ -211,11 +236,12 @@ completed connector implementation below to the neutral treatment above.
 
 ## Test follow-up: isolate browser storage under Node 26
 
-Remote frontend `d4d35f44` builds successfully and its complete suite passes
-**365/365 tests** when run with
+Current frontend `de34e12c` builds successfully and its complete suite passes
+**378/378 tests** when run with
 `node --no-experimental-webstorage --test tests/*.test.cjs`.
-Under this host's default Node 26.12.1, seven POS UI tests fail on both the old
-and new frontend commits: native `sessionStorage` retains an earlier test's
+Under this host's default Node 26.12.1, **371 tests pass and seven POS UI tests
+fail**, reproducing the issue previously found at `d4d35f44`. Native
+`sessionStorage` retains an earlier test's
 unconfirmed-sale entry because test setup resets only `localStorage` and caches.
 The same POS test passes alone; running the preceding ambiguous-order test
 first reproduces the failure. This is test isolation, not a new API regression.
@@ -225,10 +251,13 @@ state, and verify tests both individually and as a suite. Preserve the productio
 duplicate-sale guard. The runtime flag above is an isolated verification aid;
 no frontend source or dependency files were modified by this backend review.
 
-## Completed upstream: connect adjacent past/current forecast predictions
+## Completed upstream: basic adjacent past/current forecast connector
 
 **Implemented in frontend `d4d35f44`.** The requirements and reference code below
-are retained for regression review. The backend returns consecutive calendar
+are retained for regression review and remain present at `de34e12c`. The green
+reference implementation fixes the original gap; adapt its color/label for the
+pending latest-outlook distinction above rather than treating it as the final
+presentation. The backend returns consecutive calendar
 buckets and intentionally separates `past_prediction` from
 `future_prediction`. The artificial break at the current-period boundary comes
 from `src/features/dashboard/components/admin/ForecastChart.tsx`: three
@@ -338,8 +367,9 @@ tests passed in a disposable PostgreSQL database. The suggested helper passed
 preserved zero/null values, and retained exactly three existing legend entries.
 These were backend/reference-code checks. Upstream implemented the connector
 in `d4d35f44`; its dedicated connector and rendering regressions were also
-reviewed on 2026-10-28. Pulling that update into the running local frontend and
-checking the real application in a browser remain separate local steps.
+reviewed on 2026-10-28. The current local frontend has been pulled to `de34e12c`.
+Earlier browser checks of the archived local preview do not establish that this
+upstream version satisfies the newer seasonal, provenance and readiness requests.
 
 ## Completed upstream: registration field length limits
 

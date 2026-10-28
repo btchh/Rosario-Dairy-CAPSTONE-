@@ -17,11 +17,12 @@ from sales.models import Transaction
 from .benchmarks import score
 from .data import load_snapshot
 from .learning import ENGINE_VERSION, shift_month
-from .lifecycle import _commit_lock
+from .lifecycle import _commit_lock, valid_coverage
 from .models import GraphForecastRun, GraphPrediction, MonthlyModelRun
 from .provisional import digest, series, train, fit, future_rows, project
 from .seasonal import is_sarima_artifact
 from .chart import period_start, period_end
+from .graph_readiness import describe_graph
 
 VERSION = 'centered-beta-sarima-v4'
 PERIODS = ('weekly', 'monthly', 'yearly')
@@ -74,6 +75,26 @@ def _primary(snapshot, rows):
     return None
 
 
+def _regular_monthly_series(snapshot):
+    """Use reconciled zero months without treating unknown invoices as zero."""
+    rows = series(snapshot, 'regular', 'monthly')
+    zero_months = [month for month, coverage in valid_coverage(snapshot).items()
+                   if coverage.confirmed_zero]
+    if not zero_months:
+        return rows
+    actuals = {date.fromisoformat(row['date']): row['actual'] for row in rows}
+    for month in zero_months:
+        if actuals.get(month) is None:
+            actuals[month] = 0.0
+    rows = []
+    month = min(actuals)
+    last_month = max(actuals)
+    while month <= last_month:
+        rows.append({'date': month.isoformat(), 'actual': actuals.get(month)})
+        month = shift_month(month)
+    return rows
+
+
 def context(period, scope, as_of):
     if period not in PERIODS or scope not in SCOPES:
         raise ValueError('Use weekly/monthly/yearly and real/demo2026.')
@@ -91,6 +112,7 @@ def context(period, scope, as_of):
     unit = 'weekly' if period == 'weekly' else 'monthly'
     current = period_start(as_of, period)
     snapshots = {}
+    regular_monthly_rows = {}
     inputs = {}
     for target in calendar:
         cutoff = target if target <= current else (current if period != 'yearly' else as_of.replace(day=1))
@@ -100,10 +122,16 @@ def context(period, scope, as_of):
             snapshots[cutoff] = load_snapshot(cutoff)
         snap = snapshots[cutoff]
         for segment in ('regular', 'feeding'):
-            rows = series(snap, segment, unit)
+            if segment == 'regular' and unit == 'monthly':
+                if cutoff not in regular_monthly_rows:
+                    regular_monthly_rows[cutoff] = _regular_monthly_series(snap)
+                rows = regular_monthly_rows[cutoff]
+            else:
+                rows = series(snap, segment, unit)
             primary = _primary(snap, rows) if segment == 'regular' and unit == 'monthly' else None
             signature = digest({'version': VERSION, 'unit': unit, 'segment': segment, 'rows': rows, 'primary': primary})
-            inputs[(target, segment)] = {'rows': rows, 'primary': primary, 'signature': signature}
+            inputs[(target, segment)] = {'rows': rows, 'primary': primary, 'signature': signature,
+                                         'cutoff': cutoff}
     if scope == 'real':
         displayed = load_snapshot(as_of+timedelta(days=1))
         sales = [(s.id, s.day, s.segment, s.revenue) for s in displayed.sales]
@@ -247,9 +275,14 @@ def build(ctx, artifacts=None, *, allow_training=True, saved_views=None):
 
 
 def checked(findings):
+    if not isinstance(findings, dict):
+        return None
     data = dict(findings)
     checksum = data.pop('checksum', None)
-    return data if checksum == digest(data) else None
+    try:
+        return data if checksum == digest(data) else None
+    except (ValueError, TypeError, OverflowError):
+        return None
 
 
 def refresh(period='monthly', scope='real', as_of=None):
@@ -299,5 +332,6 @@ def report(period='monthly', scope='real', as_of=None):
             if view['message'] is not None:
                 view['message'] = 'Refresh saved forecasts to make predictions available.'
     data = {key: value for key, value in data.items() if key != 'artifacts'}
-    return {**data, 'status': 'ready' if saved is not None else 'refresh_required',
-            'model_id': run.pk if run else None}
+    return describe_graph(
+        {**data, 'status': 'ready' if saved is not None else 'refresh_required',
+         'model_id': run.pk if run else None}, ctx, saved.get('artifacts', {}) if saved else {})

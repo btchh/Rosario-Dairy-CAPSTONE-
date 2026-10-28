@@ -142,10 +142,15 @@ def quality_gate(run, snapshot, coverage):
     if findings.get('status') != 'research_candidate':
         reasons.append('insufficient_or_invalid_training_history')
     artifact = findings.get('artifact')
-    if not artifact or digest(artifact) != findings.get('artifact_sha256'):
+    valid_artifact = is_sarima_artifact(artifact)
+    try:
+        valid_hash = bool(artifact) and digest(artifact) == findings.get('artifact_sha256')
+    except (ValueError, TypeError, OverflowError):
+        valid_hash = False
+    if not valid_hash or not valid_artifact:
         reasons.append('missing_or_invalid_fitted_artifact')
-    if (run.engine_version != ENGINE_VERSION or not is_sarima_artifact(artifact) or
-            findings.get('selected_candidate') != (artifact or {}).get('name')):
+    if (run.engine_version != ENGINE_VERSION or not valid_artifact or
+            findings.get('selected_candidate') != artifact.get('name')):
         reasons.append('primary_model_must_be_sarima')
     target = findings.get('next_month', {}).get('date')
     if target != month_start(timezone.localdate()).isoformat():

@@ -5,6 +5,80 @@ pasted frontend audit. Application code was not changed during that initial
 review. The original findings below describe the pre-fix behavior and distinguish observed behavior from policy decisions and
 deployment work. Severity reflects potential impact, not proof of exploitation.
 
+## Forecast reliability and readiness fixes — 2026-10-28
+
+Two confirmed backend defects were corrected without changing forecasting
+algorithms, candidate definitions, thresholds, database schema or permissions:
+
+1. The centered graph ignored explicitly reviewed zero-sales months, although
+   the primary monthly engine included them. A valid primary SARIMA fit could
+   therefore be discarded in favor of a provisional fit. Regular monthly graph
+   inputs now include only exact-source, valid confirmed-zero coverage records.
+   Unknown months remain null, stale attestations remain ineffective, and
+   corrected inputs invalidate the saved graph identity through existing hashes.
+2. Portable SARIMA validation accepted invalid scales/parameters and could
+   crash on malformed history. It now verifies finite numeric history and
+   parameters, positive finite scale, integral matching training counts, exact
+   specification parameter order/count and nonnegative innovation variance.
+   Invalid states block approval and filtering. Malformed hashes and null/non-
+   mapping artifacts no longer crash readiness metadata; malformed graph
+   checksums are safely withheld. Valid saved fits retain their predictions.
+
+The graph endpoint also adds `readiness` and per-view/per-point `model_details`.
+Legacy `status=ready` continues to mean a current saved graph exists; the new
+availability field can still be `unavailable` when there are no predictions.
+Projection availability never establishes production approval. Model details
+identify nonseasonal ARIMA selections, observed/missing periods, training dates,
+evaluation sample sizes and forecast origins. Yearly points disclose their
+different information cutoffs; monthly tests are not labeled yearly accuracy.
+Original issued predictions are retained without attributing a reconstructed
+model's diagnostics to them. Existing values and response fields are preserved;
+frontend adoption is documented in `FRONTEND_HANDOFF.md`, with no frontend edits.
+
+Read-only investigation of the current local demonstration database found:
+
+- The regular monthly run is current through September 2026. Its 12-month
+  retrospective WAPE is 5.9045%, versus 11.039% for its selected baseline.
+  These results include generated 2026 outcomes and are demonstration evidence,
+  not validation against original 2026 invoices. The earlier original-data fit
+  scored 10.6433%, versus 11.381% for its baseline.
+- Feeding has 19 observed months across 23 calendar months. February, May,
+  June and July 2025 are unknown, not confirmed zeroes. Its selected AR(1)
+  coefficient is approximately 0.0157, explaining forecasts approaching PHP
+  3.63 million. Seasonal training eligibility is unmet; no artificial seasonal
+  curve or relaxed history requirement was introduced.
+- Strict weekly retrospective WAPE is 8.2603%, worse than its 6.1348% baseline.
+  This result does not justify a claim that SARIMA improves weekly accuracy.
+- `research_only` remains correct: there are no reviewed coverage months,
+  prospective issued monthly acceptance forecasts, prospective scores or
+  deployments. Source review and 12 consecutive reviewed prospective outcomes
+  remain required. Generated transactions cannot supply genuine prospective
+  evidence, and no issues, reviews or approval records were fabricated.
+
+Verification: the complete forecasting suite passed **167/167 tests** in 403
+seconds; the final focused run passed **32/32 tests** in 5.6 seconds, including
+the final malformed-metadata regressions. These runs overlap. Both used fresh
+disposable PostgreSQL databases and isolated caches, removed after completion.
+Pure artifact tests also verify all five actual fitted configurations retain
+their JSON-round-trip predictions with optimization prohibited on reads.
+Django checks, Python syntax, migration consistency/status and whitespace checks
+pass; no migrations were applied. Read-only application checks preserve every
+saved graph prediction and fit no models. Six authenticated HTTP checks cover
+all three periods directly and through the running frontend proxy. The local
+backend was restarted and its API cache retired; frontend source is unchanged.
+
+Pre-push frontend review: remote `d4d35f44` implements the earlier connector,
+registration, report-date, receipt-label and automatic-refresh handoff items.
+No compatibility blocker was found with these additive backend fields. An
+isolated snapshot builds successfully; all 365 frontend tests pass with native
+Node web storage disabled. Default Node 26 exposes an existing test-isolation
+issue: seven POS tests fail on both old/new commits because test setup does not
+clear native sessionStorage. Individual/order-dependent reproductions confirm
+the cause; production duplicate-sale guards were preserved. The storage-test
+follow-up and the still-pending model/readiness display are documented in
+`FRONTEND_HANDOFF.md`. The running local frontend remains at the earlier commit;
+this backend-only pass inspected the update without pulling or editing it.
+
 ## SQL injection and XSS assessment — 2026-10-27
 
 See [PENETRATION_TEST_REPORT.md](PENETRATION_TEST_REPORT.md) for the targeted

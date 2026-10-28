@@ -33,13 +33,15 @@ def model_context():
 def models_report():
     snapshot, run, latest, gate, issued, status = model_context()
     findings = latest.findings if latest else {}
+    artifact = findings.get('artifact')
+    artifact = artifact if isinstance(artifact, dict) else {}
     return {
         'status': status, 'stage': 'monthly_model_learning', 'source_revision': snapshot.revision,
         'cutoff': snapshot.as_of, 'model_id': latest.pk if latest else None,
         'engine_version': ENGINE_VERSION, 'model_is_current': run is not None,
         'selected_candidate': findings.get('selected_candidate'),
         'model_family': findings.get('model_family'),
-        'sarima': {k: findings.get('artifact', {}).get(k) for k in
+        'sarima': {k: artifact.get(k) for k in
                    ('order', 'seasonal_order', 'trend', 'converged', 'statsmodels_version',
                     'optimization_attempts', 'fit_warnings')},
         'trained_through': latest.trained_through if latest else None,

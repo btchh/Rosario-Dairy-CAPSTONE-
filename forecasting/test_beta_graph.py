@@ -15,7 +15,9 @@ from django.utils import timezone
 from config.test_support import APITestCase
 from sales.models import Transaction
 from . import beta_graph as graph
-from .models import GraphForecastRun, GraphPrediction
+from .data import RecordedSale, SalesSnapshot, load_snapshot
+from .learning import ENGINE_VERSION, month_revision, shift_month
+from .models import GraphForecastRun, GraphPrediction, MonthlyCoverage
 from .provisional import digest
 
 
@@ -46,7 +48,7 @@ class CenteredWindowTests(SimpleTestCase):
         rows = [{'date': f'2024-{m:02d}-01', 'actual': 100.0} for m in range(1, 13)]+rows
         artifact = {'name': 'sarima_010_100_12', 'family': 'SARIMA', 'converged': True,
                     'training_months': 24, 'normalized_history': [1.0]*24, 'scale': 100,
-                    'trained_through': '2025-12-01', 'params': [0.5, 0.1], 'param_names': ['a', 'variance'],
+                    'trained_through': '2025-12-01', 'params': [0.5, 0.1], 'param_names': ['ar.S.L12', 'sigma2'],
                     **{k: list(v) if isinstance(v, tuple) else v for k, v in spec.items()}}
         run = SimpleNamespace(findings={'artifact': artifact, 'artifact_sha256': digest(artifact),
                                        'selected_candidate': artifact['name']})
@@ -71,6 +73,53 @@ class CenteredWindowTests(SimpleTestCase):
             changed = deepcopy(rows)
             changed[-1]['actual'] = 999
             self.assertIsNone(graph._primary(SimpleNamespace(revision='source', as_of=date(2026,1,1)), changed))
+
+    def test_reviewed_zero_month_keeps_the_exact_primary_model_and_changes_graph_identity(self):
+        from .seasonal import SARIMA_CONFIGS
+        missing = date(2024, 2, 1)
+        months = [shift_month(date(2023, 1, 1), n) for n in range(36)]
+        sales = tuple(RecordedSale(n+1, month.replace(day=15), 'customer', 'Customer',
+                                 'regular', Decimal('100'))
+                      for n, month in enumerate(months) if month != missing)
+        def snapshot(cutoff):
+            return SalesSnapshot(cutoff, f'source-{cutoff}',
+                                 tuple(sale for sale in sales if sale.day < cutoff), 0)
+        spec = SARIMA_CONFIGS['sarima_010_100_12']
+        artifact = {'name': 'sarima_010_100_12', 'family': 'SARIMA', 'converged': True,
+                    'training_months': 36, 'normalized_history': [0.0 if m == missing else 1.0 for m in months],
+                    'scale': 100.0, 'trained_through': '2025-12-01', 'params': [0.5, 0.1],
+                    'param_names': ['ar.S.L12', 'sigma2'],
+                    **{k: list(v) if isinstance(v, tuple) else v for k, v in spec.items()}}
+        run = SimpleNamespace(findings={'artifact': artifact, 'artifact_sha256': digest(artifact),
+                                       'selected_candidate': artifact['name']})
+        def matching_run(**lookup):
+            self.assertEqual(lookup['engine_version'], ENGINE_VERSION)
+            return [run] if lookup['source_revision'] == 'source-2026-01-01' else []
+        with patch('forecasting.beta_graph.load_snapshot', side_effect=snapshot), \
+                patch('forecasting.beta_graph.MonthlyModelRun.objects.filter', side_effect=matching_run), \
+                patch('forecasting.beta_graph.valid_coverage', return_value={}) as coverage, \
+                patch('forecasting.beta_graph.fit', side_effect=AssertionError('Context must not fit')):
+            unknown = graph.context('monthly', 'real', date(2026, 1, 15))
+            coverage.return_value = {missing: SimpleNamespace(confirmed_zero=True)}
+            reviewed = graph.context('monthly', 'real', date(2026, 1, 15))
+        key = (date(2026, 1, 1), 'regular')
+        self.assertIsNone(unknown['inputs'][key]['primary'])
+        state = reviewed['inputs'][key]['primary']
+        self.assertEqual(state['name'], artifact['name'])
+        self.assertEqual(state['values'], artifact['normalized_history'])
+        self.assertEqual(state['training_start'], '2023-01-01')
+        self.assertNotEqual(unknown['inputs'][key]['signature'], reviewed['inputs'][key]['signature'])
+        self.assertNotEqual(unknown['revision'], reviewed['revision'])
+
+    def test_reviewed_zero_month_does_not_fill_another_unknown_month(self):
+        snap = SalesSnapshot(date(2026, 1, 1), 'source', (
+            RecordedSale(1, date(2025, 1, 15), 'c', 'Customer', 'regular', Decimal('100')),
+            RecordedSale(2, date(2025, 4, 15), 'c', 'Customer', 'regular', Decimal('200')),
+        ), 0)
+        with patch('forecasting.beta_graph.valid_coverage', return_value={
+                date(2025, 2, 1): SimpleNamespace(confirmed_zero=True)}):
+            rows = graph._regular_monthly_series(snap)
+        self.assertEqual([row['actual'] for row in rows], [100.0, 0.0, None, 200.0])
 
     def test_sixth_observation_with_zero_validation_does_not_erase_beta_model(self):
         rows = [{'date':f'2025-{i:02d}-01', 'actual':value}
@@ -186,6 +235,32 @@ class BetaGraphTests(APITestCase):
         yearly = graph.context('yearly', 'real', date(2026,7,15))
         current = yearly['inputs'][(date(2026,1,1),'regular')]
         self.assertTrue(all(row['date'] < '2026-01-01' for row in current['rows']))
+
+    def test_regular_zero_review_is_used_only_while_its_source_revision_is_valid(self):
+        month = date(2025, 2, 1)
+        Transaction.objects.filter(source_sales_segment='regular', created_at__year=2025,
+                                   created_at__month=2).delete()
+        target = (date(2026, 1, 1), 'regular')
+        def february(ctx, segment='regular'):
+            return next(row['actual'] for row in ctx['inputs'][(target[0], segment)]['rows']
+                        if row['date'] == month.isoformat())
+        unknown = graph.context('monthly', 'real', date(2026, 1, 15))
+        self.assertIsNone(february(unknown))
+        snap = load_snapshot(date(2026, 1, 1))
+        review = MonthlyCoverage.objects.create(month=month, source_revision=month_revision(snap, month),
+            confirmed_zero=True, reviewed_by=self.admin, note='Isolated test: reconciled no regular invoices')
+        reviewed = graph.context('monthly', 'real', date(2026, 1, 15))
+        self.assertEqual(february(reviewed), 0.0)
+        self.assertEqual(february(reviewed, 'feeding'), 52.0)
+        self.assertNotEqual(unknown['inputs'][target]['signature'], reviewed['inputs'][target]['signature'])
+        self.assertNotEqual(unknown['revision'], reviewed['revision'])
+        # Even a feeding correction invalidates the exact-month reconciliation.
+        # An old zero assertion must not survive a changed source ledger.
+        self.sale(date(2025, 2, 20), 'feeding', 10, 'coverage-correction-test')
+        corrected = graph.context('monthly', 'real', date(2026, 1, 15))
+        self.assertIsNone(february(corrected))
+        review.refresh_from_db()
+        self.assertTrue(review.confirmed_zero)  # No attestation was altered.
 
     def test_partial_demo_boundary_week_is_not_scored_as_a_complete_week(self):
         self.sale(date(2026,1,1),'regular',50,'2026:009999')

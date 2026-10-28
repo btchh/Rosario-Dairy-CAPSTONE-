@@ -1,6 +1,6 @@
-# Outstanding frontend change requests
+# Frontend handoff and completion status
 
-Updated 2026-10-27 (Asia/Manila).
+Updated 2026-10-28 (Asia/Manila).
 
 Implement the outstanding changes below in
 `JayMarkRocero/Rosario-Dairy-Capstone`. The backend support is ready.
@@ -9,9 +9,77 @@ Implement the outstanding changes below in
 change requests through this document; do not edit the sibling frontend
 repository.
 
-## Change request: connect adjacent past/current forecast predictions
+Remote completion checked on 2026-10-28: frontend `origin/main` commit
+[`d4d35f44`](https://github.com/JayMarkRocero/Rosario-Dairy-Capstone/commit/d4d35f44)
+implements the earlier connector, registration limits, report date ranges,
+historical receipt labels and mutation/report-refresh requests. The local
+frontend checkout was still at `3a0be9c9` during this review; it was not pulled or
+edited by the backend maintenance pass. The new model/readiness presentation
+request immediately below remains outstanding.
 
-**Frontend implementation pending.** The backend returns consecutive calendar
+## Change request: distinguish saved projections from validated forecasts
+
+**Backend ready; frontend presentation pending.** `GET /api/forecasting/graph/`
+retains every existing field, prediction, permission and legacy `status` value.
+It now adds diagnostics without fitting models during requests:
+
+- Top-level and per-view `readiness.status`: `available`, `partially_available`
+  or `unavailable`, based on actual prediction endpoints. A saved graph can
+  retain legacy `status=ready` while prediction availability is `unavailable`.
+- `readiness.production_approved` is always false for this projection graph;
+  top-level `readiness.publication_status` is `research_only`. Read strict
+  monthly approval and missing evidence from the existing
+  `/api/forecasting/models/` endpoint, also linked by
+  `readiness.primary_monthly_status_url`.
+- Each view adds `model_details` for its current bucket. Every point also adds
+  `model_details` for that point's own model: `name`, `family`, `order`,
+  `seasonal_order`, `seasonal_terms_enabled`, `forecast_origin`,
+  `training_start`, `trained_through`, `training_period`, `observed_periods`,
+  `missing_periods`, `selection_basis`, `candidate_models`, `validation`,
+  `test`, `evaluation_period`, and `production_approved`.
+  Training dates identify the starts of the training buckets: with
+  `training_period=monthly`, `trained_through=2026-09-01` means the completed
+  September bucket, not that invoices stop on September 1. Format by period.
+- Combined model details contain `name=sum_of_component_predictions` and the
+  separate Regular/Feeding `components`; do not label their sum as one model.
+- Validation/test summaries expose `wape_percent`, `periods` and `basis` when
+  saved evidence exists. They can be null, notably when the primary monthly
+  artifact is reused; primary model evaluation remains in `/models/`.
+- Original issued values have `model_details=null`. Do not describe their
+  issuing model using the currently reconstructed historical model.
+
+Use these fields to distinguish graph availability, model selection and
+production approval. An AR(1) or local-level estimate is not evidence of annual
+seasonality. Flat estimates can be mathematically correct; do not interpolate
+or alter values to make a curve. Show training history and the number of
+evaluation samples when communicating confidence. A monthly component test
+does not validate a yearly forecast or the Combined sum.
+
+For Yearly, show each point's `forecast_origin`: the current year's full-year
+prediction uses the January origin, while future years may use a more recent
+completed-month cutoff. These are different information sets. Keep existing
+prediction-basis and partial-period explanations and the connector request below.
+
+## Test follow-up: isolate browser storage under Node 26
+
+Remote frontend `d4d35f44` builds successfully and its complete suite passes
+**365/365 tests** when run with
+`node --no-experimental-webstorage --test tests/*.test.cjs`.
+Under this host's default Node 26.12.1, seven POS UI tests fail on both the old
+and new frontend commits: native `sessionStorage` retains an earlier test's
+unconfirmed-sale entry because test setup resets only `localStorage` and caches.
+The same POS test passes alone; running the preceding ambiguous-order test
+first reproduces the failure. This is test isolation, not a new API regression.
+
+Reset or mock `sessionStorage` in the frontend test setup, including pending-sale
+state, and verify tests both individually and as a suite. Preserve the production
+duplicate-sale guard. The runtime flag above is an isolated verification aid;
+no frontend source or dependency files were modified by this backend review.
+
+## Completed upstream: connect adjacent past/current forecast predictions
+
+**Implemented in frontend `d4d35f44`.** The requirements and reference code below
+are retained for regression review. The backend returns consecutive calendar
 buckets and intentionally separates `past_prediction` from
 `future_prediction`. The artificial break at the current-period boundary comes
 from `src/features/dashboard/components/admin/ForecastChart.tsx`: three
@@ -119,10 +187,16 @@ weekly/monthly buckets; five yearly buckets). All 33 focused backend chart
 tests passed in a disposable PostgreSQL database. The suggested helper passed
 17 isolated cases; an in-memory Recharts render produced the SVG connector,
 preserved zero/null values, and retained exactly three existing legend entries.
-These checks verify the contract and proposed code; applying and browser-testing
-the frontend implementation remains pending.
+These were backend/reference-code checks. Upstream implemented the connector
+in `d4d35f44`; its dedicated connector and rendering regressions were also
+reviewed on 2026-10-28. Pulling that update into the running local frontend and
+checking the real application in a browser remain separate local steps.
 
-## Change request: registration field length limits
+## Completed upstream: registration field length limits
+
+Implemented in frontend `d4d35f44`, including code-point counting, Python-style
+username whitespace handling before NFKC, and preserved password spaces.
+The matching backend requirements below remain authoritative.
 
 The backend now enforces these limits on admin-only `POST /accounts/register/`:
 
@@ -148,11 +222,12 @@ admin-only; these validation changes require no database migration and apply
 to registration. Test 50/51-character text boundaries, 7/8/25/26-character
 passwords, normalized Unicode usernames, and rejection without creating a user.
 
-## Change request: apply custom dates to inventory and forecast reports
+## Completed upstream: apply custom dates to inventory and forecast reports
 
-The current frontend deliberately drops the selected dates for `inventory` and
-`sarima_forecast`. Its date validator rejects both report types. The backend now
-supports dates for all six report types; update the frontend to pass them through.
+Implemented in frontend `d4d35f44`: all six previews and PDF exports receive the
+selected dates, with separate current inventory-health labels and full-period
+forecast explanations. The earlier frontend dropped dates for `inventory` and
+`sarima_forecast`; the matching contract and regression requirements follow.
 
 ### Request contract
 
@@ -222,7 +297,10 @@ Keep the existing range-aware cache keys, dated PDF filenames, and reset behavio
 Verify they also work for inventory and forecast reports after enabling their
 date ranges. Run `npm test` and `npm run build` and report the results.
 
-## Audit follow-up: historical receipt amount labels
+## Completed upstream: historical receipt amount labels
+
+Implemented in frontend `d4d35f44`; the source-value explanation and preservation
+requirements below are retained for regression review.
 
 In `src/features/sales/utils/receiptDetails.ts`, imported records use
 `source_line_total` for their displayed line amounts. Those source amounts can
@@ -243,10 +321,12 @@ Cover imported invoices with header discounts, missing source amounts, grouped
 lines, and ordinary discounted checkout receipts in the receipt mapping/UI
 tests. Verify invoice totals remain exactly as recorded.
 
-## Audit follow-up: refresh after successful sales
+## Completed upstream: refresh after successful sales
 
-`checkout.service.ts` currently awaits `reportsService.refreshAfterMutation()`
-after every successful sale. Other mutation callers should be reviewed too.
+Frontend `d4d35f44` removes automatic explicit report refresh after checkout and
+order writes while retaining mutation invalidation. Manual refreshes coalesce
+and respect `Retry-After`. The earlier checkout implementation awaited
+`reportsService.refreshAfterMutation()` after every successful sale.
 The explicit refresh endpoint intentionally permits one refresh per minute
 per account and also enforces a global cooldown across accounts/processes.
 Consecutive successful sales can consequently produce a report warning.

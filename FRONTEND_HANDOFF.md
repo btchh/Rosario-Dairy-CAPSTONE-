@@ -13,14 +13,172 @@ Remote completion checked on 2026-10-28: frontend `origin/main` commit
 [`d4d35f44`](https://github.com/JayMarkRocero/Rosario-Dairy-Capstone/commit/d4d35f44)
 implements the earlier connector, registration limits, report date ranges,
 historical receipt labels and mutation/report-refresh requests. The local
-frontend checkout was still at `3a0be9c9` during this review; it was not pulled or
-edited by the backend maintenance pass. The new model/readiness presentation
-request immediately below remains outstanding.
+frontend checkout has now been pulled to `d4d35f44` at the user's request. No
+frontend source was edited. The origin/outlook and model/readiness presentation
+requests below remain outstanding.
+
+## Forecast finalization: SARIMA routing and full seasonal outlook
+
+The user retained SARIMA as the model family after the retrospective comparison.
+Graph engine `centered-beta-sarima-v6` and provisional engine
+`actual-provisional-sarima-v4` now use the same exact-source weekly regular SARIMA
+fit when at least 130 consecutive complete source weeks support its training,
+validation and test windows. Monthly regular reuses the primary seasonal fit.
+Eligible unavailable/corrupt primary fits are withheld. Short regular histories
+and sparse feeding retain explicitly labelled provisional models. This family
+choice does not imply that weekly SARIMA beat its baseline.
+
+The endpoint, authentication, Staff/Admin permissions, centered seven-point
+weekly/monthly windows and five-point yearly window remain compatible. The
+backend adds `seasonal_outlook` to `GET /api/forecasting/graph/`:
+
+| Field | Meaning |
+| --- | --- |
+| `seasonal_outlook.period`, `as_of` | Same requested weekly/monthly period and extraction date |
+| `seasonal_outlook.range` | `start_date`, `end_date`, `periods`; 52 weeks or 12 months, including the current bucket |
+| `seasonal_outlook.views[view].points` | Same point fields as the centered graph; one saved component origin across the outlook |
+| `seasonal_outlook.views[view].readiness` | Availability, source freshness and false production approval, independently of the centered window |
+
+Yearly returns `seasonal_outlook=null`; its annual nowcast semantics are unchanged.
+The first four outlook predictions match the centered current/future predictions.
+Longer display points are saved research projections, not additional records of
+forecasts actually issued in the past. GET replays their saved values. Combined
+requires both component predictions; unavailable feeding never becomes zero.
+
+Add an explicit **Seasonal outlook** display using this longer path. Keep the
+current centered display available and keep Regular, Feeding and Combined
+separate. Render the returned amounts directly and preserve nulls. A full-year
+window makes recurring variation visible when the fitted model supports it;
+this is not a requirement for large peaks or a smooth curve.
+
+New per-point/current-view `model_details` fields include `display_label`,
+`model_basis`, `primary_model_id`, `projection_steps`, `projection_step_unit`,
+`missing_observation_periods_before_current`, `source_freshness`,
+`primary_backtest` and `baseline_comparison`. Annual components instead expose
+`projection_step_start` and `projection_step_end` for their monthly span.
+Combined retains the separate `components` map. `projection_steps` counts from
+the last fitted bucket; existing `horizon` remains extraction-relative. For
+example, current regular weekly history can be 44 model steps old even while
+`horizon=1`.
+
+Top-level and per-view `readiness.source_freshness.status` is `current`,
+`stale_data` or `unavailable`, with per-component last-observed and expected
+closed periods. Preserve legacy `status=ready` as saved availability, and show
+stale source history separately. `primary_backtest` identifies rolling
+one-period evidence; do not display it as the accuracy of a 52-week path.
+`baseline_comparison.result=worse` must remain visible when applicable.
+
+The latest original observations still stop in 2025. Refreshing updates saved
+models and paths; it cannot supply missing 2026 actuals. Production approval and
+the current annual nowcast must not be invented. No frontend source was edited.
+
+## Dataset reset: original sales only
+
+Chapter 4 research is retained in the private local artifacts under
+`forecast_experiments/chapter4-comparison-20261028/`. Its comparative results
+are offline retrospective experiments, not a change to
+the graph engine or API. Do not replace current model metrics/readiness with the
+more favorable calendar-SARIMAX research score; no family was promoted and no
+new frontend implementation is required by that study.
+
+The accompanying seasonality/stationarity review did not itself promote a weekly
+seasonal model. At that review, weekly graphs used regular AR(1) and feeding
+local level; the subsequent user-selected SARIMA routing is described above. Preserve the Regular,
+Feeding and Combined views: weekly regular SARIMA's 26.8135% WAPE and exploratory
+Combined SARIMA's 75.1047% WAPE do not establish that merging the segments improves
+forecasting. Sparse feeding invoices do not certify earlier weeks as zero.
+Show the actual selected family and training date. The expanded seasonal horizon
+has the backend contract above and still needs matching-horizon validation; do not
+create peaks, smooth amounts or relabel a component sum as a single SARIMA model.
+
+The user requested removal of the 2026 generated extension. Its 667 receipts,
+dependent records and proven synthetic-derived forecast artifacts are removed;
+the original-only refresh succeeded (job 22). Current source sales end December
+31, 2025, so strict monthly `stale_data` and an unavailable current annual nowcast
+are expected. Do not preserve old generated chart/PDF/client-cache results after
+the reset or present their research scores as current accuracy. Existing mutation
+invalidation and fresh server responses remain the source of truth.
+
+Weekly research is supported by 156 complete regular weeks. The current-week
+same-season total (PHP 657,858 from Oct 27–Nov 2, 2025) is a weekly seasonal
+comparison, not a daily October 28 prediction or approved forecast. A snapshot's
+`forecast_origin`/`horizon` identifies its extraction-relative calendar position;
+inspect `model_details.trained_through` as well. With stale source data, a current
+week can be many model steps beyond the last observation. Do not call it a fresh
+one-week-ahead fit. See `DATA_CLEANUP_REPORT.md` for exact evidence and limits.
+
+## Change request: one latest outlook and separate issued comparisons
+
+**Backend implemented; frontend adoption pending.** The user selected one
+latest outlook, retaining issued forecasts separately. Graph v5 keeps the same
+endpoint, permissions, nine views, field types and legacy statuses. It
+intentionally changes the **current** weekly/monthly prediction to the latest
+closed-period fit rather than an older issued value, and changes the current
+annual point to a disclosed nowcast. Genuinely future model predictions are
+unchanged. See `FORECAST_PATTERN_REVIEW.md` for the measured causes and limits.
+
+Every graph point now adds these fields:
+
+| Field | Meaning |
+| --- | --- |
+| `forecast_origin` | Exclusive training cutoff of the displayed prediction, not the first invoice date |
+| `horizon`, `horizon_unit` | Weekly/monthly steps include the current bucket as 1; annual `year_offset` is 0 for the current year and 1 for next year |
+| `outlook_basis` | Current/future: `latest_closed_period_forecast`, `single_origin_monthly_forecast_sum`, or `completed_month_actuals_plus_remaining_monthly_forecast`; null for past/demo points |
+| `issued_prediction` | Separately retained pre-target issue when one exists; null means no issue, not zero |
+| `issued_provenance` | Original `prediction_id`, `run_id`, `engine_version`, `issued_at`, `run_as_of`, `forecast_origin`, `cutoff_basis`, `source_revision`, `revision_kind`, `horizon`, `horizon_unit` |
+| `is_nowcast` | True only for the real current-year hybrid |
+| `annual_outlook` | Current-year component calculation, or a Combined `components` map; null elsewhere |
+
+`forecast_origin`, `horizon`, `horizon_unit` and `is_nowcast` are always present;
+the other added values can be null. Legacy `prediction_basis=forecast` is
+retained for current/future points. Original issued comparisons identify their
+own actual issuer and never inherit reconstructed `model_details`.
+`cutoff_basis=issuing_run_calendar` explicitly identifies legacy origin
+inference; `revision_kind=graph_input_revision` distinguishes that stored input
+fingerprint from a raw sales snapshot revision.
+
+The annual component contains `completed_months`, `missing_completed_months`,
+`invalid_completed_months`, `invalid_current_month_actual`, `observed_revenue`,
+`forecast_months`, `forecast_revenue`, `current_month`, `current_month_actual`,
+`current_month_model_prediction`, `current_month_estimate`,
+`current_month_floor_applied`, and `prediction`. The sum uses completed actual
+months plus the current month estimate (at least its recorded amount) plus the
+remaining monthly forecasts. Unknown completed months withhold the annual
+total. It is not a January-issued twelve-month forecast; model component monthly
+test metrics are not its annual accuracy. GET can update current-month actual
+conditioning using saved fitted parameters; no model fitting occurs on reads.
+
+Frontend implementation requested:
+
+1. Extend graph types and preserve these fields. Label the current/future path
+   **Latest outlook**, with origin and horizon in tooltips. Older issues belong
+   in an explicitly labeled comparison, not as replacements for current/future
+   values. Historical issues/tests can still differ at the outlook boundary.
+2. Label the annual current point **Current-year outlook (actuals + estimates)**
+   and explain its calculation, missing months and any actual floor. Keep actual
+   partial totals distinct from full-period estimates. A forecast origin is a
+   cutoff, not the amount's target date.
+3. Use each point's `is_current` and `end_date` for current-period membership.
+   October 26–November 1 is the current week on October 28. Bucket start dates
+   earlier than today do not make the current bucket a completed historical one.
+4. The upstream green `ReferenceLine` connector runs from the last past point
+   into the current point. Use a neutral boundary connector or explicitly label
+   it as a display bridge; its past endpoint is not a future prediction. Preserve
+   true null gaps and all numeric values. Do not extend the latest-origin model
+   backward through historical actuals to create a continuous-looking line.
+5. Replace generic “SARIMA estimates” wording where selected components are
+   AR(1)/local-level. Consume the readiness/model details below; research scores
+   and generated-outcome scores do not establish production approval.
+6. Test all nine views, zero-valued issues, unavailable components, missing closed
+   months, January/December annual boundaries, same-origin current/future points,
+   immutable issue comparison, horizon labels, and the neutral connector. Do not
+   test for an artificially seasonal/nonflat future curve.
 
 ## Change request: distinguish saved projections from validated forecasts
 
 **Backend ready; frontend presentation pending.** `GET /api/forecasting/graph/`
-retains every existing field, prediction, permission and legacy `status` value.
+retains existing fields, permissions and legacy `status` values. Graph v5's
+intentional current-outlook changes are specified above.
 It now adds diagnostics without fitting models during requests:
 
 - Top-level and per-view `readiness.status`: `available`, `partially_available`
@@ -55,10 +213,11 @@ or alter values to make a curve. Show training history and the number of
 evaluation samples when communicating confidence. A monthly component test
 does not validate a yearly forecast or the Combined sum.
 
-For Yearly, show each point's `forecast_origin`: the current year's full-year
-prediction uses the January origin, while future years may use a more recent
-completed-month cutoff. These are different information sets. Keep existing
-prediction-basis and partial-period explanations and the connector request below.
+For Yearly, show each point's `forecast_origin`: completed past years retain
+pre-year information, while the current-year hybrid and future years share the
+latest closed-month model origin. Identify the current-year actual conditioning
+explicitly. Keep prediction-basis and partial-period explanations; adapt the
+completed connector implementation below to the neutral treatment above.
 
 ## Test follow-up: isolate browser storage under Node 26
 

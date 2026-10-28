@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 import math
 import warnings
+from functools import lru_cache
 
 import numpy as np
 import statsmodels
@@ -120,6 +121,7 @@ def fit_weekly(name, rows):
         'seasonal_order': list(spec['seasonal_order']), 'trend': spec['trend'],
         'statsmodels_version': statsmodels.__version__, 'normalized_history': normalized,
         'scale': scale, 'params': fitted.params.tolist(), 'converged': True,
+        'param_names': list(fitted.param_names),
         'training_weeks': len(rows), 'trained_through': rows[-1]['date'],
         'target_week': (date.fromisoformat(rows[-1]['date'])+timedelta(days=7)).isoformat(),
         'optimization_attempts': attempts, 'fit_warnings': sorted({str(w.message) for w in caught})}
@@ -142,19 +144,47 @@ def predict_weekly(state):
 
 
 def valid_weekly_artifact(state):
+    """Validate the fixed portable schema before filtering saved parameters.
+
+    Early v1 artifacts omitted parameter names. Their exact fixed model schema
+    and statsmodels version still establish ordering; newly fitted states save
+    names explicitly. AR/MA coefficients are scalar in every permitted model.
+    """
     try:
+        if not isinstance(state, dict):
+            return False
         name = state['name']
+        if name not in CONFIGS:
+            return False
+        names = _parameter_names(name)
+        params, history, count = state['params'], state['normalized_history'], state['training_weeks']
         return (name in CONFIGS and state.get('family') == 'SARIMA' and state.get('converged') is True
-            and state['training_weeks'] >= MIN_TRAIN
-            and len(state['normalized_history']) == state['training_weeks']
-            and math.isfinite(state['scale']) and state['scale'] > 0
-            and bool(state['params']) and all(math.isfinite(v) for v in state['params'])
-            and all(math.isfinite(v) and v >= 0 for v in state['normalized_history'])
+            and state.get('statsmodels_version') == statsmodels.__version__
+            and isinstance(count, int) and not isinstance(count, bool) and count >= MIN_TRAIN
+            and isinstance(history, list) and len(history) == count
+            and _finite_number(state['scale']) and state['scale'] > 0
+            and isinstance(params, list) and len(params) == len(names)
+            and state.get('param_names', names) == names
+            and all(_finite_number(v) for v in params)
+            and params[names.index('sigma2')] >= 0
+            and all(abs(value) < 1 for key, value in zip(names, params)
+                    if key.startswith(('ar.', 'ma.')))
+            and all(_finite_number(v) and v >= 0 for v in history)
             and all(state.get(k) == (list(v) if isinstance(v, tuple) else v) for k, v in CONFIGS[name].items())
             and date.fromisoformat(state['trained_through']).weekday() == 0
             and date.fromisoformat(state['target_week'])-date.fromisoformat(state['trained_through']) == timedelta(days=7))
     except (TypeError, ValueError, KeyError, OverflowError):
         return False
+
+
+@lru_cache(maxsize=len(CONFIGS))
+def _parameter_names(name):
+    return list(_model([0.] * MIN_TRAIN, CONFIGS[name]).param_names)
+
+
+def _finite_number(value):
+    return (not isinstance(value, bool) and isinstance(value, (int, float))
+            and math.isfinite(value))
 
 
 def _baseline(name, values):

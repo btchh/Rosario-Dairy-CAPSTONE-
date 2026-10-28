@@ -5,6 +5,136 @@ pasted frontend audit. Application code was not changed during that initial
 review. The original findings below describe the pre-fix behavior and distinguish observed behavior from policy decisions and
 deployment work. Severity reflects potential impact, not proof of exploitation.
 
+## SARIMA backend finalization — 2026-10-28
+
+The user retained SARIMA after evaluation. See
+[FORECAST_FINALIZATION.md](FORECAST_FINALIZATION.md) for the implementation,
+current saved-path evidence and verification. Graph v6 and provisional v4 now
+share the exact-source weekly regular SARIMA fit; monthly regular retains its
+primary seasonal model. Feeding remains separately provisional. Invalid
+eligible artifacts are withheld, and baseline losses remain visible.
+
+The graph adds a saved 52-week/12-month `seasonal_outlook` without changing the
+centered windows or expanding issued-forecast evidence. Source freshness and
+actual projection steps are separate from legacy saved `ready`/calendar horizon
+fields. GET never trains or reconstructs missing outlook values. No database
+models, migrations, source sales or frontend files were changed.
+
+Tracked refresh 24 succeeded. Retained-row fingerprints across 46 models match,
+and eleven direct/proxied HTTP/status/role checks pass. A full-suite fallback
+reuse regression was fixed; all 52 affected tests pass. The complete
+forecasting/reporting/cleanup rerun passed **306/306 tests** in 473.137 seconds;
+the disposable database was removed. Source observations still end
+in 2025, so `stale_data`, unverified coverage and withheld current annual totals
+remain legitimate restrictions. The new paths are not production approval.
+
+## Chapter 4 model comparison — 2026-10-28
+
+The comparison, embedded formula/method companion and frozen runner are retained
+as private local artifacts under `forecast_experiments/chapter4-comparison-20261028/`.
+This detached original-only study
+compares nine families (including baselines) on monthly/weekly regular revenue
+and exploratory Combined recorded billing. Earlier validation selects family
+settings; rolling and fixed-origin tests use common targets. A separate 52-week
+experiment uses reference settings frozen without late-2025 selection leakage.
+
+Calendar SARIMAX had the lowest monthly rolling test WAPE (8.0753%), versus
+SARIMA 10.6433% and ARIMA 12.6596%. Ridge narrowly led weekly rolling tests
+(20.0321%); the Random Forest reference led the single 52-week regular path
+(20.7798%). Combined errors remained high. These are bounded retrospective
+comparisons, not proof of universal superiority or a model-promotion decision.
+
+Independent verification passed for 176 complete evaluation artifacts, 2,768
+forecast rows and 1,395 fit diagnostics; ten chronology/failure tests and eleven
+validator self-checks passed. No failed origins or raw negative predictions were
+discarded. The application database, served models, schema, frontend source and
+application dependencies were unchanged. ML dependencies live in an isolated
+research environment. No new production API or frontend integration is implied.
+
+A separate assumptions follow-up is recorded privately in that directory's
+`assumptions-review-verified/SARIMA_ASSUMPTIONS_REVIEW.md` and section 4.10 of
+the regenerated comparison/PDF. All 90 ADF/KPSS test
+invocations completed; seven diagnostic mechanics tests passed. Independent
+recalculation matched 386 test/decomposition/correlation comparisons. Stationarity
+conclusions vary with the training prefix and trend specification; annual
+recurrence is unstable and short-history STL can overfit. These checks neither
+replace the frozen benchmark nor approve a model change. Keep Regular/Feeding
+separate and retain the Combined view. At that review, the weekly graph used
+AR(1) plus local level; the later SARIMA routing and residual checks are described
+in the finalization section above. Interval calibration and fresh reviewed
+outcomes remain outstanding.
+
+## Original-data restoration — 2026-10-28
+
+At the user's request, all 667 known generated 2026 receipts, their dependent
+orders/items and two exclusive generated customers have been removed, together
+with the proven synthetic-derived fit/study/graph artifacts. Legacy dummy
+namespace and explicit demo artifacts are empty. A new full-precision backup
+was restored and cleanup rehearsed in a disposable database before atomic
+application. Every unrelated current row and original business fingerprint was
+preserved, including stock, authentication state and genuine forecast archives.
+
+Tracked original-only maintenance job 22 succeeded. There are 4,835 original
+receipts, none dated 2026; latest original sales are December 31, 2025.
+`stale_data` is now expected. Regular sales have 156 complete weeks for weekly
+research; the current-week last-year comparison is PHP 657,858 Combined, a
+weekly baseline rather than an October 28 daily prediction. Source-only weekly
+and joint-model evaluation details and final verification are recorded in
+[DATA_CLEANUP_REPORT.md](DATA_CLEANUP_REPORT.md). The pre-removal study below is
+retained as historical evidence of the generator and origin problems.
+
+Final verification: **199/199 forecasting and dummy-cleanup tests passed** in
+406.374 seconds in a new disposable PostgreSQL database. Full-precision backup
+restore and exact cleanup rehearsal passed separately. All disposable databases
+were removed. Django/syntax/migration/whitespace checks pass without applying
+migrations. Retained-row hashes across 46 models and the original sales-input
+revision match; ten direct/proxied HTTP/status/role checks pass. Backend and
+unchanged frontend are running locally. No push was performed.
+
+## Deep forecast pattern and origin review — 2026-10-28
+
+See [FORECAST_PATTERN_REVIEW.md](FORECAST_PATTERN_REVIEW.md) for the full source
+pattern analysis, engine/origin distinctions, saved evaluation evidence and
+remaining readiness requirements. The user selected **one latest outlook with
+issued forecasts retained separately**. Backend graph v5 implements that design:
+
+- Current/future points share the latest closed-period model origin. The older
+  pre-target issue is a separate `issued_prediction` with its actual provenance;
+  archived values are never overwritten. Completed historical issues/tests keep
+  their original basis. Historical extraction excludes issues recorded later.
+- The current year combines completed-month actuals with remaining monthly
+  estimates. Its disclosed current-month actual floor prevents a full-year
+  outlook below known positive recorded revenue. Unknown completed months
+  withhold the sum. GET only conditions saved parameters; it never optimizes a
+  model or changes future-year predictions. Frozen legacy demo scope is retained.
+- Pattern analysis v4 excludes feeding/unclassified-only months from observed
+  regular inputs and consistently excludes incomplete months from correlations,
+  YoY and benchmarks. Explicit recorded regular zeroes remain observations;
+  ledger totals and source records are unchanged.
+- Feeding source-policy wording now accurately describes legacy demo-reference
+  exclusions without claiming ordinary generated local records are detected.
+
+Read-only saved-state replay proves all **24 genuinely future values across the
+nine views unchanged**, with no model optimization. The fresh current weekly
+Combined value is PHP 1,158,163.64; the archived PHP 450,773.19 issue remains
+separate. The current annual outlook is PHP 61,861,363.79, using the October
+origin rather than a January reconstruction. All 240 existing issued rows have
+identical hashes in this preview.
+
+Original data do not support forcing a seasonal curve: annual regular shapes
+are weakly correlated, and original feeding has 10 observed months in a
+14-month span. Generated 2026 regular months reproduce 2025 × 1.03; generated
+feeding is billed entirely on Fridays, unlike original invoices. Strict weekly
+SARIMA loses to its baseline on both original and generated outcomes. The
+original-only monthly improvement is small and sensitive to target selection.
+Generated outcomes do not establish real-world prospective accuracy.
+
+No frontend source, business records, database schema, permissions, algorithms
+or approval thresholds were changed. Frontend `d4d35f44` has now been pulled at
+the user's request; origin/outlook labeling, neutral connector treatment and
+model/readiness presentation are documented in `FRONTEND_HANDOFF.md`.
+Final test and operational verification is recorded in the linked review.
+
 ## Forecast reliability and readiness fixes — 2026-10-28
 
 Two confirmed backend defects were corrected without changing forecasting

@@ -6,7 +6,7 @@ from statistics import mean, median, pstdev
 from .benchmarks import evaluate
 from .data import SOURCE_POLICY
 
-ANALYZER_VERSION = 'regular-sales-patterns-v3'
+ANALYZER_VERSION = 'regular-sales-patterns-v4'
 TARGET_WAPE_PERCENT = 15.0
 
 
@@ -81,24 +81,29 @@ def investigate(snapshot):
     day_rows=[]
     for name,rows in month_days.items():
         entry=calendar(rows,'days_of_month');entry['days_of_month']=name;day_rows.append(entry)
+    # Ledger totals remain useful even when a segment has no invoices. Such
+    # totals are not evidence that its unobserved revenue was a true zero.
+    # Use the same completed, observed regular months for every monthly analysis.
+    cutoff_month = snapshot.as_of.strftime('%Y-%m')
+    completed_months = [row for row in monthly_rows if row['month'] < cutoff_month]
+    analysis_months = [row for row in completed_months if row['regular_invoices'] > 0]
     # Correlations use only the latest uninterrupted run of observed months.
     contiguous=[]
-    for row in monthly_rows:
+    for row in analysis_months:
         y,m=map(int,row['month'].split('-'));ordinal=y*12+m
         if contiguous and ordinal!=contiguous[-1][0]+1:contiguous=[]
         contiguous.append((ordinal,float(row['regular_revenue'])))
     values=[value for _,value in contiguous]
-    prior_year={row['month']:row for row in monthly_rows}
+    prior_year={row['month']:row for row in analysis_months}
     changes=[]
-    for row in monthly_rows:
+    for row in analysis_months:
         year,month=map(int,row['month'].split('-'))
         previous=prior_year.get(f'{year-1:04}-{month:02}')
         if previous and Decimal(previous['regular_revenue'])>0:
             current,old=Decimal(row['regular_revenue']),Decimal(previous['regular_revenue'])
             changes.append({'month':row['month'],'previous_year_revenue':money(old),
                             'regular_revenue':money(current),'change_percent':round(float((current/old-1)*100),4)})
-    completed_months=[row for row in monthly_rows if row['month'] < snapshot.as_of.strftime('%Y-%m')]
-    benchmarks=evaluate(completed_months)
+    benchmarks=evaluate(analysis_months)
     return {
         'analyzer_version':ANALYZER_VERSION,'source_revision':snapshot.revision,
         'as_of':snapshot.as_of.isoformat(),'observed_through':through.isoformat() if through else None,
@@ -117,12 +122,21 @@ def investigate(snapshot):
         'regular_revenue':money(total),'regular_customers':len(profile),
         'monthly':monthly_rows,'customers':profile,'weekday':weekday_rows,'days_of_month':day_rows,
         'year_over_year':changes,
+        'analysis_periods': {
+            'basis': 'completed_months_with_recorded_regular_invoices',
+            'observed_completed_regular_months': len(analysis_months),
+            'unknown_regular_months_with_other_invoices': [
+                row['month'] for row in completed_months if row['regular_invoices'] == 0],
+            'excluded_incomplete_months': [row['month'] for row in monthly_rows
+                                           if row['month'] == cutoff_month],
+        },
         'serial_correlation':{'latest_contiguous_months':len(values),'lag_1':correlation(values,1),
                               'lag_12':correlation(values,12),'lag_12_pairs':max(0,len(values)-12)},
         'benchmarks':benchmarks,
         'limitations':[
             'Descriptive patterns are not validated future forecasts.',
             'Missing dates/months are not silently imputed as zero. Ledger coverage must be verified before training.',
+            'Monthly correlations, year-over-year comparisons and benchmarks use only completed months with regular invoices; a recorded zero is retained. Coverage attestations are not inputs to this invoice-only analysis.',
             'Invoice dates can reflect billing cadence rather than consumption or delivery dates.',
             'Unclassified source entries remain in the ledger and monthly audit, but are excluded from regular/feeding benchmarks.',
             'Research benchmarks use recorded monthly totals; historical coverage is not yet certified.',

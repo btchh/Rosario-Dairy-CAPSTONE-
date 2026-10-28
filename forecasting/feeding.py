@@ -67,7 +67,7 @@ def investigate_feeding(snapshot):
                 'Production approval requires coverage review and prospective forecast evaluation.']
                 + (['Fewer than 24 calendar months since the first recorded feeding invoice.'] if len(calendar) < 24 else [])},
         'warnings': ['Program groups normalize source labels for display only; they do not identify contracts or merge customers.',
-            'Only recorded, classified dairy feeding invoices are included; synthetic and unclassified sales are excluded.',
+            'Only recorded, classified dairy feeding invoices are included; unclassified sales and legacy demo references are excluded. Ordinary local records are included without independent source-authenticity verification.',
             'The first invoice date is not a verified program start. No future contract quantities or schedules are assumed.']}
 
 

@@ -108,7 +108,10 @@ customer label/name containing `feedin`, ignoring case. Unclassified entries sta
 in ledger/reports but do not train either segment. This naming rule is retained;
 an explicit transaction classification API is a future task if labels change.
 
-The primary regular monthly model is seasonal SARIMA. Sparse feeding history can
+The primary regular monthly model is seasonal SARIMA. Eligible regular weekly
+graphs and provisional projections now reuse the same saved annual SARIMA fit,
+with its configuration chosen on earlier validation. This is the user's retained
+model-family choice; the weekly baseline comparison remains disclosed. Sparse feeding history can
 produce flat estimates. Below 15% regular monthly WAPE remains a target, not a
 promise or a display blocker. Original forecasts are distinguished from
 reconstructed historical tests; accuracy must be measured against later actuals.
@@ -122,9 +125,30 @@ interval. One-month rolling scores do not establish longer-horizon accuracy.
 
 Provisional selection freezes the earlier-validation winner. If its test fit or
 final refit fails, the estimate is unavailable rather than switching to another
-candidate after inspecting the test. The corrected provisional v3 and centered
-graph v4 engines require `venv/bin/python manage.py run_forecast_refresh` after
+candidate after inspecting the test. The corrected provisional v4 and centered
+graph v6 engines require `venv/bin/python manage.py run_forecast_refresh` after
 updating; older saved model records and issued predictions remain intact.
+Current/future graph points share one latest closed-period origin; older issues
+are separate comparisons. The current annual outlook combines completed-month
+actuals with the remaining monthly estimates and discloses any current-month
+actual floor. See `FORECAST_PATTERN_REVIEW.md` for source-pattern evidence,
+evaluation limits and the frontend contract additions.
+
+Graph v6 also returns `seasonal_outlook`: 52 weekly or 12 monthly saved points
+starting with the current bucket. The existing centered windows remain intact;
+yearly has no synthetic annual-cycle expansion. Model details expose actual
+projection steps from fitted history, source freshness and correctly scoped
+rolling backtests. Saved availability does not imply fresh data or production
+approval. See `FORECAST_FINALIZATION.md` and `FRONTEND_HANDOFF.md` for behavior,
+verification and the remaining frontend adoption.
+
+The original-only Chapter 4 comparison covers ARIMA, SARIMA, calendar SARIMAX,
+smoothing and four ML methods. Its frozen runner, formulas embedded in the HTML,
+fitted results, figures, CSVs and Excel/PDF reports remain private local artifacts
+in `forecast_experiments/chapter4-comparison-20261028/`; they are not included in
+repository pushes. The comparison itself did not change served models, APIs or
+application dependencies. The subsequent retained-SARIMA implementation is
+documented separately in `FORECAST_FINALIZATION.md`.
 
 The dummy-sales generator has been removed. Preview cleanup of previously
 generated data with `venv/bin/python manage.py remove_dummy_data`. Apply it with
@@ -137,9 +161,13 @@ Shared customers, products, stock and real forecast history are retained. Existi
 SQL backups and original source files remain private and are not removed.
 Demo comparisons are unavailable in production.
 Development-only comparisons require explicit `scope=demo2026` and an offline
-refresh using `refresh_beta_graphs --scope demo2026`. Generated sales never train
-the models. Use a real-only dataset for production; other sales/report APIs
-are not a mechanism for filtering an imported demonstration database.
+refresh using `refresh_beta_graphs --scope demo2026`. Legacy reserved demo
+references are excluded from training. Ordinary local records are included;
+this filter does not independently verify their provenance. The authorized
+2026 demonstration extension has now been removed using its exact private
+manifest; see `DATA_CLEANUP_REPORT.md`. Use a reconciled,
+real-only dataset for production; other sales/report APIs are not a mechanism
+for filtering an imported demonstration database.
 
 ## Inventory consistency
 

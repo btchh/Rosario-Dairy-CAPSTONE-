@@ -10,7 +10,7 @@ from django.test import TestCase
 from .data import RecordedSale, SalesSnapshot
 from .learning import ENGINE_VERSION, digest, fit_model, month_end, monthly_rows, predict_model, shift_month
 from .lifecycle import coverage_revision
-from .models import MonthlyModelRun
+from .models import MonthlyModelRun, WeeklyModelRun
 from .provisional import build, context, fit, primary_monthly, project, refresh, report
 
 
@@ -130,3 +130,63 @@ class PrimaryProjectionTests(TestCase):
             self.assertEqual(report('monthly', date(2026, 1, 1))['status'], 'refresh_required')
         run.refresh_from_db()
         self.assertEqual(run.findings, frozen)
+
+
+class WeeklyPrimaryProjectionTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        from .test_graph_sarima import snapshot, run_for
+        cls.snapshot = snapshot()
+        retained = run_for(cls.snapshot)
+        cls.weekly_run = WeeklyModelRun.objects.create(engine_version='regular-weekly-sarima-v1',
+            source_revision=cls.snapshot.revision, cutoff=retained.cutoff,
+            trained_through=retained.trained_through, status=retained.status, findings=retained.findings)
+
+    def targets(self):
+        return {'weekly': [(date(2026, 11, 2)+timedelta(weeks=n)).isoformat() for n in range(13)],
+                'monthly': [shift_month(date(2026, 11, 1), n).isoformat() for n in range(12)],
+                'yearly': ['2027-01-01', '2028-01-01']}
+
+    def test_provisional_weekly_uses_the_same_exact_sarima_state_and_leaves_monthly_separate(self):
+        from .graph_sarima import regular_weekly_component, regular_weekly_dependency
+        from .provisional import future_rows
+        expected = regular_weekly_component(regular_weekly_dependency(self.snapshot), allow_training=False)
+        with patch('forecasting.provisional.train', return_value={'status': 'insufficient_data'}) as fallback, \
+                patch('forecasting.graph_sarima.train_weekly', side_effect=AssertionError('No alternate fit')), \
+                patch('statsmodels.tsa.statespace.sarimax.SARIMAX.fit', side_effect=AssertionError('No optimization')):
+            result = build({'weekly': self.snapshot, 'monthly': self.snapshot}, self.targets())
+        weekly = result['periods']['weekly']['regular']
+        self.assertEqual(weekly['points'], future_rows(expected, self.targets()['weekly'], 'weekly'))
+        self.assertEqual(len(weekly['points']), 13)
+        self.assertEqual(weekly['primary_model_id'], self.weekly_run.pk)
+        self.assertEqual(weekly['model_basis'], 'primary_weekly_sarima')
+        self.assertIsNone(weekly['metrics'])
+        self.assertEqual(weekly['primary_weekly_backtest']['basis'], 'rolling_one_week_ahead')
+        self.assertIsNone(weekly['primary_monthly_backtest'])
+        self.assertTrue(all(not call.args[0] for call in fallback.call_args_list))
+        self.assertEqual(result['periods']['monthly']['regular']['points'], [])
+        self.assertEqual(result['periods']['monthly']['regular']['status'], 'primary_refresh_required')
+
+    def test_dependency_mutation_invalidates_get_without_fitting_or_overwriting_older_bundle(self):
+        with patch('forecasting.provisional.load_snapshot', return_value=self.snapshot), \
+                patch('forecasting.provisional.train', return_value={'status': 'insufficient_data'}):
+            bundle, _ = refresh(date(2026, 10, 28))
+        bundle.refresh_from_db()
+        frozen = deepcopy(bundle.findings)
+        with patch('forecasting.provisional.load_snapshot', return_value=self.snapshot), \
+                patch('forecasting.graph_sarima.train_weekly', side_effect=AssertionError('GET must not fit')), \
+                patch('statsmodels.tsa.statespace.sarimax.SARIMAX.fit', side_effect=AssertionError('GET must not fit')):
+            before = context(date(2026, 10, 28))[2]
+            current = report('weekly', date(2026, 10, 28))
+            self.assertEqual(current['views']['regular']['primary_model_id'], self.weekly_run.pk)
+            corrupt = deepcopy(self.weekly_run.findings)
+            corrupt['artifact']['params'][-1] = -1
+            corrupt['artifact_sha256'] = digest(corrupt['artifact'])
+            WeeklyModelRun.objects.filter(pk=self.weekly_run.pk).update(findings=corrupt)
+            self.assertNotEqual(context(date(2026, 10, 28))[2], before)
+            self.assertEqual(report('weekly', date(2026, 10, 28))['status'], 'refresh_required')
+            result = build({'weekly': self.snapshot, 'monthly': self.snapshot}, self.targets(), frozen)
+            self.assertEqual(result['periods']['weekly']['regular']['status'], 'invalid_primary_artifact')
+            self.assertEqual(result['periods']['weekly']['regular']['points'], [])
+        bundle.refresh_from_db()
+        self.assertEqual(bundle.findings, frozen)

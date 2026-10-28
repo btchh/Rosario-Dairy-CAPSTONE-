@@ -22,8 +22,9 @@ from .learning import ENGINE_VERSION, MIN_MONTHS, month_end, shift_month
 from .lifecycle import _commit_lock, valid_coverage, coverage_revision, coverage_rows
 from .models import MonthlyModelRun, ProvisionalForecastRun
 from .seasonal import is_sarima_artifact
+from .graph_sarima import regular_weekly_component, regular_weekly_dependency
 
-VERSION = 'actual-provisional-sarima-v3'
+VERSION = 'actual-provisional-sarima-v4'
 PERIODS = ('weekly', 'monthly', 'yearly')
 VIEWS = ('regular', 'feeding', 'combined')
 
@@ -130,9 +131,23 @@ def context(today=None):
         'yearly': [date(today.year+n, 1, 1).isoformat() for n in (1, 2)],
     }
     primary = primary_monthly(snapshots['monthly'])
+    weekly = regular_weekly_dependency(snapshots['weekly'])
     identity = {'version': VERSION, 'sources': {p: s.revision for p, s in snapshots.items()}, 'targets': targets,
-                'primary_monthly': {'dependency': primary['dependency'], 'status': primary['status']}}
+                'primary_monthly': {'dependency': primary['dependency'], 'status': primary['status']},
+                'primary_weekly': _weekly_identity(weekly)}
     return snapshots, targets, digest(identity)
+
+
+def _weekly_identity(dependency):
+    # The target calendar already versions the bundle. With unchanged history,
+    # an advancing extraction cutoff alone does not require fitting a component.
+    if dependency['status'] == 'insufficient_history':
+        # The fallback trains on provisional.series, whose rows already version
+        # the component. Unused strict boundary weeks must not force a refit.
+        return {'status': 'insufficient_history'}
+    return {'status': dependency['status'], 'rows': dependency['rows'],
+            'dependency': {key: value for key, value in dependency['dependency'].items()
+                           if key != 'snapshot_cutoff'}}
 
 
 def specification(name, season):
@@ -270,20 +285,28 @@ def future_rows(component, targets, period):
 def build(snapshots, targets, previous=None):
     components = {}
     primary = primary_monthly(snapshots['monthly'])
+    weekly = regular_weekly_dependency(snapshots['weekly'])
     for period in ('weekly', 'monthly'):
         for segment in ('regular', 'feeding'):
             key = f'{segment}_{period}'
             rows = series(snapshots[period], segment, period)
             is_primary = segment == 'regular' and period == 'monthly'
-            signature = digest({'rows': rows, 'primary': primary}) if is_primary else digest(rows)
+            is_weekly = segment == 'regular' and period == 'weekly'
+            signature = (digest({'rows': rows, 'primary': primary}) if is_primary else
+                         digest({'rows': rows, 'primary': _weekly_identity(weekly)}) if is_weekly else digest(rows))
             old = (previous or {}).get('components', {}).get(key, {})
-            if is_primary and primary['status'] != 'fallback_allowed':
+            if is_weekly and weekly['status'] != 'insufficient_history':
+                component = (old if old.get('input_signature') == signature and old.get('state')
+                             else regular_weekly_component(weekly))
+            elif is_primary and primary['status'] != 'fallback_allowed':
                 component = primary
             else:
                 component = old if old.get('input_signature') == signature and old.get('state') else train(rows, period)
-                component = {**component, 'model_basis': 'provisional_fallback' if is_primary else 'provisional_selection'}
+                component = {**component, 'model_basis': 'provisional_fallback' if is_primary or is_weekly else 'provisional_selection'}
                 if is_primary:
                     component['fallback_reason'] = primary['fallback_reason']
+                elif is_weekly:
+                    component['fallback_reason'] = 'annual_weekly_sarima_requires_130_contiguous_completed_weeks'
             components[key] = {**component, 'input_signature': signature}
     periods = {}
     for period in PERIODS:
@@ -298,6 +321,7 @@ def build(snapshots, targets, previous=None):
                 'primary_model_id': component.get('primary_model_id'),
                 'primary_engine_version': component.get('primary_engine_version'),
                 'primary_monthly_backtest': component.get('primary_monthly_backtest') if period == 'monthly' else None,
+                'primary_weekly_backtest': component.get('primary_weekly_backtest') if period == 'weekly' else None,
                 'fallback_reason': component.get('fallback_reason'),
                 'metrics': component.get('test') if period != 'yearly' else None,
                 'observed_periods': component.get('observed_periods'), 'missing_periods': component.get('missing_periods'),
@@ -305,7 +329,8 @@ def build(snapshots, targets, previous=None):
                     'Missing invoice periods are unknown observations, not zero sales.',
                     'Bounds are uncalibrated model uncertainty; they do not cover all business risks.']}
             if component.get('fallback_reason'):
-                views[segment]['warnings'].append('Short or gapped regular history uses the provisional fallback, not the primary monthly model.')
+                frequency = 'weekly' if period == 'weekly' else 'monthly'
+                views[segment]['warnings'].append(f'Short or gapped regular history uses the provisional fallback, not the primary {frequency} model.')
         combined = []
         if views['regular']['points'] and views['feeding']['points']:
             for regular, feeding in zip(views['regular']['points'], views['feeding']['points']):

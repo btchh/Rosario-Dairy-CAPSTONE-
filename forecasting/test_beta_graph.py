@@ -234,7 +234,9 @@ class BetaGraphTests(APITestCase):
             self.assertTrue(all(date.fromisoformat(row['date']) < cutoff for row in item['rows']))
         yearly = graph.context('yearly', 'real', date(2026,7,15))
         current = yearly['inputs'][(date(2026,1,1),'regular')]
-        self.assertTrue(all(row['date'] < '2026-01-01' for row in current['rows']))
+        self.assertTrue(all(row['date'] < '2026-07-01' for row in current['rows']))
+        historical = yearly['inputs'][(date(2025,1,1),'regular')]
+        self.assertTrue(all(row['date'] < '2025-01-01' for row in historical['rows']))
 
     def test_regular_zero_review_is_used_only_while_its_source_revision_is_valid(self):
         month = date(2025, 2, 1)

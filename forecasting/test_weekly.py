@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from io import StringIO
 import json
+import statsmodels
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -19,7 +20,8 @@ from .data import RecordedSale, SalesSnapshot
 from .learning import digest
 from .models import WeeklyModelRun, MonthlyModelRun, MonthlyIssuedForecast, MonthlyDeployment
 from .weekly import (CONFIGS, VERSION, MIN_WEEKS, fit_weekly, predict_weekly, weekly_rows,
-                     refresh_weekly, weekly_report, train_weekly, walk_weekly, weekly_snapshot)
+                     refresh_weekly, weekly_report, train_weekly, walk_weekly, weekly_snapshot,
+                     _parameter_names, valid_weekly_artifact)
 
 
 def observations(count=156):
@@ -38,7 +40,9 @@ def artifact(name, rows):
     return {'name': name, 'family': 'SARIMA', 'converged': True,
         'order': list(spec['order']), 'seasonal_order': list(spec['seasonal_order']), 'trend': spec['trend'],
         'training_weeks': len(rows), 'normalized_history': [r['revenue'] for r in rows],
-        'params': [.2, .1, 1], 'scale': 1, 'trained_through': rows[-1]['date'],
+        'params': [1 if key == 'sigma2' else .1 for key in _parameter_names(name)],
+        'statsmodels_version': statsmodels.__version__,
+        'scale': 1, 'trained_through': rows[-1]['date'],
         'target_week': (date.fromisoformat(rows[-1]['date'])+timedelta(days=7)).isoformat()}
 
 
@@ -55,6 +59,22 @@ def fixture_train(rows):
 
 
 class WeeklyResearchTests(SimpleTestCase):
+    def test_saved_schema_rejects_corrupt_parameters_versions_and_nonstationary_coefficients(self):
+        state = artifact('weekly_sarima_100_100_52', observations())
+        self.assertTrue(valid_weekly_artifact(state))
+        mutations = [
+            ('params', state['params'][:-1]), ('param_names', ['wrong'] * len(state['params'])),
+            ('statsmodels_version', '0.0.0'), ('training_weeks', True), ('scale', True),
+            ('normalized_history', [True] * 156), ('params', [False] * len(state['params'])),
+        ]
+        for key, value in mutations:
+            with self.subTest(key=key, value=str(value)[:30]):
+                self.assertFalse(valid_weekly_artifact({**state, key: value}))
+        for key in ('ar.L1', 'ar.S.L52', 'sigma2'):
+            values = state['params'].copy()
+            values[_parameter_names(state['name']).index(key)] = -1 if key == 'sigma2' else 1.01
+            self.assertFalse(valid_weekly_artifact({**state, 'params': values}))
+
     def test_full_weeks_use_latest_contiguous_real_regular_span_and_drop_boundary_weeks(self):
         s = snapshot()
         other = RecordedSale(999, date(2025, 12, 10), 'feeding', 'Feeding', 'feeding', Decimal('99999'))

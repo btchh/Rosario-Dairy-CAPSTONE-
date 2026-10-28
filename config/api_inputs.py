@@ -1,5 +1,6 @@
 from collections.abc import Mapping
 from functools import wraps
+from uuid import UUID
 
 from rest_framework import serializers
 from django.conf import settings
@@ -51,6 +52,33 @@ def parse_positive_id(value, field_name):
     if not 0 < parsed <= 9223372036854775807:
         raise ValueError(f'{field_name} must be a valid positive integer id.')
     return parsed
+
+
+class PositivePrimaryKeyRelatedField(serializers.PrimaryKeyRelatedField):
+    """Validate integer identifiers before the ORM can truncate a float."""
+
+    def to_internal_value(self, data):
+        try:
+            data = parse_positive_id(data, self.field_name or 'id')
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc), code='invalid') from exc
+        return super().to_internal_value(data)
+
+
+class UUIDTextField(serializers.UUIDField):
+    """Accept UUID text from JSON, retaining UUID objects for Python callers."""
+
+    def to_internal_value(self, data):
+        if not isinstance(data, (str, UUID)):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
+def parse_optional_text(value, field_name):
+    """Avoid silently stringifying JSON objects in inventory audit records."""
+    if value is not None and not isinstance(value, str):
+        raise ValueError(f'{field_name} must be text or null.')
+    return value
 
 
 def parse_decimal(value, field_name, *, min_value=None, max_digits=10):

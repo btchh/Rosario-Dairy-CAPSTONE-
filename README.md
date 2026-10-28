@@ -207,6 +207,15 @@ durable across restarts and serializes simultaneous submissions before FEFO.
 IDs remain optional for compatibility: unkeyed requests cannot be safely deduplicated.
 Manual encoding retains its existing required UUID and replay contract.
 
+Sale `request_id` values must be UUID strings; JSON booleans and numbers return
+400 before recording a sale or retry key. Writable customer, category, product,
+ingredient and supplier IDs accept positive integers or integer strings, and
+reject decimal numbers without truncating them. Optional nullable IDs retain
+their existing behavior. Invalid catalog body types return JSON validation
+errors. The best-seller report accepts `limit` from 1 through 500 (default 10).
+Stock-adjustment reasons and stock-count notes accept text or null; other JSON
+types return 400 before stock changes.
+
 Admins can cancel any local sale using
 `POST /sales/transactions/{id}/cancel/` with `{}` or an optional `reason` string
 (maximum 2000 characters). Encoded sales also expose

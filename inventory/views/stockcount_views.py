@@ -8,7 +8,7 @@ from ..services import batch_service
 from accounts.permissions import IsAdmin, IsStaff
 from decimal import Decimal
 from django.db.models import Q
-from config.api_inputs import parse_decimal, parse_positive_id
+from config.api_inputs import parse_decimal, parse_optional_text, parse_positive_id
 
 class StockCountViewSet(CachedListMixin, viewsets.ModelViewSet):
     queryset = StockCount.objects.all()
@@ -37,6 +37,7 @@ class StockCountViewSet(CachedListMixin, viewsets.ModelViewSet):
         try:
             product_batch_id = parse_positive_id(product_batch_id, 'product_batch_id') if product_batch_id not in (None, '') else None
             ingredient_batch_id = parse_positive_id(ingredient_batch_id, 'ingredient_batch_id') if ingredient_batch_id not in (None, '') else None
+            notes = parse_optional_text(notes, 'notes')
             counted_quantity = parse_decimal(
                 counted_quantity, 'counted_quantity', min_value=Decimal('0.00')
             )

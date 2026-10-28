@@ -248,7 +248,13 @@ class BackendFixTests(BusinessFixture, APITestCase):
                     self.assertEqual(response['model_id'], run.pk)
                     current = next(p for p in response['views']['regular']['points'] if p['is_current'])
                     self.assertEqual(current['actual'], 50)
-                    self.assertEqual(current['future_prediction'], 100)
+                    if period == 'yearly':
+                        # This fixture has no completed-month history or valid
+                        # monthly model path for the current annual outlook.
+                        self.assertIsNone(current['future_prediction'])
+                        self.assertEqual(current['annual_outlook']['current_month_actual'], 50)
+                    else:
+                        self.assertEqual(current['future_prediction'], 100)
                     self.assertTrue(current['is_partial_period'])
 
     def test_completed_history_correction_still_requires_refresh(self):

@@ -2,14 +2,15 @@ from decimal import Decimal
 
 from django.utils import timezone
 from rest_framework import serializers
+from config.api_inputs import PositivePrimaryKeyRelatedField, UUIDTextField
 
 from sales.models import Customer
 
 
 class EncodingInputSerializer(serializers.Serializer):
-    request_id = serializers.UUIDField()
+    request_id = UUIDTextField()
     transaction_date = serializers.DateField(input_formats=['%Y-%m-%d'])
-    customer_id = serializers.PrimaryKeyRelatedField(
+    customer_id = PositivePrimaryKeyRelatedField(
         source='customer', queryset=Customer.objects.filter(is_active=True),
         required=False, allow_null=True,
     )

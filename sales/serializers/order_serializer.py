@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from config.api_inputs import PositivePrimaryKeyRelatedField
 from ..models import Customer, Order, OrderItem, Transaction
 from inventory.models import Product
 from inventory.serializers import ProductSerializer
@@ -20,7 +21,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 class OrderSerializer(serializers.ModelSerializer):
     customer = CustomerSerializer(read_only=True)
-    customer_id = serializers.PrimaryKeyRelatedField(
+    customer_id = PositivePrimaryKeyRelatedField(
         queryset=Customer.objects.filter(is_active=True), source='customer', write_only=True
     )
     handled_by = UserSerializer(read_only=True)

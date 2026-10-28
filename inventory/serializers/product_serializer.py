@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from rest_framework import serializers
+from config.api_inputs import PositivePrimaryKeyRelatedField
 from django.db.models import Sum
 from django.utils import timezone
 from ..models import Product, Category
@@ -12,7 +13,7 @@ from inventory.services.product_consolidation import product_name_key
 class ProductSerializer(StockThresholdMixin, serializers.ModelSerializer):
   low_stock_threshold = serializers.SerializerMethodField()
   category = CategorySerializer(read_only=True)
-  category_id = serializers.PrimaryKeyRelatedField(
+  category_id = PositivePrimaryKeyRelatedField(
     queryset=Category.objects.filter(is_active=True),
     source='category',
     write_only=True

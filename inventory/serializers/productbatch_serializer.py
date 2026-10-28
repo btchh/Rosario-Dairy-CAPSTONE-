@@ -1,5 +1,6 @@
 from decimal import Decimal
 from rest_framework import serializers
+from config.api_inputs import PositivePrimaryKeyRelatedField
 from django.db import transaction
 from django.utils import timezone
 from ..models import Product, ProductBatch
@@ -10,7 +11,7 @@ from .product_serializer import ProductSerializer
 
 class ProdBatchSerializer(serializers.ModelSerializer):
   product = ProductSerializer(read_only=True)
-  product_id = serializers.PrimaryKeyRelatedField(
+  product_id = PositivePrimaryKeyRelatedField(
     queryset=Product.objects.filter(is_active=True),
     source='product',
     write_only=True

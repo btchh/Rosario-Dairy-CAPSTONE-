@@ -1,5 +1,6 @@
 from decimal import Decimal
 from rest_framework import serializers
+from config.api_inputs import PositivePrimaryKeyRelatedField
 from django.db import transaction
 from django.utils import timezone
 from ..models import Ingredient, IngredientBatch
@@ -9,8 +10,9 @@ from .ingredient_serializer import IngredientSerializer
 
 
 class IngBatchSerializer(serializers.ModelSerializer):
+  serializer_related_field = PositivePrimaryKeyRelatedField
   ingredient = IngredientSerializer(read_only=True)
-  ingredient_id = serializers.PrimaryKeyRelatedField(
+  ingredient_id = PositivePrimaryKeyRelatedField(
     queryset=Ingredient.objects.all(),
     source='ingredient',
     write_only=True

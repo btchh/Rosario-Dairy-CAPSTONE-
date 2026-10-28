@@ -45,6 +45,26 @@ the default Node 26.12.1 run passes **371/378** and fails seven POS UI tests.
 The archived preview's earlier 379-test and browser results do not verify this
 upstream version's outstanding forecast presentation.
 
+## Backend input validation update
+
+Validation failures below return HTTP 400; show the backend's error message and
+retain the form so the user can correct it.
+
+- Submit positive integer IDs or integer strings for writable customer, category,
+  product, ingredient and supplier references. Decimal IDs such as `1.9` are
+  rejected instead of selecting record 1. Optional nullable fields remain nullable.
+- Submit UUID strings for sale `request_id` values. Booleans and numeric UUID
+  representations are rejected. Existing valid UUID retry/replay behavior remains.
+- Submit JSON objects for catalog create/update requests; bare numbers and
+  booleans now return JSON validation errors.
+- `GET /sales/reports/best-sellers/` accepts an integer `limit` from 1 to 500,
+  defaulting to 10. Values outside that range return `{"error":"..."}`.
+- Stock-adjustment `reason` and stock-count `notes` accept strings or null,
+  including blank strings; arrays, objects, booleans and numbers return 400.
+
+Error bodies retain the existing shapes: an `error`/`detail` message, a field-to-
+messages map, or a non-field error list. The frontend should support these forms.
+
 ## Completed upstream: dashboard forecast historical dates
 
 The new Dates control sends its To date as `as_of` to

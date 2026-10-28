@@ -5,6 +5,7 @@ import json
 from django.db import connection, transaction
 from rest_framework import serializers
 from rest_framework.exceptions import APIException
+from config.api_inputs import UUIDTextField
 
 from sales.models import SaleSubmission
 
@@ -16,7 +17,7 @@ class SubmissionConflict(APIException):
 
 def request_id(request):
     """Accept either a UUID body field or UUID Idempotency-Key header."""
-    field = serializers.UUIDField()
+    field = UUIDTextField()
     body = request.data.get('request_id')
     header = request.headers.get('Idempotency-Key')
     body = field.run_validation(body) if body is not None else None

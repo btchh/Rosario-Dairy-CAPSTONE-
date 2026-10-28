@@ -45,6 +45,7 @@ class RevenueReportView(APIView):
 
 class BestSellersReportView(APIView):
     permission_classes = [IsAdmin]
+    max_limit = 500
 
     @cache_api_response
     def get(self, request):
@@ -55,6 +56,8 @@ class BestSellersReportView(APIView):
 
         if limit <= 0:
             return Response({'error': 'limit must be greater than zero.'}, status=400)
+        if limit > self.max_limit:
+            return Response({'error': f'limit must be at most {self.max_limit}.'}, status=400)
 
         try:
             start_date = _parse_date_param(request.query_params.get('start_date'), 'start_date')

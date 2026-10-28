@@ -1,3 +1,5 @@
+from collections.abc import Mapping
+
 from rest_framework import serializers
 
 from ..models import FEFOConf
@@ -13,7 +15,7 @@ class StockThresholdMixin:
     return self.context['_global_low_stock_threshold']
 
   def to_internal_value(self, data):
-    if 'low_stock_threshold' in data:
+    if isinstance(data, Mapping) and 'low_stock_threshold' in data:
       raise serializers.ValidationError({
         'low_stock_threshold': 'Configure the global threshold at /settings/inventory/.',
       })

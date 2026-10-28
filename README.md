@@ -2,6 +2,15 @@
 
 Django/PostgreSQL API for inventory, sales, reporting and SARIMA forecasts.
 
+Development reports, historical backups, demonstration exports and forecast
+experiments were moved to the private sibling folder
+`../SarimaHoes_Archive_20261029/`. Its `README.md` and
+`relocation_manifest.json` describe the contents and verified file checksums.
+These artifacts are outside the backend repository and are not deployment
+inputs. The active cache, local environment and forecast worker logs remain
+local and Git-ignored. Application code, tests, migrations, deployment examples
+and `FRONTEND_HANDOFF.md` remain here.
+
 Report previews and PDF exports accept inclusive `start_date` and `end_date`
 for every report type. Inventory ledgers reconstruct movements and balances for
 the selected dates; their separate health section is explicitly current stock,
@@ -131,7 +140,7 @@ updating; older saved model records and issued predictions remain intact.
 Current/future graph points share one latest closed-period origin; older issues
 are separate comparisons. The current annual outlook combines completed-month
 actuals with the remaining monthly estimates and discloses any current-month
-actual floor. See `FORECAST_PATTERN_REVIEW.md` for source-pattern evidence,
+actual floor. See the archived `FORECAST_PATTERN_REVIEW.md` for source-pattern evidence,
 evaluation limits and the frontend contract additions.
 
 Graph v6 also returns `seasonal_outlook`: 52 weekly or 12 monthly saved points
@@ -139,16 +148,16 @@ starting with the current bucket. The existing centered windows remain intact;
 yearly has no synthetic annual-cycle expansion. Model details expose actual
 projection steps from fitted history, source freshness and correctly scoped
 rolling backtests. Saved availability does not imply fresh data or production
-approval. See `FORECAST_FINALIZATION.md` and `FRONTEND_HANDOFF.md` for behavior,
-verification and the remaining frontend adoption.
+approval. See `FRONTEND_HANDOFF.md` for the integration requirements and the
+archived `FORECAST_FINALIZATION.md` for implementation verification.
 
 The original-only Chapter 4 comparison covers ARIMA, SARIMA, calendar SARIMAX,
 smoothing and four ML methods. Its frozen runner, formulas embedded in the HTML,
 fitted results, figures, CSVs and Excel/PDF reports remain private local artifacts
-in `forecast_experiments/chapter4-comparison-20261028/`; they are not included in
+under the archive's `forecast_experiments/chapter4-comparison-20261028/`; they are not included in
 repository pushes. The comparison itself did not change served models, APIs or
 application dependencies. The subsequent retained-SARIMA implementation is
-documented separately in `FORECAST_FINALIZATION.md`.
+documented separately in the archived `FORECAST_FINALIZATION.md`.
 
 The dummy-sales generator has been removed. Preview cleanup of previously
 generated data with `venv/bin/python manage.py remove_dummy_data`. Apply it with
@@ -165,7 +174,7 @@ refresh using `refresh_beta_graphs --scope demo2026`. Legacy reserved demo
 references are excluded from training. Ordinary local records are included;
 this filter does not independently verify their provenance. The authorized
 2026 demonstration extension has now been removed using its exact private
-manifest; see `DATA_CLEANUP_REPORT.md`. Use a reconciled,
+manifest; see the archived `DATA_CLEANUP_REPORT.md`. Use a reconciled,
 real-only dataset for production; other sales/report APIs are not a mechanism
 for filtering an imported demonstration database.
 

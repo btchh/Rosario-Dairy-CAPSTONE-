@@ -5,17 +5,43 @@ Updated 2026-10-29 (Asia/Manila).
 Implement the outstanding changes below in
 `JayMarkRocero/Rosario-Dairy-Capstone`. The backend support is ready.
 
-**Work boundary:** make backend changes in this repository. Communicate frontend
-change requests through this document; do not edit the sibling frontend
-repository.
+**Work boundary:** frontend change requests normally go through this document.
+On 2026-10-29, the user explicitly authorized applying the forecasting UI changes
+to the local sibling frontend for a testable preview. That exception covers the
+local forecast preview below; it does not authorize publishing or pushing it.
 
 Remote completion checked on 2026-10-28: frontend `origin/main` commit
 [`d4d35f44`](https://github.com/JayMarkRocero/Rosario-Dairy-Capstone/commit/d4d35f44)
 implements the earlier connector, registration limits, report date ranges,
 historical receipt labels and mutation/report-refresh requests. The local
-frontend checkout has now been pulled to `d4d35f44` at the user's request. No
-frontend source was edited. The origin/outlook and model/readiness presentation
-requests below remain outstanding.
+frontend checkout was pulled to `d4d35f44` at the user's request. The local preview
+now implements the origin/outlook and model/readiness presentation requests;
+these changes have not been committed or pushed upstream.
+
+## Local forecast preview for review
+
+Open the local frontend at `http://127.0.0.1:5173/`, sign in as an Admin and use
+the Dashboard's Sales Forecast card. The preview uses the authenticated real-sales
+graph endpoint and its saved amounts; it creates no simulated sales or forecasts.
+
+- Weekly and Monthly retain the centered chart and add **Seasonal outlook** for
+  the returned 52-week/12-month path. Yearly retains its five returned buckets.
+- The current/future series is **Latest outlook**. Earlier issued forecasts are
+  an optional, separately labeled purple comparison with their own provenance.
+- The past/current display bridge is neutral gray and explicitly explained.
+  Null gaps, numeric zero and the server's current/partial flags are preserved.
+- Tooltips expose training cutoff, calendar horizon and actual fitted-model
+  steps. Model cards show separate Combined components, fitted history,
+  freshness, available evaluation evidence and baseline comparisons.
+- Saved availability, source freshness and production approval appear
+  separately. Annual outlooks disclose missing months and any actual floor.
+
+Local verification: 379 frontend tests, TypeScript checks and the Vite build
+pass. Browser checks cover all nine view/period combinations, the separate
+issued comparison and a mobile viewport with horizontal chart scrolling.
+
+The sections below remain the backend contract and upstream review checklist.
+"Frontend adoption pending" refers to upstream adoption, not the local preview.
 
 ## Forecast response and full seasonal outlook
 

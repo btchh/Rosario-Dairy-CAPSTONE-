@@ -1,6 +1,6 @@
 # Frontend handoff and completion status
 
-Updated 2026-10-28 (Asia/Manila).
+Updated 2026-10-29 (Asia/Manila).
 
 Implement the outstanding changes below in
 `JayMarkRocero/Rosario-Dairy-Capstone`. The backend support is ready.
@@ -17,16 +17,12 @@ frontend checkout has now been pulled to `d4d35f44` at the user's request. No
 frontend source was edited. The origin/outlook and model/readiness presentation
 requests below remain outstanding.
 
-## Forecast finalization: SARIMA routing and full seasonal outlook
+## Forecast response and full seasonal outlook
 
-The user retained SARIMA as the model family after the retrospective comparison.
 Graph engine `centered-beta-sarima-v6` and provisional engine
-`actual-provisional-sarima-v4` now use the same exact-source weekly regular SARIMA
-fit when at least 130 consecutive complete source weeks support its training,
-validation and test windows. Monthly regular reuses the primary seasonal fit.
-Eligible unavailable/corrupt primary fits are withheld. Short regular histories
-and sparse feeding retain explicitly labelled provisional models. This family
-choice does not imply that weekly SARIMA beat its baseline.
+`actual-provisional-sarima-v4` expose the selected model through the response
+metadata. Use the returned model labels and availability states for Regular,
+Feeding and Combined; some components can use provisional models or be unavailable.
 
 The endpoint, authentication, Staff/Admin permissions, centered seven-point
 weekly/monthly windows and five-point yearly window remain compatible. The
@@ -41,7 +37,7 @@ backend adds `seasonal_outlook` to `GET /api/forecasting/graph/`:
 
 Yearly returns `seasonal_outlook=null`; its annual nowcast semantics are unchanged.
 The first four outlook predictions match the centered current/future predictions.
-Longer display points are saved research projections, not additional records of
+Longer display points are saved projections, not additional records of
 forecasts actually issued in the past. GET replays their saved values. Combined
 requires both component predictions; unavailable feeding never becomes zero.
 
@@ -68,54 +64,23 @@ stale source history separately. `primary_backtest` identifies rolling
 one-period evidence; do not display it as the accuracy of a 52-week path.
 `baseline_comparison.result=worse` must remain visible when applicable.
 
-The latest original observations still stop in 2025. Refreshing updates saved
-models and paths; it cannot supply missing 2026 actuals. Production approval and
-the current annual nowcast must not be invented. No frontend source was edited.
+## Data freshness and cache alignment
 
-## Dataset reset: original sales only
+Read available history dates, source freshness and approval from the server.
+Refreshing saved forecasts does not make stale observations current. Keep
+unavailable annual totals and missing actuals null, and show the returned
+availability message.
 
-Chapter 4 research is retained in the private local artifacts under
-`forecast_experiments/chapter4-comparison-20261028/`. Its comparative results
-are offline retrospective experiments, not a change to
-the graph engine or API. Do not replace current model metrics/readiness with the
-more favorable calendar-SARIMAX research score; no family was promoted and no
-new frontend implementation is required by that study.
-
-The accompanying seasonality/stationarity review did not itself promote a weekly
-seasonal model. At that review, weekly graphs used regular AR(1) and feeding
-local level; the subsequent user-selected SARIMA routing is described above. Preserve the Regular,
-Feeding and Combined views: weekly regular SARIMA's 26.8135% WAPE and exploratory
-Combined SARIMA's 75.1047% WAPE do not establish that merging the segments improves
-forecasting. Sparse feeding invoices do not certify earlier weeks as zero.
-Show the actual selected family and training date. The expanded seasonal horizon
-has the backend contract above and still needs matching-horizon validation; do not
-create peaks, smooth amounts or relabel a component sum as a single SARIMA model.
-
-The user requested removal of the 2026 generated extension. Its 667 receipts,
-dependent records and proven synthetic-derived forecast artifacts are removed;
-the original-only refresh succeeded (job 22). Current source sales end December
-31, 2025, so strict monthly `stale_data` and an unavailable current annual nowcast
-are expected. Do not preserve old generated chart/PDF/client-cache results after
-the reset or present their research scores as current accuracy. Existing mutation
-invalidation and fresh server responses remain the source of truth.
-
-Weekly research is supported by 156 complete regular weeks. The current-week
-same-season total (PHP 657,858 from Oct 27–Nov 2, 2025) is a weekly seasonal
-comparison, not a daily October 28 prediction or approved forecast. A snapshot's
-`forecast_origin`/`horizon` identifies its extraction-relative calendar position;
-inspect `model_details.trained_through` as well. With stale source data, a current
-week can be many model steps beyond the last observation. Do not call it a fresh
-one-week-ahead fit. See `DATA_CLEANUP_REPORT.md` for exact evidence and limits.
+After a successful refresh or dataset reset, invalidate client graph/report/PDF
+caches and fetch the current backend response. Do not retain old generated
+results or hardcode history dates, model scores or approval states.
 
 ## Change request: one latest outlook and separate issued comparisons
 
-**Backend implemented; frontend adoption pending.** The user selected one
-latest outlook, retaining issued forecasts separately. Graph v5 keeps the same
-endpoint, permissions, nine views, field types and legacy statuses. It
-intentionally changes the **current** weekly/monthly prediction to the latest
-closed-period fit rather than an older issued value, and changes the current
-annual point to a disclosed nowcast. Genuinely future model predictions are
-unchanged. See `FORECAST_PATTERN_REVIEW.md` for the measured causes and limits.
+**Backend implemented; frontend adoption pending.** Graph v6 preserves the
+endpoint, permissions, nine views, field types and legacy statuses. Current and
+future points use one latest outlook; older issued forecasts remain separate
+comparisons. The current annual point is a disclosed nowcast.
 
 Every graph point now adds these fields:
 
@@ -167,8 +132,7 @@ Frontend implementation requested:
    true null gaps and all numeric values. Do not extend the latest-origin model
    backward through historical actuals to create a continuous-looking line.
 5. Replace generic “SARIMA estimates” wording where selected components are
-   AR(1)/local-level. Consume the readiness/model details below; research scores
-   and generated-outcome scores do not establish production approval.
+   AR(1)/local-level. Use the returned readiness/model details and approval state.
 6. Test all nine views, zero-valued issues, unavailable components, missing closed
    months, January/December annual boundaries, same-origin current/future points,
    immutable issue comparison, horizon labels, and the neutral connector. Do not
@@ -177,8 +141,8 @@ Frontend implementation requested:
 ## Change request: distinguish saved projections from validated forecasts
 
 **Backend ready; frontend presentation pending.** `GET /api/forecasting/graph/`
-retains existing fields, permissions and legacy `status` values. Graph v5's
-intentional current-outlook changes are specified above.
+retains existing fields, permissions and legacy `status` values. Graph v6's
+current-outlook fields are specified above.
 It now adds diagnostics without fitting models during requests:
 
 - Top-level and per-view `readiness.status`: `available`, `partially_available`
@@ -426,7 +390,7 @@ Forecast response additions under `data` when dates are supplied:
   selection. Preserve each prediction's actual `date`, `end_date`, and full-period
   amount. Monthly predictions are not prorated to partial dates.
 - The range filters the existing served forecast; it does not retrieve arbitrary
-  archived research models, fabricate historical predictions, or trigger fitting.
+  archived models, fabricate historical predictions, or trigger fitting.
 - When an otherwise ready forecast falls outside the selection, `forecast` is
   empty, `status` is `no_forecasts_in_range`, and the summary prediction amount is
   absent. Existing unavailable statuses such as `stale_data` remain unavailable.
@@ -510,8 +474,8 @@ Display `status`, `status_message`, `limitations`, `warnings` and available
 evaluation counts returned by the forecast endpoints. A `stale_data` report is
 unavailable even when centered graph data exists. An empty evaluation is **not
 yet evaluated**; one or two completed periods are limited evidence, not current
-validated predictive accuracy. Research scores and the below-15% WAPE target
-must not be presented as an achieved live accuracy figure. Preserve the existing
+validated predictive accuracy. Display evaluation metrics with their returned
+basis; targets must not be presented as achieved live accuracy. Preserve the existing
 date-range availability rules above and do not trigger fitting from a preview.
 
 ## Audit follow-up: deployment origin and dependency review

@@ -246,17 +246,20 @@ class TransactionCustomerHistoryTests(TestCase):
         self.assertEqual(response.status_code, 200)
         summary = next(row for row in response.data if row['id'] == self.customer.pk)
         self.assertEqual(summary['transaction_count'], 2)
+        self.assertEqual(summary['total_spent'], '20.00')
         self.assertIsNotNone(summary['last_sale'])
 
         Transaction.objects.filter(pk=checkout.data['id']).update(is_voided=True)
         response = self.client.get(f'/sales/customers/{self.customer.pk}/')
         self.assertEqual(response.data['transaction_count'], 1)
+        self.assertEqual(response.data['total_spent'], '10.00')
 
     def test_customer_with_no_sale_has_empty_summary(self):
         response = self.client.get(f'/sales/customers/{self.customer.pk}/')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['transaction_count'], 0)
         self.assertIsNone(response.data['last_sale'])
+        self.assertEqual(response.data['total_spent'], '0.00')
 
     def test_new_customer_response_has_same_summary_contract(self):
         response = self.client.post('/sales/customers/', {
@@ -265,6 +268,7 @@ class TransactionCustomerHistoryTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data['transaction_count'], 0)
         self.assertIsNone(response.data['last_sale'])
+        self.assertEqual(response.data['total_spent'], '0.00')
 
     def test_transaction_history_exposes_sale_time_product_details(self):
         checkout = self.client.post('/sales/checkout/', {

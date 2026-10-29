@@ -1,15 +1,15 @@
 # Local Docker preparation
 
-This stack runs the backend while the existing frontend stays on its current
-development server. It is a local deployment rehearsal. Production hosting,
+This stack runs the backend and frontend together. The native Vite
+development workflow is also available. It is a local deployment rehearsal. Production hosting,
 TLS, SMTP and separate migration/runtime database roles still need configuration.
 
-For an image archive your frontend teammate can load, and an optional frontend
+For an image archive your frontend teammate can load, including the frontend
 service in the same stack, see [FRONTEND_DOCKER_HANDOFF.md](FRONTEND_DOCKER_HANDOFF.md).
 
 Services are PostgreSQL 18, Redis, a one-shot migration/static-file job, Gunicorn,
-the midnight forecast worker, and an Nginx gateway for API requests and Django
-static files. The API stays at `http://localhost:8000`; the usual frontend origin
+the midnight forecast worker, an Nginx gateway for API requests and Django
+static files, and the built frontend served by its own Nginx container. The API stays at `http://localhost:8000`; the usual frontend origin
 remains `http://localhost:5173`. The Docker database starts empty in its own named
 volume. Existing host data is not imported or mounted automatically.
 
@@ -33,11 +33,13 @@ of overwriting it. Generate secrets with `python -c "import secrets;
 print(secrets.token_urlsafe(64))"` when preparing another machine. This file is
 Git-ignored and excluded from the image build context.
 
-Stop the native Django server if it is using port 8000. Then run:
+Stop native Django/Vite servers if they are using ports 8000/5173. Keep the
+frontend source checkout at `../SarimaHoesButFrontend`, or set `FRONTEND_CONTEXT`
+in `.env.docker` to its path. Then run:
 
 ```bash
 docker compose --env-file .env.docker config --quiet
-docker compose --env-file .env.docker build api
+docker compose --env-file .env.docker build api frontend
 docker compose --env-file .env.docker up -d --no-build
 docker compose --env-file .env.docker ps -a
 docker compose --env-file .env.docker logs migrate api forecast-worker
@@ -67,8 +69,8 @@ docker compose --env-file .env.docker exec api python manage.py showmigrations c
 ```
 
 Expect HTTP 401 from the unauthenticated user endpoint, HTTP 200 for the admin
-stylesheet, a successful health-check exit, and `[X] 0001_initial`. Log in with
-the created administrator through the unchanged frontend, create a product and
+stylesheet, a successful health-check exit, and `[X] 0001_initial`. Open `http://localhost:5173` and log in with
+the created administrator, create a product and
 batch, and verify a sale updates stock and reports. The fresh Docker database
 has no existing accounts or sales; host-database credentials do not create users
 inside it.
@@ -95,8 +97,8 @@ After code changes, stop the application services, rebuild, and rerun startup so
 the migration job runs before the new backend:
 
 ```bash
-docker compose --env-file .env.docker stop gateway api forecast-worker
-docker compose --env-file .env.docker build api
+docker compose --env-file .env.docker stop frontend gateway api forecast-worker
+docker compose --env-file .env.docker build api frontend
 docker compose --env-file .env.docker up --no-build --force-recreate -d
 docker compose --env-file .env.docker ps -a
 ```
@@ -127,6 +129,14 @@ The 20 health/deployment/scheduler tests also passed inside the API container.
 
 The image runs as UID 10001 without local environment files, virtual environments
 or private backups. The application filesystem rejects writes while backup,
-static and temporary paths remain writable. The optional frontend proxy was
-tested with a stock Nginx image, including `/backend/` forwarding and SPA fallback;
-the teammate's actual frontend image still needs to be built and tested.
+static and temporary paths remain writable. The original proxy check used a stock Nginx image. The integrated frontend
+now has its own Dockerfile and is verified separately as part of the combined
+application handoff.
+
+The integrated frontend verification also passed on 2026-10-29: 397 tests on
+Node 24/26, strict TypeScript, production build and zero reported dependency
+vulnerabilities. Real browser checks used disposable admin/staff accounts and
+verified checkout, stock and customer totals, cancellation, inventory report
+preview and PDF. Separate review graph fixtures exercised all nine forecast
+views, seasonal/issued/annual controls and mobile layout; they do not establish
+model accuracy. The normal application is available at localhost:5173.

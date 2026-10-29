@@ -1,9 +1,10 @@
 from config.data_cache import CachedListMixin, cache_api_response
+from decimal import Decimal
 from django.conf import settings
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from django.db.models import ProtectedError
-from django.db.models import Count, Max, Q
+from django.db.models import Count, Max, Q, Sum
 from rest_framework.decorators import action
 from ..models import Customer
 from ..serializers import CustomerSummarySerializer, TransactionSerializer
@@ -51,6 +52,8 @@ class CustomerViewSet(CachedListMixin, viewsets.ModelViewSet):
         return queryset.annotate(
             transaction_count=Count('transactions', filter=active_sales, distinct=True),
             last_sale=Max('transactions__created_at', filter=active_sales),
+            total_spent=Sum('transactions__total_amount', filter=active_sales,
+                            default=Decimal('0.00')),
         )
 
     def get_permissions(self):

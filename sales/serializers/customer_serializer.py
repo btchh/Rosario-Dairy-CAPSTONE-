@@ -36,6 +36,8 @@ class CustomerSerializer(serializers.ModelSerializer):
 class CustomerSummarySerializer(CustomerSerializer):
     transaction_count = serializers.IntegerField(read_only=True)
     last_sale = serializers.DateTimeField(read_only=True, allow_null=True)
+    # A customer's lifetime total can exceed the precision of one receipt.
+    total_spent = serializers.DecimalField(max_digits=30, decimal_places=2, read_only=True)
 
     class Meta(CustomerSerializer.Meta):
-        fields = CustomerSerializer.Meta.fields + ['transaction_count', 'last_sale']
+        fields = CustomerSerializer.Meta.fields + ['transaction_count', 'last_sale', 'total_spent']

@@ -60,8 +60,10 @@ def remove_dummy_data(folder):
         if StockReturn.objects.filter(sale_item__in=items).exists():
             raise CommandError('Dummy receipts have recorded stock returns; reconcile before removal.')
         manifest['removed'] = {model._meta.label: len(ids) for model, ids in selected.items()}
+        # Derived invalidation records change as the selected rows are deleted.
         protected = {model: model._base_manager.exclude(pk__in=selected.get(model, []))
-                     for model in apps.get_models()}
+                     for model in apps.get_models()
+                     if model._meta.label_lower != 'config.cacheinvalidation'}
         before = {model: fingerprint(query) for model, query in protected.items()}
         backup = folder/'database-before.json.gz'
         with backup.open('xb') as raw:

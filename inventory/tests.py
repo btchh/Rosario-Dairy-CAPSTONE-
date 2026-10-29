@@ -1876,6 +1876,25 @@ class ProductConsolidationTests(TestCase):
         fields.update(overrides)
         return Product.objects.create(**fields)
 
+    def test_command_preserves_business_data_while_recording_cache_invalidation(self):
+        from io import StringIO
+        import json
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from django.core.management import call_command
+
+        with TemporaryDirectory() as directory:
+            folder = Path(directory)/'backups'
+            original = Path
+            with patch('inventory.management.commands.consolidate_products.Path',
+                       side_effect=lambda value: folder if value == 'backups' else original(value)):
+                call_command('consolidate_products', apply=True, stdout=StringIO())
+            audit = json.loads(next(folder.glob('*/manifest.json')).read_text())
+            self.assertTrue(audit['completed'])
+            self.assertEqual(audit['before'], audit['after'])
+            self.assertTrue(Path(audit['backup']).exists())
+        self.assertEqual(list(Product.objects.values_list('pk', flat=True)), [self.original.pk])
+
     def test_formatting_only_equivalence_preserves_meaningful_punctuation(self):
         self.assertEqual(product_name_key('FML (Pouch)'), product_name_key('fml pouch'))
         self.assertNotEqual(product_name_key('WC1.60kg'), product_name_key('WC160kg'))

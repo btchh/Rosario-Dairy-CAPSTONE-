@@ -62,5 +62,5 @@ def consolidate_customers(plan=None):
             is_active=Customer.objects.filter(pk__in=ids, is_active=True).exists())
         Customer.objects.filter(pk__in=removed).delete()
     if plan['merge_groups']:
-        transaction.on_commit(invalidate_data_cache)
+        invalidate_data_cache()
     return plan

@@ -32,7 +32,8 @@ def fingerprints(tables):
     quote = connection.ops.quote_name
     with connection.cursor() as cursor:
         for table in tables:
-            if table == 'inventory_product':
+            # Cache invalidation metadata intentionally changes during merges.
+            if table in {'inventory_product', 'config_cacheinvalidation'}:
                 continue
             excluded = CHANGED_COLUMNS.get(table, set())
             columns = [col.name for col in connection.introspection.get_table_description(cursor, table)

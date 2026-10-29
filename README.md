@@ -262,8 +262,20 @@ venv/bin/python manage.py test --keepdb --noinput
 Regression tests, migrations and operational evidence commands are retained.
 No additional dependencies are needed for these changes.
 
-Known maintenance limitation: if shared-cache invalidation fails after a commit,
-ordinary cached business values may stay stale until expiry or a later successful
-invalidation. Staff visibility is independently checked before cache lookup, and
-the new graph API checks its source revision directly. Production needs a
-least-privilege database role rather than the development database privileges.
+Cache invalidation now records pending changes in the database before attempting
+to rotate shared cache versions. API/report reads and runtime settings include
+those records in their cache namespaces, so failed invalidation cannot reuse old
+payloads or rendered JSON. Successful writes clear their pending records;
+ordinary reads recover failed invalidations in batches of up to 1000 after the
+cache recovers. Rollbacks remove their own pending changes. Each runtime-settings
+or business-cache lookup adds one small indexed check; ordinary cached API lists
+use two, plus existing staff visibility checks. Bulk-write workflows record invalidation
+inside their database transaction.
+
+Apply `config.0001_initial` with `venv/bin/python manage.py migrate` before
+restarting all backend workers. The new table contains only cache metadata;
+existing business records and frontend response fields are unchanged. A separate
+migration role must grant the runtime role SELECT, INSERT and DELETE access to
+`config_cacheinvalidation`. Verify outage, rollback, concurrency and recovery
+behavior with `venv/bin/python manage.py test config.test_cache_consistency`.
+Production still needs a least-privilege role rather than development privileges.

@@ -235,7 +235,9 @@ class DataCacheTests(TestCase):
                 self.assertEqual(first.status_code, 200, first.data)
                 # Some handlers create singleton configuration on first use.
                 self.client.get(endpoint)
-                with self.assertNumQueries(0):
+                # Two indexed pending-invalidation reads protect runtime
+                # settings and payloads even if the cache missed a rotation.
+                with self.assertNumQueries(2):
                     repeated = self.client.get(endpoint)
                 self.assertEqual(first.data, repeated.data)
 

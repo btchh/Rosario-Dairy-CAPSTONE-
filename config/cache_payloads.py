@@ -1,9 +1,9 @@
 """Keep versioned payloads hot in memory while retaining a shared disk/Redis copy.
 
 The request cache key contains the current shared business-data version. That
-version is always read from the shared cache, so another process's committed
-writes invalidate memory entries too. Store the original expiry alongside the
-value so loading an existing shared entry never extends its lifetime.
+version combines the shared namespace with database-backed pending changes, so
+failed invalidation cannot revive memory entries. Store original expiry alongside
+the value so loading an existing shared entry never extends its lifetime.
 """
 import time
 

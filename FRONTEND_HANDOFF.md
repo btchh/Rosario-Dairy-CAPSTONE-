@@ -65,6 +65,19 @@ retain the form so the user can correct it.
 Error bodies retain the existing shapes: an `error`/`detail` message, a field-to-
 messages map, or a non-field error list. The frontend should support these forms.
 
+## Backend cache consistency update
+
+No frontend changes are required for this update. Failed shared-cache
+invalidation now retains a database marker that prevents older sales, inventory,
+report and runtime-settings payloads from being reused. Pending invalidations
+recover automatically after the cache returns. Endpoint URLs, successful
+response fields and existing validation error shapes remain compatible.
+
+Backend deployment requires `python manage.py migrate` to apply
+`config.0001_initial`, followed by restarting all backend workers. This migration
+adds cache metadata only. Ordinary cached API lists perform two small indexed
+database checks for freshness, in addition to existing staff visibility checks.
+
 ## Completed upstream: dashboard forecast historical dates
 
 The new Dates control sends its To date as `as_of` to

@@ -60,5 +60,5 @@ def consolidate_products():
             name=plan['name'], is_active=Product.objects.filter(pk__in=ids, is_active=True).exists())
         Product.objects.filter(pk__in=removed).delete()
     if plans:
-        transaction.on_commit(invalidate_data_cache)
+        invalidate_data_cache()
     return plans

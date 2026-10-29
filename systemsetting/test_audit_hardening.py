@@ -15,7 +15,8 @@ class RuntimeSettingsCacheRaceTests(TransactionTestCase):
     def test_initial_singleton_creation_stays_cached_after_commit(self):
         cache.clear()
         first = get_runtime_settings()
-        with self.assertNumQueries(0):
+        # Settings payload stays warm; only the durable invalidation guard is read.
+        with self.assertNumQueries(1):
             self.assertEqual(get_runtime_settings(), first)
 
     def test_late_old_reader_cannot_overwrite_newly_committed_preferences(self):

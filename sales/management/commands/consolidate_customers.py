@@ -21,7 +21,8 @@ def fingerprints(tables):
     quote = connection.ops.quote_name
     with connection.cursor() as cursor:
         for table in tables:
-            if table == 'sales_customer':
+            # Cache invalidation metadata intentionally changes during merges.
+            if table in {'sales_customer', 'config_cacheinvalidation'}:
                 continue
             excluded = {'customer_id'} if table in ('sales_transaction', 'sales_order') else set()
             columns = [c.name for c in connection.introspection.get_table_description(cursor, table) if c.name not in excluded]

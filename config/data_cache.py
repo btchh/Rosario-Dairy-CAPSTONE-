@@ -3,18 +3,18 @@ from functools import wraps
 from hashlib import sha256
 import json
 import logging
-from uuid import uuid4
 
 from django.conf import settings
 from django.core.cache import cache
-from django.db import transaction
 from django.db.models.signals import post_delete, post_save
 from django.utils import timezone
 from rest_framework.response import Response
 from .cache_payloads import get_payload, set_payload
+from .cache_invalidation import cache_namespace, invalidate_namespace
 
 logger = logging.getLogger(__name__)
 VERSION_KEY = 'business-data:version:v1'
+NAMESPACE = 'business-data'
 
 
 def staff_visibility_version():
@@ -34,25 +34,12 @@ def staff_visibility_version():
 
 def data_version(visible_to_staff=False):
     visibility = staff_visibility_version() if visible_to_staff else None
-    try:
-        version = cache.get(VERSION_KEY)
-        if version is None:
-            cache.add(VERSION_KEY, uuid4().hex, timeout=None)
-            version = cache.get(VERSION_KEY)
-        version = version or uuid4().hex
-    except Exception:
-        logger.exception('Data cache unavailable; reading directly')
-        version = uuid4().hex
-    return f'{version}:{visibility}' if visibility else version
+    version = cache_namespace(NAMESPACE, VERSION_KEY)
+    return sha256(f'{version}:{visibility}'.encode()).hexdigest() if visibility else version
 
 
 def invalidate_data_cache(using=None):
-    def invalidate():
-        try:
-            cache.set(VERSION_KEY, uuid4().hex, timeout=None)
-        except Exception:
-            logger.exception('Data cache invalidation failed')
-    transaction.on_commit(invalidate, using=using)
+    invalidate_namespace(NAMESPACE, VERSION_KEY, using=using)
 
 
 def _business_write(sender, using, update_fields=None, **kwargs):

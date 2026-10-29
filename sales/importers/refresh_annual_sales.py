@@ -254,5 +254,5 @@ def apply_plan(parsed, planned, admin_username):
         raise ValueError('Refreshed sales failed revenue/count reconciliation; rolling back.')
     if TransactionItem.objects.filter(transaction__source_reference__in=wanted).count() != sum(len(t.lines) for t in planned):
         raise ValueError('Refreshed item counts do not reconcile; rolling back.')
-    transaction.on_commit(invalidate_data_cache)
+    invalidate_data_cache()
     return dict(counts)

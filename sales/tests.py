@@ -569,7 +569,8 @@ class SalesByCategoryReportTests(TestCase):
         from systemsetting.runtime import get_runtime_settings
         with self.captureOnCommitCallbacks(execute=True):
             get_runtime_settings()
-        with self.assertNumQueries(1):
+        # One aggregate plus the runtime and business invalidation guards.
+        with self.assertNumQueries(3):
             response = self.client.get('/sales/reports/sales-by-category/')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data[0]['name'], self.category.name)
@@ -1166,13 +1167,13 @@ class SalesAuditRegressionTests(TestCase):
             response = client.get('/sales/transactions/')
 
         self.assertEqual(response.status_code, 200)
-        # Two bounded reads verify current category/product access boundaries,
+        # Bounded reads verify visibility and both durable invalidation guards,
         # including when a previous cache invalidation failed.
-        self.assertLessEqual(len(queries), 7)
+        self.assertLessEqual(len(queries), 9)
         with CaptureQueriesContext(connection) as warm_queries:
             repeated = client.get('/sales/transactions/')
         self.assertEqual(repeated['X-Data-Cache'], 'HIT')
-        self.assertEqual(len(warm_queries), 2)
+        self.assertEqual(len(warm_queries), 4)
 
     def test_order_history_query_count_does_not_grow_per_item(self):
         from systemsetting.runtime import get_runtime_settings
@@ -1190,7 +1191,7 @@ class SalesAuditRegressionTests(TestCase):
             response = client.get('/sales/orders/')
 
         self.assertEqual(response.status_code, 200)
-        self.assertLessEqual(len(queries), 7)
+        self.assertLessEqual(len(queries), 9)
 
 
 # Annual sales parsing and import

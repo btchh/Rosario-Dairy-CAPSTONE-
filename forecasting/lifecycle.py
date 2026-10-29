@@ -56,7 +56,7 @@ def attest_coverage(month, username, note, confirm_zero=False):
             month=month, source_revision=month_revision(snapshot, month),
             defaults={'reviewed_by': reviewer, 'note': note.strip(), 'confirmed_zero': zero})
         if created:
-            transaction.on_commit(invalidate_data_cache)
+            invalidate_data_cache()
     return result, created
 
 
@@ -238,7 +238,7 @@ def refresh_models(as_of=None):
         gate = quality_gate(run, snapshot, coverage)
         promoted = _promote(run, gate)
         if created or scored or issued or promoted:
-            transaction.on_commit(invalidate_data_cache)
+            invalidate_data_cache()
     return run, {'created': created, 'new_scores': scored, 'issued': issued, 'promoted': promoted, 'quality_gate': gate}
 
 
@@ -257,5 +257,5 @@ def activate_model(model_id):
             raise ValueError('Activation withheld: ' + ', '.join(gate['reasons']))
         promoted = _promote(run, gate, reason='operator_activation_or_rollback')
         if promoted:
-            transaction.on_commit(invalidate_data_cache)
+            invalidate_data_cache()
     return run, promoted

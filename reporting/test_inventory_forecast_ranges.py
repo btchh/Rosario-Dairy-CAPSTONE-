@@ -9,7 +9,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from inventory.models import Category, Product, ProductBatch, StockAdjustment
+from inventory.models import Category, FEFOConf, Product, ProductBatch, StockAdjustment
 from reporting.pdf import Report
 from reporting.services import generate_pdf, get_report, inventory_ledger, sarima_forecast
 from sales.models import Customer, StockReturn, Transaction, TransactionItem
@@ -89,6 +89,8 @@ class InventoryRangeTests(TestCase):
         self.assertEqual(get_report('inventory', **params)['ledger'], first['ledger'])
 
     def test_preview_pdf_and_filename_use_the_same_range_and_separate_current_health(self):
+        # Prepare health settings before taking the preview snapshot.
+        FEFOConf.get_config()
         params = {'type': 'inventory', 'start_date': '2024-01-10', 'end_date': '2024-01-15'}
         preview = self.client.get('/api/reports/preview/', params)
         self.assertEqual(preview.status_code, 200)

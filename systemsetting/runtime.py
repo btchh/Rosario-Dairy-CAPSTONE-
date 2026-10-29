@@ -1,15 +1,16 @@
 import logging
-from uuid import uuid4
 
 from django.conf import settings
 from django.core.cache import cache
 from django.db import transaction
+from config.cache_invalidation import cache_namespace, invalidate_namespace
 
 from .models import SystemSettings
 
 
 RUNTIME_SETTINGS_CACHE_KEY = 'systemsetting:runtime:v2'
 RUNTIME_SETTINGS_VERSION_KEY = 'systemsetting:runtime:version:v2'
+RUNTIME_NAMESPACE = 'runtime-settings'
 logger = logging.getLogger(__name__)
 
 
@@ -34,10 +35,7 @@ def get_default_runtime_settings():
 def get_runtime_settings():
     data_key = None
     try:
-        version = cache.get(RUNTIME_SETTINGS_VERSION_KEY)
-        if version is None:
-            cache.add(RUNTIME_SETTINGS_VERSION_KEY, uuid4().hex, timeout=None)
-            version = cache.get(RUNTIME_SETTINGS_VERSION_KEY)
+        version = cache_namespace(RUNTIME_NAMESPACE, RUNTIME_SETTINGS_VERSION_KEY)
         data_key = f'{RUNTIME_SETTINGS_CACHE_KEY}:{version}' if version else None
         data = cache.get(data_key) if data_key else None
     except Exception:
@@ -82,12 +80,7 @@ def invalidate_runtime_settings(*args, using=None, created=False, **kwargs):
     # Updates and deletions must retire in-flight readers' namespaces.
     if created:
         return
-    def invalidate():
-        try:
-            cache.set(RUNTIME_SETTINGS_VERSION_KEY, uuid4().hex, timeout=None)
-        except Exception:
-            logger.exception('Runtime-settings cache invalidation failed')
-    transaction.on_commit(invalidate, using=using)
+    invalidate_namespace(RUNTIME_NAMESPACE, RUNTIME_SETTINGS_VERSION_KEY, using=using)
 
 
 def get_brand_name():

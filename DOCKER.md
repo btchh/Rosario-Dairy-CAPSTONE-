@@ -117,8 +117,22 @@ verify `manage.py check --deploy --database default` with the runtime credential
 Review the official [Python image](https://hub.docker.com/_/python) and pin tested
 image digests for release reproducibility after the first successful build.
 
-Moving the existing local database into Docker is a separate backup-and-restore
-step. No business data was moved as part of this preparation.
+New installations start with an empty database. On 2026-10-29 the preparation
+machine copied its existing local database into Docker after saving private
+source/target backups. Exact row counts and canonical content hashes matched
+for all 56 tables, including retained historical tables. The copied dataset
+contains 4,835 transactions, 324 customers, 170 products and 198 product batches after cleanup.
+The host database was preserved during transfer. Subsequently, the user's sole
+2026 test receipt (#41886, PHP 4,000) was backed up and removed from both host
+and Docker databases, and its 100 BB200 units were restored. Unrelated records
+were verified unchanged; both databases have no remaining 2026 transactions.
+
+A separate private backend-with-data package can seed the frontend developer's
+own Docker database. Its START_HERE.md and restore-database.sh describe the
+backup/restore process; DEV_LOGIN.txt supplies a new development-only admin
+login. Existing account passwords and session/reset tokens are removed only
+from that shareable snapshot. The normal source/image archive still excludes
+database contents and private environment files.
 
 ## Verification on 2026-10-29
 
@@ -141,3 +155,14 @@ The test process used an isolated in-memory cache and a fast test-only password
 hasher; application runtime settings were unchanged. Both Compose configurations
 validated, the live API/database/Redis health checks passed, migrations were
 current, and the gateway returned the expected user 401 and static-file 200.
+
+## Keep 2026 empty in the development dataset
+
+The three remaining 2026 product batches and one disposal adjustment were backed
+up and removed from both local databases. The active data now has 4,835 receipts,
+324 customers, 170 products and 198 historical reference batches, with zero
+recorded 2026 sales/orders/stock activity. Historical imports were preserved.
+
+Forecasts for 2026 remain visible in charts and reports. The cleanup removes
+recorded business activity only; forecast projections, saved model artifacts and
+issued forecasts are retained. A forecast does not imply recorded sales.

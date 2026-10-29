@@ -83,3 +83,35 @@ backend-only stack.
 
 These are local development defaults. Remote access, production TLS/origins and
 database roles require the deployment configuration described in `DOCKER.md`.
+
+## Optional private package with existing business data
+
+The separate `rosario-backend-with-data-*.tar.gz` package contains the backend
+image, `database.dump`, `restore-database.sh`, `DEV_LOGIN.txt` and
+`START_HERE.md`, plus the configuration/handoff files. It contains private
+customer and business records and newly generated development credentials.
+Share it directly with the intended developer and keep it outside Git.
+The standard `docker/export-handoff.sh` archive continues to exclude data.
+
+Verify the downloaded archive's checksum, extract it, then follow START_HERE.md.
+Load backend-image.tar and create a fresh private .env.docker using the included
+template. With Docker and Bash available, run:
+
+```bash
+bash restore-database.sh
+```
+
+The script backs up the target Docker database before restoring the snapshot,
+clears the stack's cache, applies migrations and starts the backend. It replaces
+existing target data, so use it for importing a snapshot, not ordinary startup.
+Use the credentials in DEV_LOGIN.txt through the unchanged frontend development
+server on port 5173. The backend remains on localhost:8000. Each developer runs
+an independent data copy; changes are not synchronized between machines.
+The copied dataset's original account passwords and old session/reset tokens
+are disabled/removed. Original accounts on the sender's local and normal Docker
+databases retain their credentials. No public database port is opened.
+
+The latest development snapshot removes recorded 2026 sales and stock activity.
+Forecasts for 2026 remain visible in charts and reports; they are projections,
+separate from recorded transactions. Saved models and issued forecasts remain
+intact. Use the newest package; older archives are superseded.

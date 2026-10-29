@@ -22,6 +22,9 @@ or historical forecasts. Defaults remain report-specific when dates are omitted.
 
 ## Start
 
+For the local Docker stack, see [DOCKER.md](DOCKER.md). It includes a separate
+PostgreSQL database, Redis, API/static gateway and the forecast scheduler.
+
 Always apply migrations before starting, including after pulling backend code:
 
 ```bash

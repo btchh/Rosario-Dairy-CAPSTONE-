@@ -1,0 +1,114 @@
+name: rosario-dairy-local
+
+x-backend: &backend
+  image: rosario-dairy-backend:local
+  build:
+    context: .
+  environment: &backend-environment
+    DJANGO_ENV: development
+    DJANGO_DEBUG: "false"
+    DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env.docker}
+    DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,[::1]}
+    DJANGO_TIME_ZONE: Asia/Manila
+    DJANGO_EMAIL_BACKEND: django.core.mail.backends.console.EmailBackend
+    DJANGO_NUM_PROXIES: "1"
+    DB_NAME: ${DB_NAME:-rosario_dairy}
+    DB_USER: ${DB_USER:-rosario_local}
+    DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env.docker}
+    DB_HOST: db
+    DB_PORT: "5432"
+    DB_CONNECT_TIMEOUT: "5"
+    REDIS_URL: redis://redis:6379/0
+    CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+    CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp
+  volumes:
+    - backend_backups:/app/backups
+    - staticfiles:/app/staticfiles
+
+services:
+  db:
+    image: postgres:18-bookworm
+    environment:
+      POSTGRES_DB: ${DB_NAME:-rosario_dairy}
+      POSTGRES_USER: ${DB_USER:-rosario_local}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env.docker}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  migrate:
+    <<: *backend
+    command: ["sh", "-c", "python manage.py migrate --noinput && python manage.py collectstatic --noinput"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "docker/healthcheck.py"]
+      interval: 30s
+      timeout: 20s
+      start_period: 30s
+      retries: 3
+    restart: unless-stopped
+    stop_grace_period: 60s
+
+  forecast-worker:
+    <<: *backend
+    command: ["python", "manage.py", "watch_forecast_models"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 60s
+
+  gateway:
+    image: nginx:stable-alpine
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8080"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - staticfiles:/srv/static:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  backend_backups:
+  staticfiles:

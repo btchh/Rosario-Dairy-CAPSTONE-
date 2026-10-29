@@ -2,51 +2,57 @@
 
 Updated 2026-10-29 (Asia/Manila).
 
-**Overall status: frontend implementation and combined Docker verification
-complete locally.** Public production
-hosting and forecast approval remain separate deployment/evidence decisions.
+**Overall status: partially satisfied.** Implement the outstanding changes below
+in `JayMarkRocero/Rosario-Dairy-Capstone`. The backend exposes the required API
+fields; this does not imply production forecast approval.
 
-Frontend changes are on `beta/docker-handoff` in
-`JayMarkRocero/Rosario-Dairy-Capstone`, based on upstream `7d59b2ef`.
-Backend changes are on `beta/docker` in this repository. The latest implementation remains local until both beta branches are pushed. Both source trees must be shared together
-when building from source; the complete Docker archive carries both app images.
+**Work boundary:** make backend changes in this repository. Communicate frontend
+implementation requests through this document; do not edit the sibling frontend
+repository during backend maintenance.
+
+Checked on 2026-10-29: the frontend was fetched and reset to the latest
+`origin/main`, commit
+[`7d59b2ef`](https://github.com/JayMarkRocero/Rosario-Dairy-Capstone/commit/7d59b2ef6e184023af48587510b108d3a3fd484f),
+with a clean working tree. This update adds sidebar toggles; it does not
+implement the pending forecast or customer-total work below. Our local frontend
+implementation and its beta branch have been discarded at the user's request.
+Its test results and combined frontend Docker archive are no longer the active
+handoff. Future implementation requests belong in this backend document.
 
 ## Current completion checklist
 
-| Requirement | Local implementation status |
+| Requirement | Status in frontend `7d59b2ef` |
 | --- | --- |
-| Registration length limits and Unicode handling | Complete; retained |
-| Selected dates on all six report previews and PDF exports | Complete; retained |
-| Historical receipt labels and preserved source values | Complete; retained |
-| Mutation cache invalidation and report-refresh cooldown handling | Complete; retained |
-| Neutral adjacent past/current display bridge | Complete; preserves values, gaps and provenance |
-| Historical dashboard forecast dates | Complete; retained |
-| Per-customer lifetime total (`total_spent`) | Complete in API, table, profile and mobile card |
-| 52-week/12-month Seasonal outlook | Complete; explicit control, centered history retained |
-| Latest outlook, origin/horizon and original issued comparisons | Complete; optional separate comparison series |
-| Component models, freshness, approval and baseline comparison | Complete; separate primary monthly publication evidence |
-| Current-year actuals/estimates, missing months and actual floor | Complete; values come from the backend |
-| Node browser-storage test isolation | Complete; independent session storage per test |
-| Dependency review and CI/staging smoke workflow | Code complete; current audit reports zero vulnerabilities |
-| Combined app browser verification | Complete; admin/staff, sale/cancel, stock, totals, preview/PDF and mobile checks |
-| Complete app export | Both application images are exported by `docker/export-handoff.sh` |
-| Public HTTPS hosting, SMTP and production database roles | Environment configuration required before public deployment |
+| Registration length limits and Unicode handling | Complete; retained from `d4d35f44` |
+| Selected dates on all six report previews and PDF exports | Complete; retained from `d4d35f44` |
+| Historical receipt amount labels and preserved source values | Complete; retained from `d4d35f44` |
+| Mutation cache invalidation and manual report-refresh cooldown handling | Complete; retained from `d4d35f44` |
+| Adjacent past/current chart connector | Basic gap fix complete; green connector still needs the origin/outlook distinction below |
+| Historical date controls on the dashboard forecast chart | Complete; new upstream behavior described below |
+| Per-customer lifetime total (`total_spent`) | Backend complete; frontend pending |
+| Explicit 52-week/12-month Seasonal outlook display | Pending |
+| Latest outlook labeling, origin/horizon tooltips and separate issued comparisons | Pending |
+| Per-component model details, source freshness, production approval and baseline comparison | Pending |
+| Current-year nowcast calculation, missing months and actual-floor explanations | Pending |
+| Node 26 browser-storage test isolation | Pending; seven failures previously reproduced before sidebar update |
+| Production origin, staging workflows and dependency review | Pending deployment follow-up |
 
-Verification on 2026-10-29: all **397 tests pass** on
-native Node 26 and in the Node 24 Docker build, without the earlier storage flag.
-Strict TypeScript checking passes with the declared TypeScript 7.0.2 dependency.
-The production Vite build and final frontend runtime image completed in Docker.
-Browser checks passed for both roles, checkout, stock deduction/restoration,
-customer totals and void exclusion, report preview/PDF, all nine forecast views,
-seasonal controls and mobile layout. Browser forecast graphs used explicit
-review fixtures; this verifies presentation rather than fitted-model accuracy.
-All business workflow checks used the real API in a disposable Docker database. `npm audit` reports zero known
-vulnerabilities after compatible Vite/router/transitive updates. The lockfile
-matches the manifest; the outdated pnpm Vite override was removed.
+The graph interfaces and chart still use the earlier centered fields. They do
+not consume `seasonal_outlook`, `model_details`, graph `readiness`, origin/horizon
+metadata, issued comparisons or annual-outlook details. The chart still uses
+generic "SARIMA estimates" and "Future predictions" labels. The implementation
+requirements below remain outstanding even though the existing chart renders.
+
+Earlier verification of `de34e12c`: Vite build and strict TypeScript checks
+passed. Its suite passed 378/378 with the documented Node storage flag; the
+default Node 26 run had seven POS UI failures. The latest sidebar update adds
+tests, so those counts do not verify `7d59b2ef`. The discarded local frontend's
+397-test result and dependency fixes do not apply to upstream main. Recheck the
+upstream checkout's tests and dependencies when the frontend developer resumes.
 
 ## Customer lifetime sales total
 
-**Implemented in the backend and local frontend.** Customer summaries include
+**Backend implemented; frontend display pending.** Customer summaries include
 the read-only `total_spent` field, a decimal string with two fractional digits
 (for example, `"1250.50"`). This is an additive response field on
 `GET /sales/customers/`, `GET /sales/customers/{id}/`, and customer create/update
@@ -65,12 +71,14 @@ All payment statuses count, including pending and unknown, so this is recorded
 sales value rather than verified cash collected. Unassigned transactions do not
 belong to a customer's total, and original imported source amounts are unchanged.
 
-The frontend maps the decimal string to `totalSpent` and displays **Total
-purchases** in the admin table/profile and mobile card. Formatting preserves
-large values without rounding through JavaScript Number. An older API that
-omits the field displays Unavailable, preserving the distinction from zero.
-Existing mutation cache invalidation refreshes customer summaries after sales
-and cancellations. Receipt pages are never used to calculate the total.
+Requested frontend implementation: map the server's decimal string to
+`totalSpent` and display **Total purchases** in the admin customer table,
+profile and mobile card. Preserve decimal precision when formatting; do not
+calculate totals from paginated receipt history. If an older API omits the
+field, display Unavailable rather than zero. Refresh customer summaries after
+sales and cancellations using the existing mutation cache invalidation.
+Explain that the total includes pending-payment recorded sales. Add mapping
+and display tests for zero, missing values, large amounts and voided receipts.
 
 No database migration is needed. Restart backend processes after deployment.
 For a warm shared cache, retire older business API payloads after restarting:
@@ -131,7 +139,7 @@ or the pending model/readiness presentation.
 
 ## Forecast response and full seasonal outlook
 
-**Implemented in the backend and local frontend.**
+**Backend implemented; frontend display pending in `7d59b2ef`.**
 
 Graph engine `centered-beta-sarima-v6` and provisional engine
 `actual-provisional-sarima-v4` expose the selected model through the response
@@ -180,9 +188,9 @@ one-period evidence; do not display it as the accuracy of a 52-week path.
 
 ## Data freshness and cache alignment
 
-**Implemented locally.** Existing forecast-refresh and business-mutation
+**Partially implemented.** Existing forecast-refresh and business-mutation
 invalidation includes graph, report and PDF cache groups. Source-freshness,
-approval and annual-null explanations are displayed using the contract below.
+approval and annual-null explanations still need the presentation below.
 
 Read available history dates, source freshness and approval from the server.
 Refreshing saved forecasts does not make stale observations current. Keep
@@ -195,7 +203,7 @@ results or hardcode history dates, model scores or approval states.
 
 ## Change request: one latest outlook and separate issued comparisons
 
-**Implemented in the backend and local frontend.** Graph v6 preserves the
+**Backend implemented; frontend adoption pending.** Graph v6 preserves the
 endpoint, permissions, nine views, field types and legacy statuses. Current and
 future points use one latest outlook; older issued forecasts remain separate
 comparisons. The current annual point is a disclosed nowcast.
@@ -258,7 +266,7 @@ Frontend implementation requested:
 
 ## Change request: distinguish saved projections from validated forecasts
 
-**Implemented in the backend and local frontend.** `GET /api/forecasting/graph/`
+**Backend ready; frontend presentation pending.** `GET /api/forecasting/graph/`
 retains existing fields, permissions and legacy `status` values. Graph v6's
 current-outlook fields are specified above.
 It now adds diagnostics without fitting models during requests:
@@ -301,18 +309,142 @@ latest closed-month model origin. Identify the current-year actual conditioning
 explicitly. Keep prediction-basis and partial-period explanations; adapt the
 completed connector implementation below to the neutral treatment above.
 
-## Browser storage and prediction-boundary regression coverage
+## Test follow-up: isolate browser storage under Node 26
 
-`tests/storage.cjs` gives each test an independent session-storage map. The POS
-and API harnesses reset it without changing production duplicate-sale guards.
-The ordinary suite now passes on both Node 24 and 26. No runtime storage flag
-is required.
+Earlier frontend `de34e12c` built successfully and its complete suite passed
+**378/378 tests** when run with
+`node --no-experimental-webstorage --test tests/*.test.cjs`.
+Under this host's default Node 26.12.1, **371 tests passed and seven POS UI tests
+failed**, reproducing the issue previously found at `d4d35f44`. Native
+`sessionStorage` retains an earlier test's
+unconfirmed-sale entry because test setup resets only `localStorage` and caches.
+The same POS test passes alone; running the preceding ambiguous-order test
+first reproduces the failure. This is test isolation, not a new API regression.
 
-The chart's adjacent prediction connector is neutral and explicitly described
-as a display bridge. It adds no data point, tooltip value, legend item or
-forecast evaluation. Existing calendar, zero/null, leap-year, transition and
-immutability tests remain in place, with new tests for all nine period/view
-combinations, seasonal horizons and optional original issued comparisons.
+Reset or mock `sessionStorage` in the frontend test setup, including pending-sale
+state, and verify tests both individually and as a suite. Preserve the production
+duplicate-sale guard. The runtime flag above is an isolated verification aid;
+no frontend source or dependency files were modified by this backend review.
+
+## Completed upstream: basic adjacent past/current forecast connector
+
+**Implemented in frontend `d4d35f44`.** The requirements and reference code below
+are retained for regression review and remain present at `7d59b2ef`. The green
+reference implementation fixes the original gap; adapt its color/label for the
+pending latest-outlook distinction above rather than treating it as the final
+presentation. The backend returns consecutive calendar
+buckets and intentionally separates `past_prediction` from
+`future_prediction`. The artificial break at the current-period boundary comes
+from `src/features/dashboard/components/admin/ForecastChart.tsx`: three
+independent Recharts lines have no shared endpoint. There is no missing backend
+bucket to insert. Preserve the existing forecast API and all fitted values.
+
+Remove this artificial connector gap for Weekly, Monthly and Yearly, across
+Combined, Regular and Feeding. Preserve genuine gaps for unavailable values.
+A vertical difference between adjacent predictions can remain: joining the
+points must not flatten, smooth, refit or replace their amounts.
+
+### Implementation
+
+1. In `src/features/dashboard/utils/forecast.ts`, add a pure helper deriving a
+   display-only segment from the bucket immediately before `is_current` to the
+   current bucket. Use the previous `past_prediction` and current
+   `future_prediction`; finite numeric zero is valid.
+2. Require consecutive calendar buckets: previous `end_date + 1 UTC day` must
+   equal current `date`. Reject malformed dates, missing endpoints, no current
+   bucket, or a missing immediate predecessor. Do not search backwards or
+   forwards for another known value.
+3. Render that segment as a dashed green `ReferenceLine`, which is supported by
+   the installed Recharts 2.15.2. Keep the existing three `Line` components and
+   `connectNulls={false}`.
+
+Suggested helper: add `ForecastGraphPoint` to the existing type import from
+`../api/forecasting.service` in `utils/forecast.ts`:
+
+```ts
+type ForecastBoundarySegment = [
+  { x: string; y: number },
+  { x: string; y: number },
+];
+
+export function forecastBoundarySegment(
+  points: readonly ForecastGraphPoint[],
+): ForecastBoundarySegment | null {
+  const index = points.findIndex(point => point.is_current);
+  if (index <= 0) return null;
+  const previous = points[index - 1], current = points[index];
+  const from = previous.past_prediction, to = current.future_prediction;
+  if (typeof from !== "number" || !Number.isFinite(from)
+      || typeof to !== "number" || !Number.isFinite(to)) return null;
+  const previousStart = new Date(previous.date + "T00:00:00Z");
+  const end = new Date(previous.end_date + "T00:00:00Z");
+  const start = new Date(current.date + "T00:00:00Z");
+  if ([previousStart, end, start].some(day => !Number.isFinite(day.getTime()))) return null;
+  if (previousStart.toISOString().slice(0, 10) !== previous.date
+      || end.toISOString().slice(0, 10) !== previous.end_date
+      || start.toISOString().slice(0, 10) !== current.date
+      || previousStart.getTime() > end.getTime()
+      || previousStart.getTime() >= start.getTime()
+      || end.getTime() + 86_400_000 !== start.getTime()) return null;
+  return [{ x: previous.date, y: from }, { x: current.date, y: to }];
+}
+```
+
+Import the helper in `ForecastChart` and derive
+`const boundary = forecastBoundarySegment(chartData)`. `ReferenceLine` is
+already imported there. Before the existing lines, render:
+
+```tsx
+{boundary && <ReferenceLine
+  className="forecast-boundary-connector"
+  segment={boundary}
+  stroke={C.green}
+  strokeWidth={2.5}
+  strokeDasharray="3 4"
+  ifOverflow="discard"
+  aria-hidden="true"
+  pointerEvents="none"
+/>}
+```
+
+This is a presentation overlay. Do not copy a past value into
+`future_prediction`, add synthetic forecast points, interpolate missing data,
+or join actual sales to a prediction. Preserve raw response/cache objects,
+dates, nulls, prediction bases, partial-period flags and backend evaluations.
+The connector must not add a legend item, tooltip value, point, or evaluation
+sample. Keep the tooltip's original issued/reconstructed/current labels.
+Add a short caption explaining that adjacent prediction periods are connected
+for display while their historical/issued provenance remains separate.
+
+### Verification requested
+
+- Cover all three periods and all three sales views.
+- Test zero-valued endpoints, missing/null/non-finite endpoints, absent current
+  prediction, missing immediate predecessor and omitted calendar buckets.
+- Check week/year transitions, unequal month lengths and February in leap years.
+- Assert the helper never mutates original points or changes evaluations.
+- Browser-check the segment touches both plotted endpoints, the legend retains
+  its three existing entries, and tooltips keep their original values/bases.
+- Verify missing actuals, missing Combined components and unavailable saved
+  predictions still leave genuine gaps. A `refresh_required` graph may retain
+  original issues; draw a boundary only if both actual prediction endpoints exist.
+- Run `npm test`, the repository's TypeScript checks and `npm run build`.
+
+Backend-only verification and source review found no API/model defect requiring
+an algorithm, schema or prediction-value change for this visual boundary.
+The sibling frontend has not been modified in this maintenance pass.
+
+Verified on 2026-10-27: the read-only backend check found consecutive calendars
+and both boundary predictions in all nine period/view combinations (seven
+weekly/monthly buckets; five yearly buckets). All 33 focused backend chart
+tests passed in a disposable PostgreSQL database. The suggested helper passed
+17 isolated cases; an in-memory Recharts render produced the SVG connector,
+preserved zero/null values, and retained exactly three existing legend entries.
+These were backend/reference-code checks. Upstream implemented the connector
+in `d4d35f44`; its dedicated connector and rendering regressions were also
+reviewed on 2026-10-28. The current local frontend matches upstream `7d59b2ef`.
+Earlier browser checks of the archived local preview do not establish that this
+upstream version satisfies the newer seasonal, provenance and readiness requests.
 
 ## Completed upstream: registration field length limits
 

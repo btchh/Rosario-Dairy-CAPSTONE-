@@ -108,21 +108,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  frontend:
-    image: ${FRONTEND_IMAGE:-rosario-dairy-frontend:local}
-    build:
-      context: ${FRONTEND_CONTEXT:-../SarimaHoesButFrontend}
-    ports:
-      - "127.0.0.1:${FRONTEND_PORT:-5173}:8080"
-    depends_on:
-      gateway:
-        condition: service_started
-    init: true
-    read_only: true
-    tmpfs:
-      - /tmp
-    restart: unless-stopped
-
 volumes:
   postgres_data:
   backend_backups:

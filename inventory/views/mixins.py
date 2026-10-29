@@ -6,6 +6,7 @@ from django.db.models import ProtectedError
 from django.db import transaction
 from rest_framework.permissions import SAFE_METHODS
 from accounts.permissions import IsAdmin, IsStaff
+from config.api_inputs import parse_positive_id
 
 if TYPE_CHECKING:
     from rest_framework.viewsets import GenericViewSet
@@ -71,8 +72,9 @@ class SoftDeleteMixin(_Base):
     def reactivate(self, request, pk=None):
         model = self.get_queryset().model
         try:
+            pk = parse_positive_id(pk, 'id')
             obj = model.objects.get(pk=pk, is_active=False)
-        except model.DoesNotExist:
+        except (model.DoesNotExist, ValueError):
             return Response(
                 {'error': f'{self.model_label} not found or already active.'},
                 status=status.HTTP_404_NOT_FOUND

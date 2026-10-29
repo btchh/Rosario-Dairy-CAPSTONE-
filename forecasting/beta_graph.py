@@ -16,7 +16,7 @@ from django.utils import timezone
 
 from sales.models import Transaction
 from .benchmarks import score
-from .data import load_snapshot
+from .data import load_snapshots
 from .learning import ENGINE_VERSION, MIN_MONTHS, shift_month
 from .lifecycle import _commit_lock, valid_coverage
 from .models import GraphForecastRun, GraphPrediction, MonthlyModelRun
@@ -118,19 +118,21 @@ def context(period, scope, as_of):
     calendar = window(period, as_of)
     unit = 'weekly' if period == 'weekly' else 'monthly'
     current = period_start(as_of, period)
-    snapshots = {}
+    cutoffs = {}
+    for target in calendar:
+        cutoff = (target if target < current else
+                  current if period != 'yearly' else as_of.replace(day=1))
+        cutoffs[target] = min(cutoff, period_start(DEMO_ORIGIN, unit)) if scope == 'demo2026' else cutoff
+    displayed_cutoff = as_of + timedelta(days=1)
+    loaded = load_snapshots([*cutoffs.values(), *([displayed_cutoff] if scope == 'real' else [])])
+    snapshots = {cutoff: loaded[cutoff] for cutoff in cutoffs.values()}
     regular_monthly_rows = {}
     weekly_dependencies = {}
     inputs = {}
     for target in calendar:
         # Completed targets retain a pre-target reconstruction. The current
         # period and every later target share one latest closed-period origin.
-        cutoff = (target if target < current else
-                  current if period != 'yearly' else as_of.replace(day=1))
-        if scope == 'demo2026':
-            cutoff = min(cutoff, period_start(DEMO_ORIGIN, unit))
-        if cutoff not in snapshots:
-            snapshots[cutoff] = load_snapshot(cutoff)
+        cutoff = cutoffs[target]
         snap = snapshots[cutoff]
         for segment in ('regular', 'feeding'):
             weekly = None
@@ -157,7 +159,7 @@ def context(period, scope, as_of):
                                          'weekly': weekly, 'primary_required': primary_required,
                                          'cutoff': cutoff, 'source_revision': snap.revision}
     if scope == 'real':
-        displayed = load_snapshot(as_of+timedelta(days=1))
+        displayed = loaded[displayed_cutoff]
         sales = [(s.id, s.day, s.segment, s.revenue) for s in displayed.sales]
     else:
         sales = []

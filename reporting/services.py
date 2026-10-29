@@ -36,7 +36,7 @@ def report_refresh_slot():
         cursor.execute('SELECT pg_try_advisory_lock(%s)', [82197034])
         acquired = cursor.fetchone()[0]
     if not acquired:
-        raise Throttled(wait=60, detail='A report refresh is already running.')
+        raise Throttled(wait=60, detail='A report refresh is already running.', code='report_refresh_running')
     try:
         try:
             allowed = cache.add('reporting:refresh:cooldown:v1', True, timeout=60)
@@ -45,7 +45,7 @@ def report_refresh_slot():
             error.status_code = 503
             raise error from exc
         if not allowed:
-            raise Throttled(wait=60, detail='Reports can be refreshed once per minute.')
+            raise Throttled(wait=60, detail='Reports can be refreshed once per minute.', code='report_refresh_cooldown')
         yield
     finally:
         with connection.cursor() as cursor:

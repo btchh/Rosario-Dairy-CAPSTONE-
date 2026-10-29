@@ -95,7 +95,8 @@ class CenteredWindowTests(SimpleTestCase):
         def matching_run(**lookup):
             self.assertEqual(lookup['engine_version'], ENGINE_VERSION)
             return [run] if lookup['source_revision'] == 'source-2026-01-01' else []
-        with patch('forecasting.beta_graph.load_snapshot', side_effect=snapshot), \
+        with patch('forecasting.beta_graph.load_snapshots',
+                   side_effect=lambda cutoffs: {day: snapshot(day) for day in cutoffs}), \
                 patch('forecasting.beta_graph.MonthlyModelRun.objects.filter', side_effect=matching_run), \
                 patch('forecasting.beta_graph.valid_coverage', return_value={}) as coverage, \
                 patch('forecasting.beta_graph.fit', side_effect=AssertionError('Context must not fit')):

@@ -110,7 +110,8 @@ class LatestOriginContextTests(SimpleTestCase):
         return SalesSnapshot(cutoff, f'source-{cutoff}', sales, 0)
 
     def test_current_and_future_years_share_the_latest_completed_month_cutoff(self):
-        with patch('forecasting.beta_graph.load_snapshot', side_effect=self.snapshot), \
+        with patch('forecasting.beta_graph.load_snapshots',
+                   side_effect=lambda cutoffs: {day: self.snapshot(day) for day in cutoffs}), \
                 patch('forecasting.beta_graph._primary', return_value=None), \
                 patch('forecasting.beta_graph.valid_coverage', return_value={}):
             ctx = graph.context('yearly', 'real', date(2026, 10, 28))
@@ -122,7 +123,8 @@ class LatestOriginContextTests(SimpleTestCase):
         self.assertEqual(ctx['inputs'][(date(2025, 1, 1), 'regular')]['cutoff'], date(2025, 1, 1))
 
     def test_demo_current_and_future_years_keep_the_fixed_pre_demo_origin(self):
-        with patch('forecasting.beta_graph.load_snapshot', side_effect=self.snapshot), \
+        with patch('forecasting.beta_graph.load_snapshots',
+                   side_effect=lambda cutoffs: {day: self.snapshot(day) for day in cutoffs}), \
                 patch('forecasting.beta_graph._primary', return_value=None), \
                 patch('forecasting.beta_graph.valid_coverage', return_value={}), \
                 patch('forecasting.beta_graph.Transaction.objects.filter') as transactions:

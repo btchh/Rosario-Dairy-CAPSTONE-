@@ -30,6 +30,7 @@ handoff. Future implementation requests belong in this backend document.
 | Adjacent past/current chart connector | Basic gap fix complete; green connector still needs the origin/outlook distinction below |
 | Historical date controls on the dashboard forecast chart | Complete; new upstream behavior described below |
 | Per-customer lifetime total (`total_spent`) | Backend complete; frontend pending |
+| Server retry UUIDs for checkout/orders | Backend supports them; frontend still uses its existing unconfirmed-sale guard without sending a UUID |
 | Explicit 52-week/12-month Seasonal outlook display | Pending |
 | Latest outlook labeling, origin/horizon tooltips and separate issued comparisons | Pending |
 | Per-component model details, source freshness, production approval and baseline comparison | Pending |
@@ -106,6 +107,34 @@ retain the form so the user can correct it.
 
 Error bodies retain the existing shapes: an `error`/`detail` message, a field-to-
 messages map, or a non-field error list. The frontend should support these forms.
+
+## Load audit and checkout/order retry follow-up
+
+The 2026-10-29 backend audit passed a 10-client, one-minute mixed read workload:
+595 successful requests, overall p95 1.80 seconds. A 25-client unpaced burst
+completed without HTTP errors but had p95 6.82 seconds. These are development
+measurements, not production capacity guarantees. See `BACKEND_VALIDATION.md`
+for workload details, endpoint tails, input checks and limitations.
+
+Malformed inventory reactivation IDs return JSON 404. Zero, negative and
+out-of-range `customer_id`/`handled_by` sales filters now return 400. Keep form
+values and display the existing backend error shapes; successful response
+contracts are unchanged. Honor `Retry-After` on 429 responses.
+
+Checkout and order callers in frontend `7d59b2ef` do not send a request UUID.
+Keep their existing unconfirmed-sale guard. As a follow-up, generate and retain
+one UUID per logical submission, send it as `request_id` or `Idempotency-Key`,
+and reuse it only with the same payload when retrying an ambiguous outcome.
+The first successful submission returns 201; the same UUID/payload returns
+200 with the original receipt/order. Changed payload with an already-used UUID
+returns 409. Use a fresh UUID for a genuinely new sale. Do not automatically
+retry an unkeyed timeout/503 as a new checkout or clear the history-check guard.
+
+Cover concurrent double submission, timeout/remount recovery, matching body and
+header keys, changed-payload conflicts, and stock deducted once. Update the
+stale comment in `src/lib/saleSubmission.ts` that says the routes have no
+idempotency support. This follow-up is compatible with existing callers;
+backend UUID fields remain optional. No frontend source was changed in this audit.
 
 ## Backend cache consistency update
 
@@ -575,29 +604,44 @@ Cover imported invoices with header discounts, missing source amounts, grouped
 lines, and ordinary discounted checkout receipts in the receipt mapping/UI
 tests. Verify invoice totals remain exactly as recorded.
 
-## Completed upstream: refresh after successful sales
+## Report availability and refresh handling
 
-Frontend `d4d35f44` removes automatic explicit report refresh after checkout and
-order writes while retaining mutation invalidation. Manual refreshes coalesce
-and respect `Retry-After`. The earlier checkout implementation awaited
-`reportsService.refreshAfterMutation()` after every successful sale.
-The explicit refresh endpoint intentionally permits one refresh per minute
-per account and also enforces a global cooldown across accounts/processes.
-Consecutive successful sales can consequently produce a report warning.
+Frontend `d4d35f44` removed automatic explicit report refresh after checkout and
+order writes while retaining mutation invalidation. Keep that behavior: a
+report refresh failure must never resubmit or undo a successful sale.
 
-Prefer existing mutation-driven client cache invalidation and refetching for
-automatic updates. The backend invalidates business/report cache versions after
-committed writes; preview requests then read the new version. Keep explicit
-`POST /api/reports/refresh/` for the manual refresh action. If an automatic
-refresh is retained, coalesce concurrent work, respect `Retry-After`, and treat
-its 429 as a refresh cooldown rather than a failed sale. Client report/PDF
-caches must still invalidate after **every** committed mutation, even during
-the cooldown. A failed sale must not emit a successful-save message, and a
-refresh failure must not resubmit checkout.
+The 2026-10-29 backend follow-up separates the per-account request budgets:
+report previews have 120 requests/minute, PDFs have 30/minute, and forecast
+reads retain their separate 30/minute budget. Forecast polling and PDF exports
+therefore no longer consume the report-preview allowance. Preview/PDF 429s
+still include `Retry-After`; retain cached content and respect that delay.
 
-Test two rapid successful checkouts, concurrent mutations, fresh preview/PDF
-data after each sale, and manual refresh throttling. Keep the backend throttle
-and global lock; increasing their rates is not the fix.
+`POST /api/reports/refresh/` accepts an empty JSON object. Duplicate requests
+from the same account, another account during cooldown, or while a full rebuild
+is active now return HTTP **200**, preserving the existing success path. The
+backend still limits full rebuilds to one per minute and serializes them across
+processes. Business mutations invalidate data versions immediately; previews
+use current ledger data even when a full rebuild is coalesced.
+
+The response retains `message`, `generated_at`, and `report_types` and adds
+`refresh_status`:
+
+- `refreshed`: a full rebuild completed; `report_types` lists the rebuilt types.
+- `coalesced`: another refresh was already requested; no duplicate rebuild ran.
+  `report_types` is empty, `retry_after_seconds` describes the work cooldown,
+  and `generated_at` is the last recorded successful rebuild timestamp, or null
+  if that metadata is unavailable. It is not a fabricated new generation timestamp.
+
+The current frontend already treats any 200 as success, emits REPORTS_UPDATED,
+and invalidates its report/dashboard caches. No frontend code change is required
+for this backend fix. Optional UI polish can display the returned message or
+`refresh_status`. A cooldown remembered from the older 429 behavior expires
+normally; a browser reload also resets that in-memory client state.
+
+Keep the existing unconfirmed-sale guard and mutation-driven cache invalidation.
+Verify two rapid refresh clicks, concurrent accounts, current previews/PDFs
+after each sale, and protected export limits. Do not remove the backend rebuild
+lock or use a new sale submission as a report retry.
 
 ## Audit follow-up: forecast availability and evidence
 

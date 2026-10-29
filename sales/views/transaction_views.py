@@ -18,6 +18,7 @@ from ..serializers import TransactionSerializer
 from ..visibility import visible_transactions
 from ..services.order_service import void_transaction
 from accounts.throttles import SaleWriteRateThrottle
+from config.api_inputs import parse_positive_id
 
 
 class CancellationInput(serializers.Serializer):
@@ -135,7 +136,7 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
         handled_by = params.get('handled_by')
         if handled_by:
             try:
-                handled_by = int(handled_by)
+                handled_by = parse_positive_id(handled_by, 'handled_by')
             except ValueError:
                 return Response({'error': 'handled_by must be a valid user id.'}, status=status.HTTP_400_BAD_REQUEST)
             queryset = queryset.filter(handled_by_id=handled_by)
@@ -143,7 +144,7 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
         customer_id = params.get('customer_id')
         if customer_id:
             try:
-                customer_id = int(customer_id)
+                customer_id = parse_positive_id(customer_id, 'customer_id')
             except ValueError:
                 return Response(
                     {'error': 'customer_id must be a valid customer id.'},

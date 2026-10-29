@@ -187,6 +187,48 @@ class InputValidationTests(APITestCase):
                     self.assert_json_error(response, 'error')
             report.assert_not_called()
 
+    def test_reactivation_rejects_malformed_path_ids_with_json_without_changes(self):
+        before = self.snapshot()
+        models = (Product, Ingredient, Category, Supplier)
+        active_before = [list(model.objects.values_list('pk', 'is_active')) for model in models]
+        for route in ('products', 'ingredients', 'categories', 'suppliers'):
+            for value in ('bad', '1e3', '0', '-1', str(2**63), '9' * 5000):
+                with self.subTest(route=route, value=value[:30]):
+                    response = self.client.post(f'/inventory/{route}/{value}/reactivate/', {}, format='json')
+                    self.assertEqual(response.status_code, 404)
+                    self.assertEqual(response['Content-Type'], 'application/json')
+                    self.assertIn('error', response.data)
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual([list(model.objects.values_list('pk', 'is_active')) for model in models], active_before)
+
+    def test_reactivation_preserves_valid_numeric_path_ids(self):
+        for route, obj in (('products', self.product), ('ingredients', self.ingredient),
+                           ('categories', self.category), ('suppliers', self.supplier)):
+            with self.subTest(route=route):
+                type(obj).objects.filter(pk=obj.pk).update(is_active=False)
+                response = self.client.post(f'/inventory/{route}/{obj.pk}/reactivate/', {}, format='json')
+                self.assertEqual(response.status_code, 200, response.data)
+                obj.refresh_from_db()
+                self.assertTrue(obj.is_active)
+
+    def test_sales_filter_ids_reject_invalid_ranges_without_writes(self):
+        before = self.snapshot()
+        for route, field in (('/sales/orders/', 'customer_id'),
+                             ('/sales/transactions/', 'customer_id'),
+                             ('/sales/transactions/', 'handled_by')):
+            for value in ('bad', '1.5', '0', '-1', str(2**63), '9' * 5000):
+                with self.subTest(route=route, field=field, value=value[:30]):
+                    self.assert_json_error(self.client.get(route, {field: value}), 'error' if 'transactions' in route else field)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_sales_filter_ids_preserve_valid_numeric_strings(self):
+        for route, field, pk in (('/sales/orders/', 'customer_id', self.customer.pk),
+                                 ('/sales/transactions/', 'customer_id', self.customer.pk),
+                                 ('/sales/transactions/', 'handled_by', self.admin.pk)):
+            with self.subTest(route=route, field=field):
+                response = self.client.get(route, {field: str(pk)})
+                self.assertEqual(response.status_code, 200, response.data)
+
     def test_default_and_maximum_report_limits_remain_supported(self):
         for query in ('', '?limit=1', '?limit=500'):
             with self.subTest(query=query):

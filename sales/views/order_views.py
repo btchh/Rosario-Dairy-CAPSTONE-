@@ -17,7 +17,7 @@ from ..models import Order, OrderItem, TransactionItem
 from ..serializers import OrderSerializer
 from ..serializers.order_serializer import OrderListSerializer
 from ..services import SalesService
-from config.api_inputs import parse_decimal
+from config.api_inputs import parse_decimal, parse_positive_id
 from ..serializers.sale_input_serializer import encoded_sale_items
 from ..services.item_pricing import reject_invoice_discount
 from accounts.throttles import SaleWriteRateThrottle
@@ -93,7 +93,7 @@ class OrderViewSet(CachedListMixin, viewsets.ModelViewSet):
         customer_id = self.request.query_params.get('customer_id')
         if customer_id:
             try:
-                customer_id = int(customer_id)
+                customer_id = parse_positive_id(customer_id, 'customer_id')
             except ValueError as exc:
                 raise ValidationError({
                     'customer_id': 'customer_id must be a valid customer id.'

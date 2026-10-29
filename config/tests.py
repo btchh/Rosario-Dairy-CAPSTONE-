@@ -580,7 +580,8 @@ class SecurityHardeningTests(TestCase):
             first=self.client.post('/api/reports/refresh/')
             self.assertEqual(first.status_code,200,first.data)
             second=self.client.post('/api/reports/refresh/')
-            self.assertEqual(second.status_code,429)
+            self.assertEqual(second.status_code,200)
+            self.assertEqual(second.data['refresh_status'], 'coalesced')
             self.assertEqual(rebuild.call_count,1)
 
 

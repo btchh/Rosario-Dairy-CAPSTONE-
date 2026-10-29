@@ -228,6 +228,8 @@ REST_FRAMEWORK = {
         'email_change': '5/minute',
         'profile': '10/minute',
         'report_refresh': '1/minute',
+        'report_preview': '120/minute',
+        'report_export': '30/minute',
         'forecast_refresh': '1/minute',
         'expensive_read': '30/minute',
         'sale_write': '30/minute',

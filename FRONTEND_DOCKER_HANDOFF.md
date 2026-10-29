@@ -115,3 +115,15 @@ The latest development snapshot removes recorded 2026 sales and stock activity.
 Forecasts for 2026 remain visible in charts and reports; they are projections,
 separate from recorded transactions. Saved models and issued forecasts remain
 intact. Use the newest package; older archives are superseded.
+
+The load/input audit and its measured limits are documented in
+`BACKEND_VALIDATION.md`. Checkout/order request UUIDs are supported by the
+backend; the pending client retry integration is described in
+`FRONTEND_HANDOFF.md`. A Git pull and a previously exported image are separate
+versions: load the newest image package to receive the audit fixes.
+
+Report previews and PDF exports now have independent request budgets; forecast
+polling does not consume either allowance. Repeated manual report refreshes
+return 200 with `refresh_status: coalesced` while the rebuild lock/cooldown remains
+in force. Current frontend callers already handle this success response; see
+`FRONTEND_HANDOFF.md` for the exact response fields and limits.

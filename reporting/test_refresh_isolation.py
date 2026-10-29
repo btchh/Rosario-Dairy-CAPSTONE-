@@ -48,14 +48,16 @@ class ReportRefreshIsolationTests(APITransactionTestCase):
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.remaining_quantity, Decimal(10-len(ids)))
 
-    def test_two_successful_checkouts_stay_committed_when_second_refresh_is_throttled(self):
+    def test_two_successful_checkouts_stay_committed_when_second_refresh_is_coalesced(self):
         with patch('reporting.views.refresh_reports', return_value=(timezone.now(), {})) as rebuild:
             first = self.checkout()
             self.assertEqual(self.client.post('/api/reports/refresh/', {}).status_code, 200)
             second = self.checkout()
             response = self.client.post('/api/reports/refresh/', {})
-        self.assertEqual(response.status_code, 429, response.data)
-        self.assertGreater(int(response['Retry-After']), 0)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['refresh_status'], 'coalesced')
+        self.assertGreater(response.data['retry_after_seconds'], 0)
+        self.assertEqual(response.data['report_types'], [])
         self.assertEqual(rebuild.call_count, 2)  # First refresh builds admin and staff scopes.
         self.assert_committed([first, second])
 
@@ -64,7 +66,8 @@ class ReportRefreshIsolationTests(APITransactionTestCase):
             self.assertEqual(self.client.post('/api/reports/refresh/', {}).status_code, 200)
             self.client.force_authenticate(self.staff)
             response = self.client.post('/api/reports/refresh/', {})
-        self.assertEqual(response.status_code, 429, response.data)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['refresh_status'], 'coalesced')
         self.assertEqual(rebuild.call_count, 2)
 
     def test_account_throttle_cache_read_and_write_failures_return_safe_503(self):
@@ -97,7 +100,9 @@ class ReportRefreshIsolationTests(APITransactionTestCase):
         now = time.time()
         with patch('reporting.views.refresh_reports', return_value=(timezone.now(), {})):
             self.assertEqual(self.client.post('/api/reports/refresh/', {}).status_code, 200)
-            self.assertEqual(self.client.post('/api/reports/refresh/', {}).status_code, 429)
+            duplicate = self.client.post('/api/reports/refresh/', {})
+            self.assertEqual(duplicate.status_code, 200)
+            self.assertEqual(duplicate.data['refresh_status'], 'coalesced')
             with patch('accounts.throttles.ReportRefreshRateThrottle.timer', return_value=now+61), \
                     patch('django.core.cache.backends.locmem.time.time', return_value=now+61):
                 self.assertEqual(self.client.post('/api/reports/refresh/', {}).status_code, 200)

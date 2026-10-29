@@ -50,6 +50,32 @@ def load_snapshot(as_of=None):
     as_of = as_of or timezone.localdate()
     if not isinstance(as_of, date) or isinstance(as_of, datetime):
         raise ValueError('as_of must be a date')
+    return _snapshot(as_of, *_load_source(as_of))
+
+
+def load_snapshots(cutoffs):
+    """Read one ledger source for several exclusive cutoffs in a single request.
+
+    No source survives this call: later requests still see backdated edits,
+    cancellations, customer changes and line corrections without cache signals.
+    Each cutoff retains its own classification, exclusions and exact revision.
+    """
+    cutoffs = tuple(cutoffs)
+    if any(not isinstance(day, date) or isinstance(day, datetime) for day in cutoffs):
+        raise ValueError('as_of must be a date')
+    cutoffs = tuple(dict.fromkeys(cutoffs))
+    if not cutoffs:
+        return {}
+    rows, policy, live_lines = _load_source(max(cutoffs))
+    result = {}
+    for day in cutoffs:
+        boundary = timezone.make_aware(datetime.combine(day, time.min))
+        selected = [row for row in rows if row['created_at'] < boundary]
+        result[day] = _snapshot(day, selected, policy, live_lines)
+    return result
+
+
+def _load_source(as_of):
     cutoff = timezone.make_aware(datetime.combine(as_of, time.min))
     rows = list(Transaction.objects.filter(is_voided=False, created_at__lt=cutoff).order_by('pk').values(
         'pk', 'created_at', 'customer_id', 'customer__name',
@@ -64,6 +90,10 @@ def load_snapshot(as_of=None):
             'transaction_id', 'product_name_snapshot', 'product_batch__product__name',
             'total_amount', 'source_line_total', 'quantity', 'unit_price'):
         live_lines[item['transaction_id']].append(item)
+    return rows, policy, live_lines
+
+
+def _snapshot(as_of, rows, policy, live_lines):
     sales, excluded, excluded_non_dairy = [], 0, []
     for row in rows:
         if DEMO_REFERENCE.fullmatch(row['source_reference'] or ''):

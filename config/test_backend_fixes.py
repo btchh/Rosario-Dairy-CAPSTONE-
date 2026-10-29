@@ -289,6 +289,17 @@ class BackendFixConcurrencyTests(BusinessFixture, APITransactionTestCase):
             futures = [pool.submit(send, *request) for request in requests]
             return [future.result(timeout=15) for future in futures]
 
+    def test_ten_checkouts_cannot_oversell_the_last_three_units(self):
+        ProductBatch.objects.filter(pk=self.batch.pk).update(remaining_quantity=3, status='available')
+        responses = self.parallel_requests([('/sales/checkout/', self.cart()) for _ in range(10)])
+        self.assertEqual(sorted(status for status, _ in responses), [201] * 3 + [400] * 7, responses)
+        self.assertEqual(Transaction.objects.count(), 3)
+        self.assertEqual(sum(Transaction.objects.values_list('total_amount', flat=True)), Decimal('150.00'))
+        self.assertFalse(SaleSubmission.objects.exists())
+        self.batch.refresh_from_db()
+        self.assertEqual(self.batch.remaining_quantity, 0)
+        self.assertEqual(self.batch.status, 'depleted')
+
     def test_concurrent_keyed_checkout_and_order_retries_use_last_stock_once(self):
         customer = Customer.objects.create(name='Concurrent buyer', created_by=self.admin)
         for route in ('checkout', 'orders'):

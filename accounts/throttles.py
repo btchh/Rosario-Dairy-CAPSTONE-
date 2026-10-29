@@ -63,6 +63,14 @@ class ReportRefreshRateThrottle(AccountRateThrottle):
     scope = 'report_refresh'
 
 
+class ReportPreviewRateThrottle(AccountRateThrottle):
+    scope = 'report_preview'
+
+
+class ReportExportRateThrottle(AccountRateThrottle):
+    scope = 'report_export'
+
+
 class ForecastRefreshRateThrottle(AccountRateThrottle):
     scope = 'forecast_refresh'
 

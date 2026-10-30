@@ -124,6 +124,45 @@ annual estimates, all sales views and loading/error states. Verify the graph
 values and API metadata remain unchanged, and client controls contain no model
 evidence panel or issued-comparison switch.
 
+## Product-only inventory cleanup — 2026-10-30
+
+**Backend implemented; frontend references still need removal.** Supplier and
+ingredient management are retired. Inventory consists of products, product
+batches, categories, stock movements/counts and FEFO settings. Milk feeding is
+a sales group of products and remains supported; it is not ingredient inventory.
+
+- Migration `inventory.0012_product_only_inventory` removes `Ingredient`,
+  `IngredientBatch`, `Supplier` and the ingredient references on stock movements.
+  Stock adjustments/counts now require a non-null `product_batch`.
+- Existing product requests and stock logic remain. Send `product_batch_id` for
+  adjustments/counts; a supplied non-null `ingredient_batch_id` returns HTTP 400.
+  Movement responses no longer contain `ingredient_batch`.
+- To avoid breaking older clients' parallel inventory/notification requests,
+  legacy collection GETs for `/inventory/ingredients/`, `ingredient-batches/`,
+  `suppliers/`, `low-stock/ingredients/` and `expiring/ingredients/` return `[]`.
+  They have no database models or management functionality. Legacy detail and
+  write requests return HTTP 410 with a removal message. Authentication remains
+  required. These compatibility routes are not advertised by the inventory API
+  root and should no longer be called by updated clients.
+- Reports and notifications use products only. `total_ingredients: 0` remains
+  solely as a deprecated JSON compatibility field; report items have
+  `item_type: "product"`. The inventory PDF no longer includes an Ingredients card.
+- Frontend owner: remove ingredient/supplier DTOs and service methods, parallel
+  ingredient requests in `inventory.service.ts`, `outflows.service.ts` and
+  `notifications.service.ts`, ingredient fallbacks in stock/batch components,
+  and ingredient labels in inventory/settings/report types. In particular,
+  outflows must load product batches only. Do not remove product outflows,
+  expiry alerts, milk-feeding products or product/category access controls.
+
+Deployment: back up the database, stop API/forecast workers, run the migration,
+invalidate business caches and restart all workers with the rebuilt backend
+image. The migration refuses to proceed if any retired records or movements
+without a product batch exist. Explicitly archive those records before retrying;
+there is no automatic deletion/conversion of legacy stock. Historical migration
+files stay intact so existing installations and empty Docker databases both
+have a valid migration path. Existing Docker exports need a fresh image/export
+to include this cleanup.
+
 ## Current completion checklist
 
 | Requirement | Status in frontend `49c3cb42` |
@@ -202,7 +241,7 @@ Validation failures below return HTTP 400; show the backend's error message and
 retain the form so the user can correct it.
 
 - Submit positive integer IDs or integer strings for writable customer, category,
-  product, ingredient and supplier references. Decimal IDs such as `1.9` are
+  product and product-batch references. Decimal IDs such as `1.9` are
   rejected instead of selecting record 1. Optional nullable fields remain nullable.
 - Submit UUID strings for sale `request_id` values. Booleans and numeric UUID
   representations are rejected. Existing valid UUID retry/replay behavior remains.

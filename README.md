@@ -183,9 +183,10 @@ for filtering an imported demonstration database.
 
 ## Inventory consistency
 
-Batch creation, edits and deletion, and ingredient catalog edits require an
-admin. Staff can still read visible inventory, record stock adjustments/counts,
-and explicitly deactivate ingredients. Received batches cannot be deleted;
+Inventory is product-only; supplier and ingredient management have been retired.
+Product batch creation, edits and deletion require an admin. Staff can still
+read visible product inventory and record product stock adjustments/counts.
+Received batches cannot be deleted;
 record an adjustment to retain their stock history. Past-date available batches
 and explicitly expired batches support `expired`/`spoilage` write-offs. Repeating
 a completed disposal returns 400 without recording another movement. Future
@@ -211,8 +212,8 @@ IDs remain optional for compatibility: unkeyed requests cannot be safely dedupli
 Manual encoding retains its existing required UUID and replay contract.
 
 Sale `request_id` values must be UUID strings; JSON booleans and numbers return
-400 before recording a sale or retry key. Writable customer, category, product,
-ingredient and supplier IDs accept positive integers or integer strings, and
+400 before recording a sale or retry key. Writable customer, category, product
+and product-batch IDs accept positive integers or integer strings, and
 reject decimal numbers without truncating them. Optional nullable IDs retain
 their existing behavior. Invalid catalog body types return JSON validation
 errors. The best-seller report accepts `limit` from 1 through 500 (default 10).

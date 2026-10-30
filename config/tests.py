@@ -222,8 +222,8 @@ class DataCacheTests(TestCase):
         with self.captureOnCommitCallbacks(execute=True):
             get_runtime_settings()
         endpoints = [
-            '/inventory/products/', '/inventory/ingredients/',
-            '/inventory/product-batches/', '/inventory/ingredient-batches/',
+            '/inventory/products/',
+            '/inventory/product-batches/',
             '/inventory/categories/', '/inventory/low-stock/products/',
             '/sales/transactions/', '/sales/orders/', '/sales/customers/',
             '/sales/reports/revenue/', '/sales/reports/best-sellers/',

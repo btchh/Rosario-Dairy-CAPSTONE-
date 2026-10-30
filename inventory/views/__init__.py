@@ -1,11 +1,7 @@
 from .product_views import ProductViewSet
 from .productbatch_views import ProductBatchViewSet
 from .productstock_views import LowStockProductView, ExpiringProductView
-from .ingredient_views import IngredientViewSet
-from .ingredientbatch_views import IngredientBatchViewSet 
-from .ingredientstock_views import LowStockIngredientView, ExpiringIngredientView
 from .category_views import CategoryViewSet
-from .supplier_view import SupplierViewSet
 from .fefoconf_views import FEFOConfViewSet
 from .stockadjustment_views import StockAdjustmentViewSet
 from .stockcount_views import StockCountViewSet

@@ -13,7 +13,7 @@ from django.utils import timezone
 from config.data_cache import data_version
 from sales.visibility import visible_transactions
 
-from inventory.models import FEFOConf, Ingredient, IngredientBatch, Product, ProductBatch, StockAdjustment
+from inventory.models import FEFOConf, Product, ProductBatch, StockAdjustment
 from inventory.services.eligibility import expired_stock_filter, expiry_cutoff
 from sales.models import Customer, TransactionItem, StockReturn
 from systemsetting.runtime import get_runtime_settings
@@ -430,7 +430,6 @@ def inventory_status(visible_to_staff=False, start_date=None, end_date=None):
     config = FEFOConf.get_config()
     soon = expiry_cutoff(today, config.near_expiry_threshold)
     items = _inventory_rows(Product, 'batches', 'product', visible_to_staff)
-    items += _inventory_rows(Ingredient, 'batches', 'ingredient')
     available_batches = Q(status='available', remaining_quantity__gt=0, date_received__lte=today)
     product_batches = ProductBatch.objects.all()
     products = Product.objects.filter(is_active=True)
@@ -440,11 +439,9 @@ def inventory_status(visible_to_staff=False, start_date=None, end_date=None):
         products = products.filter(category__is_active=True, category__is_visible_to_staff=True)
     expired = (
         product_batches.filter(expired_stock_filter(today)).count()
-        + IngredientBatch.objects.filter(expired_stock_filter(today)).count()
     )
     expiring = (
         product_batches.filter(available_batches, expiration_date__range=(today, soon)).count()
-        + IngredientBatch.objects.filter(available_batches, expiration_date__range=(today, soon)).count()
     )
     return {
         'as_of': timezone.now(),
@@ -452,7 +449,7 @@ def inventory_status(visible_to_staff=False, start_date=None, end_date=None):
         'is_custom_range': start_date is not None,
         'ledger': inventory_ledger(visible_to_staff, start_date, end_date),
         'total_products': products.count(),
-        'total_ingredients': Ingredient.objects.filter(is_active=True).count(),
+        'total_ingredients': 0,  # Deprecated compatibility field; inventory is product-only.
         'low_stock_count': sum(item['is_low_stock'] for item in items),
         'expired_batch_count': expired,
         'expiring_soon_batch_count': expiring,

@@ -12,8 +12,8 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from config.test_support import APITestCase
-from inventory.models import Category, Product, ProductBatch, Ingredient, IngredientBatch
-from inventory.serializers import ProdBatchSerializer, IngBatchSerializer
+from inventory.models import Category, Product, ProductBatch
+from inventory.serializers import ProdBatchSerializer
 from inventory.services.batch_service import BatchService
 from reporting.services import inventory_ledger
 from sales.models import Customer, Transaction, Order, StockReturn
@@ -43,17 +43,6 @@ class BackendReviewRegressions(APITestCase):
         self.assertEqual(saved.remaining_quantity, 0)
         self.assertEqual(saved.notes, 'Metadata only')
 
-    def test_stale_ingredient_edit_keeps_concurrent_deduction(self):
-        ingredient = Ingredient.objects.create(name='Review ingredient', unit='L', unit_price=20, shelf_life=7)
-        batch = IngredientBatch.objects.create(ingredient=ingredient, batch_number='REVIEW-ING-1', initial_quantity=10,
-            remaining_quantity=10, unit_price=20, expiration_date=self.batch.expiration_date)
-        serializer = IngBatchSerializer(IngredientBatch.objects.get(pk=batch.pk), data={'notes': 'Metadata only'}, partial=True)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        BatchService.deduct_ingredient_batch(ingredient, Decimal('2'))
-        serializer.save()
-        batch.refresh_from_db()
-        self.assertEqual(batch.remaining_quantity, 8)
-        self.assertEqual(batch.notes, 'Metadata only')
 
     def test_metadata_dates_are_revalidated_against_current_batch(self):
         serializer = ProdBatchSerializer(ProductBatch.objects.get(pk=self.batch.pk),

@@ -16,7 +16,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from accounts.models import Users
-from inventory.models import Category, FEFOConf, Ingredient, IngredientBatch, Product, ProductBatch
+from inventory.models import Category, FEFOConf, Product, ProductBatch
 from inventory.services.batch_service import BatchService
 from sales.models import Customer
 from sales.services import SalesService
@@ -242,7 +242,7 @@ class NotificationSettingsViewTests(TestCase):
         config.near_expiry_alerts = False
         config.save()
         self.client.force_authenticate(user=self.staff)
-        response = self.client.get('/inventory/expiring/ingredients/')
+        response = self.client.get('/inventory/expiring/products/')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data, [])
 
@@ -308,38 +308,32 @@ class InventorySettingsTests(TestCase):
         self.assertEqual(config.low_stock_threshold, 20)
         self.assertEqual(config.near_expiry_threshold, 7)
 
-    def test_updated_thresholds_control_product_and_ingredient_alerts(self):
+    def test_updated_thresholds_control_product_alerts(self):
         product = Product.objects.create(
             category=Category.objects.create(name='Alerts'), name='Milk',
             unit='liter',  shelf_life=30,
         )
-        ingredient = Ingredient.objects.create(
-            name='Raw Milk', unit='liter', unit_price=10, shelf_life=30,
-        )
-        for model, relation in (
-            (ProductBatch, {'product': product}),
-            (IngredientBatch, {'ingredient': ingredient}),
-        ):
+        for (model, relation) in ((ProductBatch, {'product': product}),):
             model.objects.create(
                 **relation, batch_number='ALERT-BATCH', unit_price=10,
                 initial_quantity=Decimal('18'), remaining_quantity=Decimal('18'),
                 expiration_date=timezone.localdate() + timedelta(days=8),
             )
-        for stock_check in (BatchService.check_product_stock, BatchService.check_ingredient_stock):
+        for stock_check in (BatchService.check_product_stock,):
             self.assertEqual(len(stock_check()), 1)
-        for expiry_check in (BatchService.check_product_expiration, BatchService.check_ingredient_expiration):
+        for expiry_check in (BatchService.check_product_expiration,):
             self.assertFalse(expiry_check().exists())
 
         response = self.client.patch(self.url, {
             'low_stock_threshold': 17, 'near_expiry_threshold': 8,
         }, format='json')
         self.assertEqual(response.status_code, 200)
-        for stock_check in (BatchService.check_product_stock, BatchService.check_ingredient_stock):
+        for stock_check in (BatchService.check_product_stock,):
             self.assertEqual(stock_check(), [])
-        for expiry_check in (BatchService.check_product_expiration, BatchService.check_ingredient_expiration):
+        for expiry_check in (BatchService.check_product_expiration,):
             self.assertEqual(expiry_check().count(), 1)
 
-        for url, item in (('/inventory/products/', product), ('/inventory/ingredients/', ingredient)):
+        for (url, item) in (('/inventory/products/', product),):
             self.assertEqual(self.client.get(f'{url}{item.pk}/').data['low_stock_threshold'], 17)
             for value in (0, 19, None):
                 with self.subTest(url=url, value=value):
@@ -352,20 +346,12 @@ class InventorySettingsTests(TestCase):
         # Zero is supported globally and applies to every item.
         response = self.client.patch(self.url, {'low_stock_threshold': 0}, format='json')
         self.assertEqual(response.status_code, 200)
-        for stock_check in (BatchService.check_product_stock, BatchService.check_ingredient_stock):
+        for stock_check in (BatchService.check_product_stock,):
             self.assertEqual(stock_check(), [])
 
     def test_item_creation_rejects_threshold_overrides(self):
         category = Category.objects.create(name='Creation')
-        for url, payload in (
-            ('/inventory/products/', {
-                'category_id': category.pk, 'name': 'Milk', 'unit': 'liter',
-                'shelf_life': 7,
-            }),
-            ('/inventory/ingredients/', {
-                'name': 'Raw Milk', 'unit': 'liter', 'unit_price': 10, 'shelf_life': 7,
-            }),
-        ):
+        for (url, payload) in (('/inventory/products/', {'category_id': category.pk, 'name': 'Milk', 'unit': 'liter', 'shelf_life': 7}),):
             for value in (0, 10, None):
                 response = self.client.post(url, {**payload, 'low_stock_threshold': value}, format='json')
                 self.assertEqual(response.status_code, 400)
@@ -484,12 +470,7 @@ class NotificationInboxTests(TestCase):
     def test_expired_alerts_bulk_read_survives_a_fresh_client(self):
         self.batch.expiration_date = timezone.localdate() - timedelta(days=1)
         self.batch.save(update_fields=['expiration_date'])
-        ingredient = Ingredient.objects.create(name='Cream', unit='liter', unit_price=20, shelf_life=7)
-        batch = IngredientBatch.objects.create(
-            ingredient=ingredient, batch_number='EXPIRED-CREAM', initial_quantity=3,
-            remaining_quantity=3, expiration_date=self.batch.expiration_date, status='expired',
-        )
-        expected = {f'expiry-product-{self.batch.pk}', f'expiry-ingredient-{batch.pk}'}
+        expected = {f'expiry-product-{self.batch.pk}'}
         rows = self.feed()
         self.assertEqual({row['id'] for row in rows if row['id'].startswith('expiry-')}, expected)
         self.assertEqual(self.act('read', rows).status_code, 200)

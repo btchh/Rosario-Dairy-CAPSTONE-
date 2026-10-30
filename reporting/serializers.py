@@ -99,7 +99,7 @@ class MonthlySalesSerializer(SalesDriversSerializer):
 
 
 class StockItemSerializer(serializers.Serializer):
-    item_type = serializers.ChoiceField(choices=['product', 'ingredient'])
+    item_type = serializers.ChoiceField(choices=['product'])
     id = serializers.IntegerField()
     name = serializers.CharField()
     unit = serializers.CharField()

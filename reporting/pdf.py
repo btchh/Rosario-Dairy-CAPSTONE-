@@ -334,7 +334,6 @@ class Report:
         counts = d.get('status_counts', {})
         self.cards([
             ('Active products', str(d['total_products'])),
-            ('Ingredients', str(d['total_ingredients'])),
             ('Low stock', str(d['low_stock_count'])),
             ('Expiring in 7 days', str(d['expiring_soon_batch_count'])),
             ('Expired batches', str(d['expired_batch_count'])),

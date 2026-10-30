@@ -1,23 +1,20 @@
 from decimal import Decimal
 from django.db import transaction as db_transaction
 from django.utils import timezone
-from ..models import ProductBatch, IngredientBatch, StockAdjustment, StockCount
+from ..models import ProductBatch, StockAdjustment, StockCount
 
 
-def create_stock_adjustment(adjustment_type, quantity, unit_cost, adjusted_by, reason="", ingredient_batch=None, product_batch=None):
+def create_stock_adjustment(adjustment_type, quantity, unit_cost, adjusted_by, reason: str | None = "", product_batch=None):
     if adjustment_type not in dict(StockAdjustment.ADJUSTMENT_TYPES):
         raise ValueError('Invalid adjustment_type.')
-    if bool(product_batch) == bool(ingredient_batch):
-        raise ValueError("Exactly one of product_batch or ingredient_batch must be provided.")
+    if product_batch is None:
+        raise ValueError("product_batch must be provided.")
 
     if adjustment_type != 'correction' and quantity <= Decimal('0.00'):
         raise ValueError("Adjustment quantity must be greater than zero.")
 
     with db_transaction.atomic():
-        if product_batch is not None:
-            batch = ProductBatch.objects.select_for_update().get(pk=product_batch.pk)  # type: ignore
-        else:
-            batch = IngredientBatch.objects.select_for_update().get(pk=ingredient_batch.pk)  # type: ignore
+        batch = ProductBatch.objects.select_for_update().get(pk=product_batch.pk)
 
         expired = batch.status == 'expired' or batch.expiration_date < timezone.localdate()
         if batch.status == 'disposed' or (expired and adjustment_type not in ('expired', 'spoilage')):
@@ -48,7 +45,6 @@ def create_stock_adjustment(adjustment_type, quantity, unit_cost, adjusted_by, r
         batch.save()
 
         adjustment = StockAdjustment(
-            ingredient_batch=ingredient_batch,
             product_batch=product_batch,
             adjustment_type=adjustment_type,
             quantity=quantity,
@@ -59,21 +55,17 @@ def create_stock_adjustment(adjustment_type, quantity, unit_cost, adjusted_by, r
         adjustment.save()
         return adjustment
 
-def reconcile(counted_quantity, counted_by, notes="", ingredient_batch=None, product_batch=None):
-  if bool(product_batch) == bool(ingredient_batch):
-      raise ValueError("Exactly one of product_batch or ingredient_batch must be provided.")
+def reconcile(counted_quantity, counted_by, notes: str | None = "", product_batch=None):
+  if product_batch is None:
+      raise ValueError("product_batch must be provided.")
 
   with db_transaction.atomic():
-      if product_batch is not None:
-          batch = ProductBatch.objects.select_for_update().get(pk=product_batch.pk)  # type: ignore
-      else:
-          batch = IngredientBatch.objects.select_for_update().get(pk=ingredient_batch.pk)  # type: ignore
+      batch = ProductBatch.objects.select_for_update().get(pk=product_batch.pk)
 
       expected = batch.remaining_quantity
       variance = counted_quantity - expected
 
       count = StockCount(
-          ingredient_batch=ingredient_batch,
           product_batch=product_batch,
           expected_quantity=expected,
           counted_quantity=counted_quantity,
@@ -94,7 +86,6 @@ def reconcile(counted_quantity, counted_by, notes="", ingredient_batch=None, pro
               unit_cost=batch.unit_price,
               adjusted_by=counted_by,
               reason=notes or 'Daily stock count variance',
-              ingredient_batch=ingredient_batch,
               product_batch=product_batch
           )
           count.resulting_adjustment = adjustment

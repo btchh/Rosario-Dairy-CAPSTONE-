@@ -267,23 +267,20 @@ class DatabaseTimeoutConfigurationTests(SimpleTestCase):
 
 class BatchBusinessDateAuditTests(APITestCase):
     def setUp(self):
-        from inventory.models import Category, Product, Ingredient
+        from inventory.models import Category, Product
         self.product = Product.objects.create(name='Month-boundary milk',
             category=Category.objects.create(name='Month-boundary dairy'), unit='piece', shelf_life=7)
-        self.ingredient = Ingredient.objects.create(name='Month-boundary ingredient', unit='liter',
-            unit_price=20, shelf_life=7, ingredient_type='raw_milk')
 
     def test_manila_month_and_year_boundaries_use_matching_local_counters_and_prefixes(self):
         from datetime import datetime, timezone as datetime_timezone
         from django.utils import timezone
-        from inventory.serializers import ProdBatchSerializer, IngBatchSerializer
+        from inventory.serializers import ProdBatchSerializer
         from inventory.models import BatchSequence
         cases = [(datetime(2026,10,31,16,5,tzinfo=datetime_timezone.utc), '2611', '2026-11-08', 2026, 11),
                  (datetime(2026,12,31,16,5,tzinfo=datetime_timezone.utc), '2701', '2027-01-08', 2027, 1)]
         for stamp, prefix, expiry, year, month in cases:
             with timezone.override('Asia/Manila'), patch('django.utils.timezone.now', return_value=stamp):
-                for serializer_type, field, obj, kind in [(ProdBatchSerializer,'product_id',self.product,'PRD'),
-                                                         (IngBatchSerializer,'ingredient_id',self.ingredient,'ING')]:
+                for (serializer_type, field, obj, kind) in [(ProdBatchSerializer, 'product_id', self.product, 'PRD')]:
                     serializer = serializer_type(data={field:obj.pk,'quantity':'1.00','expiration_date':expiry})
                     self.assertTrue(serializer.is_valid(),serializer.errors)
                     batch = serializer.save()
@@ -292,12 +289,10 @@ class BatchBusinessDateAuditTests(APITestCase):
 
     def test_creation_keeps_one_counter_date_even_if_clock_crosses_midnight_after_allocation(self):
         from datetime import date
-        from inventory.serializers import ProdBatchSerializer, IngBatchSerializer
+        from inventory.serializers import ProdBatchSerializer
         from inventory.services.batch_sequence_service import next_sequence
         from inventory.models import BatchSequence
-        for serializer_type, field, obj, kind, module in [
-                (ProdBatchSerializer,'product_id',self.product,'PRD','inventory.serializers.productbatch_serializer'),
-                (IngBatchSerializer,'ingredient_id',self.ingredient,'ING','inventory.serializers.ingredientbatch_serializer')]:
+        for (serializer_type, field, obj, kind, module) in [(ProdBatchSerializer, 'product_id', self.product, 'PRD', 'inventory.serializers.productbatch_serializer')]:
             serializer = serializer_type(data={field:obj.pk,'quantity':'1.00','expiration_date':'2027-01-08'})
             self.assertTrue(serializer.is_valid(),serializer.errors)
             with patch(module+'.timezone.localdate', side_effect=[date(2026,12,31), date(2027,1,1)]) as localdate, \

@@ -5,7 +5,7 @@ from django.utils import timezone
 def generate_batch_number(prefix, sequence, *, business_date=None):
     """
     Format a batch number using the same business date as its monthly counter.
-    The format is: PRD-2506-001 / ING-2506-001
+    The format is: PRD-2506-001
     """
 
     now = business_date if business_date is not None else timezone.localdate()

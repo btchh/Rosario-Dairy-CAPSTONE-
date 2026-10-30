@@ -21,6 +21,14 @@ This is a source/contract, component-test, type-check and build review. It does
 not establish production capacity or replace browser/end-to-end staging tests.
 No frontend tracked files were changed, and no business database writes ran.
 
+**Subsequent backend scope change:** ingredient/supplier management is now
+retired by `inventory.0012_product_only_inventory`. This review's frontend
+checkout still has legacy ingredient types, list requests and labels. Their
+removal is pending, as detailed in the handoff's **Product-only inventory
+cleanup** section. Temporary empty legacy GET responses preserve older clients'
+parallel product-inventory and notification loads; legacy writes return 410.
+This is an additional request beyond the original `49c3cb42` feature review.
+
 ## Remaining requests
 
 ### 1. Checkout and order retry UUIDs: not implemented

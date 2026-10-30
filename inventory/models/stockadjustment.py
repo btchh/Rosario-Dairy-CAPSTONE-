@@ -9,30 +9,18 @@ class StockAdjustment(models.Model):
     ('free_taste', 'Free Taste'),
     ('spillage', 'Spillage'),
     ('taste_test', 'Taste Test Rejection'),
-    ('processing_use', 'Used for Processing'), 
+    ('processing_use', 'Used for Processing'),
     ('correction', 'Correction'),
   ]
 
-  product_batch = models.ForeignKey('ProductBatch', on_delete=models.PROTECT, related_name='adjustments', blank=True, null=True)
-  ingredient_batch = models.ForeignKey('IngredientBatch', on_delete=models.PROTECT, related_name='adjustments', blank=True, null=True)
+  product_batch = models.ForeignKey('ProductBatch', on_delete=models.PROTECT, related_name='adjustments')
   adjustment_type = models.CharField(max_length=20, choices=ADJUSTMENT_TYPES)
   quantity = models.DecimalField(max_digits=10, decimal_places=2)
   unit_cost = models.DecimalField(max_digits=10, decimal_places=2)
   reason = models.TextField(blank=True, null=True)
-  adjusted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='adjustments') 
+  adjusted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='adjustments')
   created_at = models.DateTimeField(auto_now_add=True)
   updated_at = models.DateTimeField(auto_now=True)
 
   def __str__(self):
     return self.adjustment_type
-
-  class Meta:
-    constraints = [
-      models.CheckConstraint(
-        condition=(
-          models.Q(product_batch__isnull=False, ingredient_batch__isnull=True) |
-          models.Q(product_batch__isnull=True, ingredient_batch__isnull=False)
-        ),
-        name='stock_adjustment_exactly_one_batch',
-      ),
-    ]

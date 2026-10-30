@@ -20,6 +20,14 @@ machine; a native build for another architecture requires the backend source.
 
 ## Start on the receiving machine
 
+The product-only cleanup requires migration
+`inventory.0012_product_only_inventory`. Rebuild/export the backend image to
+include it; old archives do not contain the cleanup. Back up an existing database
+and stop API/forecast workers before migrating. Migration stops if retired
+ingredient/supplier data exists; archive it explicitly before retrying. Product,
+sales and customer records are retained. See `FRONTEND_HANDOFF.md` for the
+remaining frontend cleanup and temporary empty legacy-list responses.
+
 Install Docker with Compose. Verify the downloaded archive against its checksum,
 extract it, and open the extracted directory. Then run:
 

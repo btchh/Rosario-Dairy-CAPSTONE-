@@ -3,8 +3,7 @@ from django.utils import timezone
 from django.conf import settings
 
 class StockCount(models.Model):
-  ingredient_batch = models.ForeignKey('IngredientBatch', on_delete=models.PROTECT, related_name='counts', blank=True, null=True)
-  product_batch = models.ForeignKey('ProductBatch', on_delete=models.PROTECT, related_name='counts', blank=True, null=True)
+  product_batch = models.ForeignKey('ProductBatch', on_delete=models.PROTECT, related_name='counts')
   expected_quantity = models.DecimalField(max_digits=10, decimal_places=2)
   counted_quantity = models.DecimalField(max_digits=10, decimal_places=2)
   variance = models.DecimalField(max_digits=10, decimal_places=2)
@@ -15,19 +14,10 @@ class StockCount(models.Model):
   created_at = models.DateTimeField(auto_now_add=True)
 
   def __str__(self):
-    target = self.ingredient_batch or self.product_batch
+    target = self.product_batch
     return f"Count: {target} on {self.count_date}"
 
   class Meta:
     verbose_name = "Stock Count"
     verbose_name_plural = "Stock Counts"
     ordering = ['-count_date']
-    constraints = [
-      models.CheckConstraint(
-        condition=(
-          models.Q(product_batch__isnull=False, ingredient_batch__isnull=True) |
-          models.Q(product_batch__isnull=True, ingredient_batch__isnull=False)
-        ),
-        name='stock_count_exactly_one_batch',
-      ),
-    ]

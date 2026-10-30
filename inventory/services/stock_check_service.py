@@ -2,7 +2,7 @@ from decimal import Decimal
 from django.utils import timezone
 from django.db.models import Case, CharField, DecimalField, Prefetch, Q, Sum, Value, When
 from django.db.models.functions import Coalesce
-from ..models import Product, Ingredient, ProductBatch, IngredientBatch, FEFOConf
+from ..models import Product, ProductBatch, FEFOConf
 from .eligibility import expiry_cutoff
 
 
@@ -47,19 +47,6 @@ def check_product_stock(visible_to_staff=False):
       low_stock_prods.append({'product': product, 'remaining_quantity': total_remaining})
   return low_stock_prods
 
-def check_ingredient_stock():
-  low_stock_ings = []
-  today = timezone.localdate()
-  ingredients = Ingredient.objects.filter(is_active=True).annotate(
-    available_stock=_available_stock('batches', today)
-  )
-  config = FEFOConf.get_config()
-  for ingredient in ingredients:
-    total_remaining = ingredient.available_stock
-    if total_remaining <= config.low_stock_threshold:
-      low_stock_ings.append({'ingredient': ingredient, 'remaining_quantity': total_remaining})
-  return low_stock_ings
-
 def check_product_expiration(visible_to_staff=False):
   now = timezone.localdate()
   config = FEFOConf.get_config()
@@ -76,18 +63,3 @@ def check_product_expiration(visible_to_staff=False):
     batches = batches.filter(product__is_active=True, product__category__is_active=True,
                              product__category__is_visible_to_staff=True)
   return batches.order_by('expiration_date')
-
-def check_ingredient_expiration():
-  now = timezone.localdate()
-  config = FEFOConf.get_config()
-  near_expiry_threshold = expiry_cutoff(now, config.near_expiry_threshold)
-  critical_expiry_threshold = expiry_cutoff(now, config.critical_expiry_threshold)
-  return IngredientBatch.objects.filter(
-    status='available', expiration_date__range=(now, near_expiry_threshold), date_received__lte=now
-  ).annotate(
-    expiry_status=_expiry_status(critical_expiry_threshold)
-  ).prefetch_related(Prefetch(
-    'ingredient', queryset=Ingredient.objects.annotate(
-      available_stock=_available_stock('batches', now)
-    ),
-  )).order_by('expiration_date')

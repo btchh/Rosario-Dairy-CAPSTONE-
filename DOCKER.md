@@ -105,6 +105,20 @@ docker compose --env-file .env.docker up --no-build --force-recreate -d
 docker compose --env-file .env.docker ps -a
 ```
 
+The product-only cleanup adds `inventory.0012_product_only_inventory`. It removes
+the unused supplier/ingredient tables and requires product batches on stock
+movements. Back up the database before updating. If any retired records exist,
+the migration stops before dropping tables; explicitly archive that data before
+retrying. Do not delete migration history or recreate the database to bypass the
+check. After the migration, invalidate old business cache payloads:
+
+```bash
+docker compose --env-file .env.docker exec api python manage.py shell -c "from config.data_cache import invalidate_data_cache; invalidate_data_cache()"
+```
+
+Rebuild and export a fresh image to share this cleanup; existing archives keep
+their original code and schema. Product/customer/sales records are retained.
+
 The named database volume persists through ordinary `down` and container
 recreation. Keep `down --volumes` out of the normal update workflow because it
 deletes these volumes. A named volume is not a recovery backup; take a separate

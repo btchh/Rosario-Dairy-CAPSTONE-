@@ -27,28 +27,10 @@ from config.test_support import (
 
 from config.data_cache import data_version
 from forecasting.data import load_snapshot
-from inventory.models import (
-    BatchSequence,
-    Category,
-    FEFOConf,
-    Ingredient,
-    IngredientBatch,
-    Product,
-    ProductBatch,
-    StockAdjustment,
-    StockCount,
-    Supplier,
-)
-from inventory.serializers import (
-    IngBatchSerializer,
-    IngredientSerializer,
-    ProdBatchSerializer,
-    ProductSerializer,
-)
+from inventory.models import BatchSequence, Category, FEFOConf, Product, ProductBatch, StockAdjustment, StockCount
+from inventory.serializers import ProdBatchSerializer, ProductSerializer
 from inventory.services.batch_sequence_service import next_sequence
 from inventory.services.batch_service import BatchService
-from inventory.views.ingredient_views import IngredientViewSet
-from inventory.views.ingredientbatch_views import IngredientBatchViewSet
 from inventory.views.product_views import ProductViewSet
 from inventory.views.productbatch_views import ProductBatchViewSet
 from sales.models import Order, Transaction
@@ -110,7 +92,7 @@ class ConditionalDeleteAPITests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(Category.objects.get(pk=category.pk).is_active)
 
-    def test_product_ingredient_and_supplier_follow_same_protection_rule(self):
+    def test_product_follows_protection_rule(self):
         category = Category.objects.create(name='Products')
         unused = Product.objects.create(
             category=category, name='Unused', unit='piece',
@@ -130,36 +112,7 @@ class ConditionalDeleteAPITests(TestCase):
         self.assertEqual(self.client.delete(f'/inventory/products/{linked.pk}/').data['deletion_type'], 'deactivated')
         self.assertFalse(Product.objects.get(pk=linked.pk).is_active)
 
-        unused_ingredient = Ingredient.objects.create(
-            name='Unused Ingredient', unit='piece', unit_price=Decimal('1.00'), shelf_life=7,
-        )
-        linked_ingredient = Ingredient.objects.create(
-            name='Linked Ingredient', unit='piece', unit_price=Decimal('1.00'), shelf_life=7,
-        )
-        unused_supplier = Supplier.objects.create(name='Unused Supplier')
-        linked_supplier = Supplier.objects.create(name='Linked Supplier')
-        IngredientBatch.objects.create(
-            ingredient=linked_ingredient, supplier=linked_supplier,
-            batch_number='DELETE-LINKED-INGREDIENT',
-            initial_quantity=Decimal('1.00'), remaining_quantity=Decimal('1.00'),
-            expiration_date='2026-12-31',
-        )
-        self.assertEqual(self.client.delete(f'/inventory/ingredients/{unused_ingredient.pk}/').data['deletion_type'], 'permanent')
-        self.assertEqual(self.client.delete(f'/inventory/ingredients/{linked_ingredient.pk}/').data['deletion_type'], 'deactivated')
-        self.assertFalse(Ingredient.objects.get(pk=linked_ingredient.pk).is_active)
-        self.assertEqual(self.client.delete(f'/inventory/suppliers/{unused_supplier.pk}/').data['deletion_type'], 'permanent')
-        self.assertEqual(self.client.delete(f'/inventory/suppliers/{linked_supplier.pk}/').data['deletion_type'], 'deactivated')
-        self.assertFalse(Supplier.objects.get(pk=linked_supplier.pk).is_active)
 
-    def test_staff_can_deactivate_but_cannot_permanently_delete_ingredient(self):
-        ingredient = Ingredient.objects.create(
-            name='Staff Ingredient', unit='piece', unit_price=Decimal('1.00'), shelf_life=7,
-        )
-        self.client.force_authenticate(user=make_user('deletestaff'))
-        self.assertEqual(self.client.delete(f'/inventory/ingredients/{ingredient.pk}/').status_code, 403)
-        self.assertTrue(Ingredient.objects.get(pk=ingredient.pk).is_active)
-        self.assertEqual(self.client.post(f'/inventory/ingredients/{ingredient.pk}/deactivate/').status_code, 200)
-        self.assertFalse(Ingredient.objects.get(pk=ingredient.pk).is_active)
 
 
 class StaffCategoryVisibilityAPITests(TestCase):
@@ -348,23 +301,6 @@ class StockAlertQueryTests(TestCase):
 
         self.assertEqual(len(rows), 3)
 
-    def test_ingredient_stock_check_uses_one_aggregate_query(self):
-        for index in range(3):
-            ingredient = Ingredient.objects.create(
-                name=f'Ingredient {index}', unit='liter',
-                unit_price=Decimal('10.00'), shelf_life=7,
-            )
-            IngredientBatch.objects.create(
-                ingredient=ingredient, batch_number=f'ING-STOCK-{index}',
-                unit_price=Decimal('10.00'), initial_quantity=Decimal('5.00'),
-                remaining_quantity=Decimal('5.00'),
-                expiration_date=self.today + timedelta(days=30),
-            )
-
-        with self.assertNumQueries(2):
-            rows = BatchService.check_ingredient_stock()
-
-        self.assertEqual(len(rows), 3)
 
     def test_expiration_check_excludes_expired_and_labels_urgency(self):
         product = Product.objects.create(
@@ -480,7 +416,7 @@ class CreateStockAdjustmentTests(TestCase):
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.status, 'disposed')
 
-    def test_requires_exactly_one_of_product_or_ingredient_batch(self):
+    def test_requires_a_product_batch(self):
         with self.assertRaises(ValueError):
             BatchService.create_stock_adjustment(
                 adjustment_type='correction', quantity=Decimal('1.00'),
@@ -644,26 +580,6 @@ class ReconcileTests(TestCase):
         self.assertEqual(count.variance, Decimal('0.00'))
         self.assertIsNone(count.resulting_adjustment)
 
-    def test_ingredient_batch_auto_fills_unit_price_from_ingredient(self):
-        """
-        Covers the IngBatchSerializer.create() gap fix: an ingredient batch
-        created without an explicit unit_price should inherit it from the
-        ingredient, matching ProductBatch's existing behavior.
-        """
-        from inventory.serializers import IngBatchSerializer
-
-        ingredient = Ingredient.objects.create(
-            name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
-            shelf_life=3, ingredient_type='raw_milk',
-        )
-        serializer = IngBatchSerializer(data={
-            'ingredient_id': ingredient.pk,
-            'quantity': '50.00',
-            'expiration_date': (timezone.localdate() + timedelta(days=30)).isoformat(),
-        })
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        batch = serializer.save()
-        self.assertEqual(batch.unit_price, Decimal('25.00')) # type: ignore
 
 
 class BatchQuantityUpdateTests(TestCase):
@@ -771,25 +687,13 @@ class DeductBatchTests(TestCase):
 
 
 class BatchQuantityPriceValidationTests(TestCase):
-    """
-    Covers: ProdBatchSerializer/IngBatchSerializer used to accept quantity <= 0
-    and negative unit_price with zero validation. Both now reject via
-    min_value on quantity, and unit_price is bounded at >= 0.00 — for
-    ProductBatch via an explicit serializer field override, and for
-    IngredientBatch via the model-level MinValueValidator that DRF's
-    ModelSerializer auto-copies onto the generated field (IngBatchSerializer
-    never overrode unit_price, so this is the only thing now guarding it).
-    """
+    """Product batches reject nonpositive quantities and negative prices."""
 
     def setUp(self):
         self.category = Category.objects.create(name='Dairy')
         self.product = Product.objects.create(
             category=self.category, name='Fresh Milk', unit='liter',
             shelf_life=7,
-        )
-        self.ingredient = Ingredient.objects.create(
-            name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
-            shelf_life=3, ingredient_type='raw_milk',
         )
         self.future_date = (timezone.localdate() + timedelta(days=30)).isoformat()
 
@@ -852,48 +756,15 @@ class BatchQuantityPriceValidationTests(TestCase):
         batch = serializer.save()
         self.assertIsNone(cast(ProductBatch, batch).unit_price)
 
-    # --- IngredientBatch: quantity ---
-
-    def test_ingredient_batch_rejects_zero_quantity(self):
-        from inventory.serializers import IngBatchSerializer
-        serializer = IngBatchSerializer(data={
-            'ingredient_id': self.ingredient.pk, 'quantity': '0.00',
-            'expiration_date': self.future_date,
-        })
-        self.assertFalse(serializer.is_valid())
-        self.assertIn('quantity', serializer.errors)
-
-    def test_ingredient_batch_rejects_negative_quantity(self):
-        from inventory.serializers import IngBatchSerializer
-        serializer = IngBatchSerializer(data={
-            'ingredient_id': self.ingredient.pk, 'quantity': '-10.00',
-            'expiration_date': self.future_date,
-        })
-        self.assertFalse(serializer.is_valid())
-        self.assertIn('quantity', serializer.errors)
-
-    # --- IngredientBatch: unit_price (model-level validator, no serializer override) ---
-
-    def test_ingredient_batch_rejects_negative_unit_price(self):
-        from inventory.serializers import IngBatchSerializer
-        serializer = IngBatchSerializer(data={
-            'ingredient_id': self.ingredient.pk, 'quantity': '10.00',
-            'unit_price': '-1.00', 'expiration_date': self.future_date,
-        })
-        self.assertFalse(serializer.is_valid())
-        self.assertIn('unit_price', serializer.errors)
-
-    def test_ingredient_batch_accepts_zero_unit_price(self):
-        from inventory.serializers import IngBatchSerializer
-        serializer = IngBatchSerializer(data={
-            'ingredient_id': self.ingredient.pk, 'quantity': '10.00',
-            'unit_price': '0.00', 'expiration_date': self.future_date,
-        })
-        self.assertTrue(serializer.is_valid(), serializer.errors)
 
 
-class ProductIngredientPriceValidationTests(TestCase):
-    """Catalog products reject selling prices; ingredient costs stay validated."""
+
+
+
+
+
+class ProductPriceValidationTests(TestCase):
+    """Catalog products reject selling prices."""
 
     def setUp(self):
         self.category = Category.objects.create(name='Dairy')
@@ -907,27 +778,12 @@ class ProductIngredientPriceValidationTests(TestCase):
         self.assertFalse(serializer.is_valid())
         self.assertIn('unit_price', serializer.errors)
 
-    def test_ingredient_serializer_rejects_negative_unit_price(self):
-        from inventory.serializers import IngredientSerializer
-        serializer = IngredientSerializer(data={
-            'name': 'Bad Ingredient', 'unit': 'liter', 'unit_price': '-1.00',
-            'shelf_life': 3,
-        })
-        self.assertFalse(serializer.is_valid())
-        self.assertIn('unit_price', serializer.errors)
 
     def test_product_model_has_no_catalog_selling_price(self):
         product = Product(category=self.category, name='Milk', unit='liter', shelf_life=7)
         product.full_clean()
         self.assertNotIn('unit_price', {field.name for field in Product._meta.fields})
 
-    def test_ingredient_model_full_clean_rejects_negative_unit_price(self):
-        ingredient = Ingredient(
-            name='Bad Ingredient', unit='liter',
-            unit_price=Decimal('-1.00'), shelf_life=3,
-        )
-        with self.assertRaises(Exception):
-            ingredient.full_clean()
 
 
 class BatchSequenceServiceTests(TestCase):
@@ -994,36 +850,6 @@ class BatchSequenceServiceTests(TestCase):
         self.assertEqual(batch1.batch_number, f"{expected_prefix}001") # type: ignore
         self.assertEqual(batch2.batch_number, f"{expected_prefix}002") # type: ignore
 
-    def test_ingredient_batch_sequence_is_independent_of_product_batch_sequence(self):
-        from inventory.serializers import ProdBatchSerializer, IngBatchSerializer
-
-        category = Category.objects.create(name='Dairy')
-        product = Product.objects.create(
-            category=category, name='Fresh Milk', unit='liter',
-            shelf_life=7,
-        )
-        ingredient = Ingredient.objects.create(
-            name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
-            shelf_life=3, ingredient_type='raw_milk',
-        )
-        future_date = (timezone.localdate() + timedelta(days=30)).isoformat()
-
-        prod_serializer = ProdBatchSerializer(data={
-            'product_id': product.pk, 'quantity': '10.00', 'expiration_date': future_date,
-        })
-        self.assertTrue(prod_serializer.is_valid(), prod_serializer.errors)
-        prod_batch = prod_serializer.save()
-
-        ing_serializer = IngBatchSerializer(data={
-            'ingredient_id': ingredient.pk, 'quantity': '10.00', 'expiration_date': future_date,
-        })
-        self.assertTrue(ing_serializer.is_valid(), ing_serializer.errors)
-        ing_batch = ing_serializer.save()
-
-        self.assertIn('PRD-', prod_batch.batch_number) # type: ignore
-        self.assertIn('ING-', ing_batch.batch_number) # type: ignore
-        self.assertTrue(prod_batch.batch_number.endswith('001')) # type: ignore
-        self.assertTrue(ing_batch.batch_number.endswith('001')) # type: ignore
 
 
 class BatchSequenceConcurrencyTests(TransactionTestCase):
@@ -1067,8 +893,7 @@ class BatchSequenceConcurrencyTests(TransactionTestCase):
 
 class BatchNumberUniquenessTests(TestCase):
     """
-    Covers the unique=True constraint added to ProductBatch.batch_number and
-    IngredientBatch.batch_number. BatchSequence makes collisions practically
+    Covers the unique=True constraint added to ProductBatch.batch_number. BatchSequence makes collisions practically
     impossible now, but this is the hard DB-level backstop for any write
     path that bypasses the sequence entirely (bulk import, manual fixture,
     a future bug).
@@ -1079,10 +904,6 @@ class BatchNumberUniquenessTests(TestCase):
         self.product = Product.objects.create(
             category=self.category, name='Fresh Milk', unit='liter',
             shelf_life=7,
-        )
-        self.ingredient = Ingredient.objects.create(
-            name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
-            shelf_life=3, ingredient_type='raw_milk',
         )
         self.future_date = timezone.localdate() + timedelta(days=30)
 
@@ -1101,45 +922,12 @@ class BatchNumberUniquenessTests(TestCase):
                 expiration_date=self.future_date,
             )
 
-    def test_duplicate_ingredient_batch_number_rejected_at_db_level(self):
-        IngredientBatch.objects.create(
-            ingredient=self.ingredient, batch_number='ING-DUP-001',
-            unit_price=Decimal('25.00'),
-            initial_quantity=Decimal('10.00'), remaining_quantity=Decimal('10.00'),
-            expiration_date=self.future_date,
-        )
-        with self.assertRaises(IntegrityError):
-            IngredientBatch.objects.create(
-                ingredient=self.ingredient, batch_number='ING-DUP-001',  # same number
-                unit_price=Decimal('25.00'),
-                initial_quantity=Decimal('10.00'), remaining_quantity=Decimal('10.00'),
-                expiration_date=self.future_date,
-            )
 
-    def test_product_and_ingredient_batches_can_share_a_prefix_free_number_space(self):
-        """Uniqueness is per-model (separate DB tables), so a PRD-prefixed and
-        an ING-prefixed number never collide regardless of content — this
-        just confirms the constraint doesn't accidentally span both tables."""
-        ProductBatch.objects.create(
-            product=self.product, batch_number='SHARED-001',
-            unit_price=Decimal('50.00'),
-            initial_quantity=Decimal('10.00'), remaining_quantity=Decimal('10.00'),
-            expiration_date=self.future_date,
-        )
-        # Same literal string, different model/table — must NOT raise.
-        IngredientBatch.objects.create(
-            ingredient=self.ingredient, batch_number='SHARED-001',
-            unit_price=Decimal('25.00'),
-            initial_quantity=Decimal('10.00'), remaining_quantity=Decimal('10.00'),
-            expiration_date=self.future_date,
-        )
-        self.assertEqual(ProductBatch.objects.filter(batch_number='SHARED-001').count(), 1)
-        self.assertEqual(IngredientBatch.objects.filter(batch_number='SHARED-001').count(), 1)
 
 
 class ExpiredBatchExclusionTests(TestCase):
     """
-    Covers: deduct_product_batch()/deduct_ingredient_batch() previously
+    Covers: deduct_product_batch() previously
     filtered only on status='available', never on expiration_date. Nothing
     in this app automatically flips status to 'expired' when a batch's date
     passes, so an expired-but-still-'available' batch was silently sellable
@@ -1151,10 +939,6 @@ class ExpiredBatchExclusionTests(TestCase):
         self.product = Product.objects.create(
             category=self.category, name='Fresh Milk', unit='liter',
             shelf_life=7,
-        )
-        self.ingredient = Ingredient.objects.create(
-            name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
-            shelf_life=3, ingredient_type='raw_milk',
         )
         self.today = timezone.localdate()
 
@@ -1220,40 +1004,8 @@ class ExpiredBatchExclusionTests(TestCase):
         self.assertEqual(len(consumed), 1)
         self.assertEqual(consumed[0][0].pk, batch.pk)
 
-    # --- IngredientBatch ---
 
-    def test_expired_ingredient_batch_excluded_from_deduction(self):
-        expired = IngredientBatch.objects.create(
-            ingredient=self.ingredient, batch_number='ING-EXP-001',
-            unit_price=Decimal('25.00'),
-            initial_quantity=Decimal('50.00'), remaining_quantity=Decimal('50.00'),
-            expiration_date=self.today - timedelta(days=1),
-        )
-        valid = IngredientBatch.objects.create(
-            ingredient=self.ingredient, batch_number='ING-EXP-002',
-            unit_price=Decimal('25.00'),
-            initial_quantity=Decimal('50.00'), remaining_quantity=Decimal('50.00'),
-            expiration_date=self.today + timedelta(days=10),
-        )
 
-        consumed = BatchService.deduct_ingredient_batch(self.ingredient, Decimal('20.00'))
-
-        self.assertEqual(len(consumed), 1)
-        self.assertEqual(consumed[0][0].pk, valid.pk)
-        expired.refresh_from_db()
-        valid.refresh_from_db()
-        self.assertEqual(expired.remaining_quantity, Decimal('50.00'))  # untouched
-        self.assertEqual(valid.remaining_quantity, Decimal('30.00'))
-
-    def test_ingredient_deduction_fails_when_only_expired_stock_exists(self):
-        IngredientBatch.objects.create(
-            ingredient=self.ingredient, batch_number='ING-EXP-003',
-            unit_price=Decimal('25.00'),
-            initial_quantity=Decimal('100.00'), remaining_quantity=Decimal('100.00'),
-            expiration_date=self.today - timedelta(days=5),
-        )
-        with self.assertRaises(ValueError):
-            BatchService.deduct_ingredient_batch(self.ingredient, Decimal('10.00'))
 
 
 class BatchStatusReadOnlyTests(TestCase):
@@ -1272,10 +1024,6 @@ class BatchStatusReadOnlyTests(TestCase):
             category=self.category, name='Fresh Milk', unit='liter',
             shelf_life=7,
         )
-        self.ingredient = Ingredient.objects.create(
-            name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
-            shelf_life=3, ingredient_type='raw_milk',
-        )
         self.future_date = timezone.localdate() + timedelta(days=30)
 
     def test_product_batch_status_ignored_on_patch(self):
@@ -1293,20 +1041,6 @@ class BatchStatusReadOnlyTests(TestCase):
         batch.refresh_from_db()
         self.assertEqual(batch.status, 'disposed')  # unchanged — patch silently ignored
 
-    def test_ingredient_batch_status_ignored_on_patch(self):
-        from inventory.serializers import IngBatchSerializer
-
-        batch = IngredientBatch.objects.create(
-            ingredient=self.ingredient, batch_number='ING-STATUS-001',
-            unit_price=Decimal('25.00'),
-            initial_quantity=Decimal('10.00'), remaining_quantity=Decimal('10.00'),
-            expiration_date=self.future_date, status='depleted',
-        )
-        serializer = IngBatchSerializer(batch, data={'status': 'available'}, partial=True)
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        serializer.save()
-        batch.refresh_from_db()
-        self.assertEqual(batch.status, 'depleted')  # unchanged — patch silently ignored
 
     def test_new_product_batch_defaults_to_available_regardless_of_input(self):
         from inventory.serializers import ProdBatchSerializer
@@ -1350,10 +1084,6 @@ class BatchDateValidationTests(TestCase):
         self.product = Product.objects.create(
             category=self.category, name='Fresh Milk', unit='liter',
             shelf_life=7,
-        )
-        self.ingredient = Ingredient.objects.create(
-            name='Raw Milk', unit='liter', unit_price=Decimal('25.00'),
-            shelf_life=3, ingredient_type='raw_milk',
         )
         self.today = timezone.localdate()
 
@@ -1441,26 +1171,8 @@ class BatchDateValidationTests(TestCase):
         serializer = ProdBatchSerializer(batch, data={'notes': 'restocked shelf'}, partial=True)
         self.assertTrue(serializer.is_valid(), serializer.errors)
 
-    # --- IngredientBatch: create ---
 
-    def test_ingredient_batch_rejects_expiration_before_date_received(self):
-        from inventory.serializers import IngBatchSerializer
-        serializer = IngBatchSerializer(data={
-            'ingredient_id': self.ingredient.pk, 'quantity': '10.00',
-            'date_received': self.today.isoformat(),
-            'expiration_date': (self.today - timedelta(days=1)).isoformat(),
-        })
-        self.assertFalse(serializer.is_valid())
-        self.assertIn('expiration_date', serializer.errors)
 
-    def test_ingredient_batch_allows_future_expiration(self):
-        from inventory.serializers import IngBatchSerializer
-        serializer = IngBatchSerializer(data={
-            'ingredient_id': self.ingredient.pk, 'quantity': '10.00',
-            'date_received': self.today.isoformat(),
-            'expiration_date': (self.today + timedelta(days=10)).isoformat(),
-        })
-        self.assertTrue(serializer.is_valid(), serializer.errors)
 
 
 class InventoryAuditRegressionTests(TestCase):
@@ -1470,10 +1182,6 @@ class InventoryAuditRegressionTests(TestCase):
         self.category = Category.objects.create(name='Audit Category')
         self.product = Product.objects.create(
             category=self.category, name='Audit Product', unit='piece',
-            shelf_life=7,
-        )
-        self.ingredient = Ingredient.objects.create(
-            name='Audit Ingredient', unit='kg', unit_price=Decimal('5.00'),
             shelf_life=7,
         )
 
@@ -1493,21 +1201,6 @@ class InventoryAuditRegressionTests(TestCase):
         )
         self.assertEqual(alert['remaining_quantity'], Decimal('0.00'))
 
-    def test_expired_ingredient_stock_is_excluded_from_total_and_low_stock_check(self):
-        from inventory.serializers import IngredientSerializer
-
-        IngredientBatch.objects.create(
-            ingredient=self.ingredient, batch_number='ING-AUDIT-EXP',
-            initial_quantity=Decimal('100.00'), remaining_quantity=Decimal('100.00'),
-            expiration_date=self.today - timedelta(days=1), status='available',
-        )
-
-        self.assertEqual(cast(dict[str, object], IngredientSerializer(self.ingredient).data)['total_stock'], 0)
-        alert = next(
-            item for item in BatchService.check_ingredient_stock()
-            if item['ingredient'].pk == self.ingredient.pk
-        )
-        self.assertEqual(alert['remaining_quantity'], Decimal('0.00'))
 
     def test_product_batch_cannot_be_reassigned(self):
         from inventory.serializers import ProdBatchSerializer
@@ -1528,55 +1221,18 @@ class InventoryAuditRegressionTests(TestCase):
         self.assertFalse(serializer.is_valid())
         self.assertIn('product_id', serializer.errors)
 
-    def test_ingredient_batch_cannot_be_reassigned(self):
-        from inventory.serializers import IngBatchSerializer
-
-        other = Ingredient.objects.create(
-            name='Other Ingredient', unit='kg', unit_price=Decimal('5.00'),
-            shelf_life=7,
-        )
-        batch = IngredientBatch.objects.create(
-            ingredient=self.ingredient, batch_number='ING-AUDIT-MOVE',
-            initial_quantity=Decimal('10.00'), remaining_quantity=Decimal('7.00'),
-            expiration_date=self.today + timedelta(days=7),
-        )
-        serializer = IngBatchSerializer(
-            batch, data={'ingredient_id': other.pk}, partial=True,
-        )
-
-        self.assertFalse(serializer.is_valid())
-        self.assertIn('ingredient_id', serializer.errors)
 
     def test_negative_shelf_life_is_rejected(self):
-        from inventory.serializers import IngredientSerializer, ProductSerializer
+        from inventory.serializers import ProductSerializer
 
         product = ProductSerializer(data={
             'category_id': self.category.pk, 'name': 'Invalid Product',
             'unit': 'piece', 'unit_price': '1.00', 'shelf_life': -1,
         })
-        ingredient = IngredientSerializer(data={
-            'name': 'Invalid Ingredient', 'unit': 'kg', 'unit_price': '1.00',
-            'shelf_life': -1,
-        })
 
         self.assertFalse(product.is_valid())
         self.assertIn('shelf_life', product.errors)
-        self.assertFalse(ingredient.is_valid())
-        self.assertIn('shelf_life', ingredient.errors)
 
-    def test_ingredient_batch_grade_is_available_through_serializer(self):
-        from inventory.serializers import IngBatchSerializer
-
-        serializer = IngBatchSerializer(data={
-            'ingredient_id': self.ingredient.pk, 'quantity': '10.00',
-            'grade': 'A',
-            'expiration_date': (self.today + timedelta(days=7)).isoformat(),
-        })
-        self.assertTrue(serializer.is_valid(), serializer.errors)
-        batch = serializer.save()
-
-        self.assertEqual(cast(IngredientBatch, batch).grade, 'A')
-        self.assertEqual(cast(dict[str, object], IngBatchSerializer(batch).data)['grade'], 'A')
 
     def test_terminal_batch_rejects_correction_without_creating_phantom_stock(self):
         batch = ProductBatch.objects.create(
@@ -1696,31 +1352,6 @@ class CatalogQueryTests(TestCase):
     def setUp(self):
         FEFOConf.get_config()
 
-    def test_ingredient_catalog_and_nested_batches_use_bounded_queries(self):
-        for i in range(12):
-            ingredient = Ingredient.objects.create(
-                name=f'Ingredient {i}', unit='liter', unit_price=20, shelf_life=7,
-            )
-            for offset, quantity in [(2, 10), (-1, 5)]:
-                IngredientBatch.objects.create(
-                    ingredient=ingredient, batch_number=f'ING-{i}-{offset}',
-                    initial_quantity=quantity, remaining_quantity=quantity,
-                    expiration_date=timezone.localdate() + timedelta(days=offset),
-                )
-        for view_type, serializer, nested, queries in [
-            (IngredientViewSet, IngredientSerializer, False, 1),
-            (IngredientBatchViewSet, IngBatchSerializer, True, 2),
-        ]:
-            view = view_type()
-            view.action = 'list'
-            view.request = SimpleNamespace(query_params={})
-            with self.assertNumQueries(queries + 1):
-                data = serializer(view.get_queryset(), many=True).data
-            self.assertEqual(len(data), 24 if nested else 12)
-            self.assertTrue(all(
-                Decimal(str((row['ingredient'] if nested else row)['total_stock'])) == 10
-                for row in data
-            ))
 
     def test_catalog_and_nested_batches_use_bounded_queries_and_exclude_expired_stock(self):
         category=Category.objects.create(name='Milk')
@@ -1800,17 +1431,6 @@ class InventoryOutflowTests(TestCase):
             self.assertEqual(self.batch.remaining_quantity, 0)
             self.assertEqual(self.batch.status, expected)
 
-    def test_ingredient_batches_use_the_same_outflow_records(self):
-        ingredient = Ingredient.objects.create(name='Raw Milk', unit='L', unit_price=20, shelf_life=7)
-        batch = IngredientBatch.objects.create(ingredient=ingredient, batch_number='OUTFLOW-INGREDIENT',
-            initial_quantity=10, remaining_quantity=10, unit_price=20,
-            expiration_date=timezone.localdate() + timedelta(days=7))
-        response = self.record('free_taste', product_batch_id=None, ingredient_batch_id=batch.pk, unit_cost='20')
-        self.assertEqual(response.status_code, 201, response.data)
-        self.assertIsNone(response.data['product_batch'])
-        self.assertEqual(response.data['ingredient_batch']['id'], batch.pk)
-        batch.refresh_from_db()
-        self.assertEqual(batch.remaining_quantity, 8)
 
     def test_invalid_quantities_costs_and_insufficient_stock_leave_no_records(self):
         for values in ({'quantity':'0'}, {'quantity':'-1'}, {'quantity':'11'},

@@ -8,7 +8,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from inventory.models import Category, FEFOConf, Ingredient, IngredientBatch, Product, ProductBatch
+from inventory.models import Category, FEFOConf, Product, ProductBatch
 from reporting.services import inventory_status
 from sales.models import Customer, Transaction, TransactionItem
 from systemsetting.models import SystemSettings
@@ -59,16 +59,6 @@ class ReportAPITests(TestCase):
             remaining_quantity=Decimal('5.00'),
             expiration_date=timezone.localdate() + timedelta(days=3),
         )
-        self.ingredient = Ingredient.objects.create(
-            name='Raw Milk', unit='liter', unit_price=Decimal('20.00'),
-            shelf_life=3,
-        )
-        IngredientBatch.objects.create(
-            ingredient=self.ingredient, batch_number='ING-REPORT-001',
-            unit_price=Decimal('20.00'), initial_quantity=Decimal('20.00'),
-            remaining_quantity=Decimal('20.00'),
-            expiration_date=timezone.localdate() + timedelta(days=10),
-        )
         self.transaction = Transaction.objects.create(
             handled_by=self.staff, customer=self.customer,
             subtotal=Decimal('100.00'), total_amount=Decimal('100.00'),
@@ -99,7 +89,7 @@ class ReportAPITests(TestCase):
         self.product_batch.expiration_date = timezone.localdate() + timedelta(days=8)
         self.product_batch.save(update_fields=['expiration_date'])
         result = inventory_status()
-        self.assertEqual(result['low_stock_count'], 2)
+        self.assertEqual(result['low_stock_count'], 1)
         self.assertTrue(all(item['low_stock_threshold'] == 20 for item in result['items']))
         product = next(item for item in result['items'] if item['item_type'] == 'product')
         self.assertEqual(product['fefo_status'], 'healthy')

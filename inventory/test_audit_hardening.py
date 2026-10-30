@@ -9,10 +9,10 @@ from django.test import SimpleTestCase
 from django.utils import timezone
 
 from config.test_support import APITestCase
-from inventory.models import Category, FEFOConf, Ingredient, IngredientBatch, Product, ProductBatch, StockAdjustment, StockCount
+from inventory.models import Category, FEFOConf, Product, ProductBatch, StockAdjustment, StockCount
 from inventory.serializers.fefoconf_serializer import FEFOConfSerializer
 from inventory.services.eligibility import expiry_cutoff
-from inventory.services.stock_check_service import check_ingredient_expiration, check_product_expiration
+from inventory.services.stock_check_service import check_product_expiration
 from reporting.services import inventory_status
 from sales.models import Customer, Transaction
 
@@ -92,10 +92,7 @@ class ExpiryBoundaryAPITests(APITestCase):
             name='Expiry Boundary Milk', category=Category.objects.create(name='Expiry Boundary'),
             unit='liter', shelf_life=7,
         )
-        ingredient = Ingredient.objects.create(
-            name='Expiry Boundary Cream', unit='liter', unit_price=Decimal('1'), shelf_life=7,
-        )
-        for model, relation in ((ProductBatch, {'product': product}), (IngredientBatch, {'ingredient': ingredient})):
+        for (model, relation) in ((ProductBatch, {'product': product}),):
             model.objects.create(
                 **relation, batch_number=f'EXPIRY-{model.__name__}',
                 initial_quantity=Decimal('1'), remaining_quantity=Decimal('1'),
@@ -105,13 +102,10 @@ class ExpiryBoundaryAPITests(APITestCase):
             near_expiry_threshold=2147483647, critical_expiry_threshold=2147483647,
         )
         products = list(check_product_expiration())
-        ingredients = list(check_ingredient_expiration())
         self.assertEqual([row.product_id for row in products], [product.pk])
-        self.assertEqual([row.ingredient_id for row in ingredients], [ingredient.pk])
         self.assertEqual(products[0].expiry_status, 'critical')
-        self.assertEqual(ingredients[0].expiry_status, 'critical')
-        self.assertEqual(inventory_status()['expiring_soon_batch_count'], 2)
-        for url in ('/inventory/expiring/products/', '/inventory/expiring/ingredients/'):
+        self.assertEqual(inventory_status()['expiring_soon_batch_count'], 1)
+        for url in ('/inventory/expiring/products/',):
             response = self.client.get(url)
             self.assertEqual(response.status_code, 200)
             self.assertEqual(len(response.data), 1)
@@ -126,17 +120,13 @@ class InventoryIdentifierValidationTests(APITestCase):
             name='Identifier Milk', category=Category.objects.create(name='Identifier Audit'),
             unit='liter', shelf_life=7,
         )
-        self.ingredient = Ingredient.objects.create(
-            name='Identifier Cream', unit='liter', unit_price=Decimal('1'), shelf_life=7,
-        )
         fields = dict(initial_quantity=Decimal('10'), remaining_quantity=Decimal('10'),
                       expiration_date=timezone.localdate() + timedelta(days=30), unit_price=Decimal('1'))
         self.product_batch = ProductBatch.objects.create(product=self.product, batch_number='IDENTIFIER-PRODUCT', **fields)
-        self.ingredient_batch = IngredientBatch.objects.create(ingredient=self.ingredient, batch_number='IDENTIFIER-INGREDIENT', **fields)
         self.customer = Customer.objects.create(name='Identifier Customer', created_by=self.staff)
 
     def test_invalid_batch_ids_never_deduct_or_reconcile_a_different_batch(self):
-        for field, batch in (('product_batch_id', self.product_batch), ('ingredient_batch_id', self.ingredient_batch)):
+        for (field, batch) in (('product_batch_id', self.product_batch),):
             for url, payload in (
                 ('/inventory/stock-adjustments/', {'adjustment_type': 'spoilage', 'quantity': '1', 'unit_cost': '1'}),
                 ('/inventory/stock-counts/', {'counted_quantity': '9'}),
@@ -145,19 +135,16 @@ class InventoryIdentifierValidationTests(APITestCase):
                     with self.subTest(field=field, url=url, value=value):
                         response = self.client.post(url, {**payload, field: value}, format='json')
                         self.assertEqual(response.status_code, 400)
-        for batch in (self.product_batch, self.ingredient_batch):
+        for batch in (self.product_batch,):
             batch.refresh_from_db()
             self.assertEqual(batch.remaining_quantity, Decimal('10'))
         self.assertEqual(StockAdjustment.objects.count(), 0)
         self.assertEqual(StockCount.objects.count(), 0)
 
     def test_numeric_string_ids_and_empty_optional_batch_ids_remain_supported(self):
-        for field, other_field, batch in (
-            ('product_batch_id', 'ingredient_batch_id', self.product_batch),
-            ('ingredient_batch_id', 'product_batch_id', self.ingredient_batch),
-        ):
+        for (field, other_field, batch) in (('product_batch_id', 'ingredient_batch_id', self.product_batch),):
             response = self.client.post('/inventory/stock-adjustments/', {
-                field: str(batch.pk), other_field: '', 'adjustment_type': 'spoilage',
+                field: str(batch.pk), other_field: None, 'adjustment_type': 'spoilage',
                 'quantity': '1', 'unit_cost': '1',
             }, format='json')
             self.assertEqual(response.status_code, 201, response.data)

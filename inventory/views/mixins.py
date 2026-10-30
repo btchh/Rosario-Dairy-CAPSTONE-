@@ -89,7 +89,7 @@ class SoftDeleteMixin(_Base):
 
 class BatchCreateDestroyMixin(_Base):
     """
-    For ProductBatch/IngredientBatch ViewSets: create() returns the fresh
+    For ProductBatch ViewSets: create() returns the fresh
     serialized object (not just validated_data), and destroy() converts a
     ProtectedError (batch has linked transactions/adjustments) into a clean 400.
     """

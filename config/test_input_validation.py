@@ -11,9 +11,7 @@ from django.test import override_settings
 from django.utils import timezone
 
 from config.test_support import APITestCase
-from inventory.models import (
-    Category, Ingredient, IngredientBatch, Product, ProductBatch, StockAdjustment, StockCount, Supplier,
-)
+from inventory.models import Category, Product, ProductBatch, StockAdjustment, StockCount
 from sales.models import Customer, Order, SaleSubmission, Transaction
 
 
@@ -30,47 +28,24 @@ class InputValidationTests(APITestCase):
         self.category = Category.objects.create(name='Input dairy')
         self.product = Product.objects.create(
             name='Input milk', category=self.category, unit='L', shelf_life=7)
-        self.ingredient = Ingredient.objects.create(
-            name='Input ingredient', unit='L', unit_price=20, shelf_life=7)
-        self.supplier = Supplier.objects.create(name='Input supplier')
         self.customer = Customer.objects.create(name='Input customer', created_by=self.admin)
         self.expiry = (timezone.localdate() + timedelta(days=7)).isoformat()
         self.batch = ProductBatch.objects.create(
             product=self.product, batch_number='INPUT-1', initial_quantity=10,
             remaining_quantity=10, unit_price=50, expiration_date=self.expiry)
-        self.ingredient_batch = IngredientBatch.objects.create(
-            ingredient=self.ingredient, batch_number='INPUT-I', initial_quantity=10,
-            remaining_quantity=10, unit_price=20, expiration_date=self.expiry)
 
     def sale(self, **extra):
         return {'items': [{'product_id': self.product.pk, 'quantity': '1', 'unit_price': '50'}],
                 'payment_method': 'online', **extra}
 
     def relationships(self):
-        ingredient_batch = {'ingredient_id': self.ingredient.pk,
-                            'quantity': '5', 'expiration_date': self.expiry}
-        return [
-            ('/inventory/products/', 'category_id', self.category.pk,
-             {'name': 'New milk', 'unit': 'L', 'shelf_life': 7, 'category_id': self.category.pk}),
-            ('/inventory/product-batches/', 'product_id', self.product.pk,
-             {'product_id': self.product.pk, 'quantity': '5', 'expiration_date': self.expiry}),
-            ('/inventory/ingredient-batches/', 'ingredient_id', self.ingredient.pk, ingredient_batch),
-            ('/inventory/ingredient-batches/', 'supplier', self.supplier.pk,
-             {**ingredient_batch, 'supplier': self.supplier.pk}),
-            ('/sales/orders/', 'customer_id', self.customer.pk,
-             self.sale(customer_id=self.customer.pk)),
-            ('/sales/encoding/', 'customer_id', self.customer.pk,
-             self.sale(customer_id=self.customer.pk, request_id=str(uuid4()),
-                       transaction_date=timezone.localdate().isoformat())),
-        ]
+        return [('/inventory/products/', 'category_id', self.category.pk, {'name': 'New milk', 'unit': 'L', 'shelf_life': 7, 'category_id': self.category.pk}), ('/inventory/product-batches/', 'product_id', self.product.pk, {'product_id': self.product.pk, 'quantity': '5', 'expiration_date': self.expiry}), ('/sales/orders/', 'customer_id', self.customer.pk, self.sale(customer_id=self.customer.pk)), ('/sales/encoding/', 'customer_id', self.customer.pk, self.sale(customer_id=self.customer.pk, request_id=str(uuid4()), transaction_date=timezone.localdate().isoformat()))]
 
     def snapshot(self):
         self.batch.refresh_from_db()
-        self.ingredient_batch.refresh_from_db()
         return (tuple(model.objects.count() for model in (
-            Product, ProductBatch, IngredientBatch, Order, Transaction, SaleSubmission,
-            StockAdjustment, StockCount)),
-            self.batch.remaining_quantity, self.ingredient_batch.remaining_quantity)
+            Product, ProductBatch, Order, Transaction, SaleSubmission,
+            StockAdjustment, StockCount)), self.batch.remaining_quantity)
 
     def assert_json_error(self, response, field=None):
         self.assertEqual(response.status_code, 400, response.data)
@@ -102,28 +77,20 @@ class InputValidationTests(APITestCase):
                     response = self.client.post(route, payload, format='json')
                     self.assertEqual(response.status_code, 201, response.data)
                     related = {'category_id': 'category', 'product_id': 'product',
-                               'ingredient_id': 'ingredient', 'customer_id': 'customer'}.get(field)
+                               'customer_id': 'customer'}.get(field)
                     self.assertEqual(response.data[related]['id'] if related
                                      else response.data[field], pk)
 
     def test_partial_updates_reject_fractional_relationships_without_changes(self):
-        for route, field, pk in (
-            (f'/inventory/products/{self.product.pk}/', 'category_id', self.category.pk),
-            (f'/inventory/product-batches/{self.batch.pk}/', 'product_id', self.product.pk),
-            (f'/inventory/ingredient-batches/{self.ingredient_batch.pk}/', 'ingredient_id', self.ingredient.pk),
-            (f'/inventory/ingredient-batches/{self.ingredient_batch.pk}/', 'supplier', self.supplier.pk),
-        ):
+        for (route, field, pk) in ((f'/inventory/products/{self.product.pk}/', 'category_id', self.category.pk), (f'/inventory/product-batches/{self.batch.pk}/', 'product_id', self.product.pk)):
             with self.subTest(route=route, field=field):
                 self.assert_json_error(self.client.patch(route, {field: pk + 0.9}, format='json'), field)
         self.product.refresh_from_db()
-        self.ingredient_batch.refresh_from_db()
         self.assertEqual(self.product.category_id, self.category.pk)
-        self.assertIsNone(self.ingredient_batch.supplier_id)
 
     def test_nonobject_catalog_bodies_return_json_errors_on_create_and_update(self):
         before = self.snapshot()
-        for route, pk in (('/inventory/products/', self.product.pk),
-                          ('/inventory/ingredients/', self.ingredient.pk)):
+        for (route, pk) in (('/inventory/products/', self.product.pk),):
             for method, url in (('post', route), ('put', f'{route}{pk}/'), ('patch', f'{route}{pk}/')):
                 for body in (True, False, 42, 0, [], [1], 'text', None):
                     with self.subTest(method=method, route=route, body=body):
@@ -173,11 +140,6 @@ class InputValidationTests(APITestCase):
             transaction_date=timezone.localdate().isoformat()), format='json')
         self.assertEqual(encoded.status_code, 201, encoded.data)
         self.assertIsNone(encoded.data['customer'])
-        ingredient = self.client.post('/inventory/ingredient-batches/', {
-            'ingredient_id': self.ingredient.pk, 'supplier': None,
-            'quantity': '1', 'expiration_date': self.expiry}, format='json')
-        self.assertEqual(ingredient.status_code, 201, ingredient.data)
-        self.assertIsNone(ingredient.data['supplier'])
 
     def test_invalid_report_limits_are_rejected_before_running_the_report(self):
         with patch('sales.views.report_views.SalesService.get_best_sellers') as report:
@@ -189,9 +151,9 @@ class InputValidationTests(APITestCase):
 
     def test_reactivation_rejects_malformed_path_ids_with_json_without_changes(self):
         before = self.snapshot()
-        models = (Product, Ingredient, Category, Supplier)
+        models = (Product, Category)
         active_before = [list(model.objects.values_list('pk', 'is_active')) for model in models]
-        for route in ('products', 'ingredients', 'categories', 'suppliers'):
+        for route in ('products', 'categories'):
             for value in ('bad', '1e3', '0', '-1', str(2**63), '9' * 5000):
                 with self.subTest(route=route, value=value[:30]):
                     response = self.client.post(f'/inventory/{route}/{value}/reactivate/', {}, format='json')
@@ -202,8 +164,7 @@ class InputValidationTests(APITestCase):
         self.assertEqual([list(model.objects.values_list('pk', 'is_active')) for model in models], active_before)
 
     def test_reactivation_preserves_valid_numeric_path_ids(self):
-        for route, obj in (('products', self.product), ('ingredients', self.ingredient),
-                           ('categories', self.category), ('suppliers', self.supplier)):
+        for (route, obj) in (('products', self.product), ('categories', self.category)):
             with self.subTest(route=route):
                 type(obj).objects.filter(pk=obj.pk).update(is_active=False)
                 response = self.client.post(f'/inventory/{route}/{obj.pk}/reactivate/', {}, format='json')

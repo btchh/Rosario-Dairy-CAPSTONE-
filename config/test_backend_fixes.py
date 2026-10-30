@@ -14,7 +14,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from config.test_support import APITestCase, APITransactionTestCase
-from inventory.models import Category, Product, ProductBatch, Ingredient, IngredientBatch, StockAdjustment
+from inventory.models import Category, Product, ProductBatch, StockAdjustment
 from inventory.services.batch_service import BatchService
 from reporting.services import inventory_status
 from sales.models import Customer, Order, Transaction, StockReturn, SaleSubmission
@@ -34,9 +34,6 @@ class BusinessFixture:
         self.product = Product.objects.create(category=self.category, name='Fresh Milk', unit='L', shelf_life=7)
         self.batch = ProductBatch.objects.create(product=self.product, batch_number='FIX-1', initial_quantity=10,
             remaining_quantity=10, unit_price=50, expiration_date=self.today+timedelta(days=7))
-        self.ingredient = Ingredient.objects.create(name='Fix raw milk', unit='L', unit_price=20, shelf_life=7)
-        self.ingredient_batch = IngredientBatch.objects.create(ingredient=self.ingredient, batch_number='FIX-ING-1',
-            initial_quantity=10, remaining_quantity=10, unit_price=20, expiration_date=self.batch.expiration_date)
 
     def cart(self, **extra):
         return {'items': [{'product_id': self.product.pk, 'quantity': '1.00', 'unit_price': '50.00'}],
@@ -46,8 +43,7 @@ class BusinessFixture:
 class BackendFixTests(BusinessFixture, APITestCase):
     def test_staff_batch_reads_succeed_but_all_writes_are_denied(self):
         self.client.force_authenticate(self.staff)
-        for route, batch, field, item in [('product-batches', self.batch, 'product_id', self.product),
-                                          ('ingredient-batches', self.ingredient_batch, 'ingredient_id', self.ingredient)]:
+        for (route, batch, field, item) in [('product-batches', self.batch, 'product_id', self.product)]:
             with self.subTest(route=route):
                 base = f'/inventory/{route}/'
                 detail = f'{base}{batch.pk}/'
@@ -70,19 +66,12 @@ class BackendFixTests(BusinessFixture, APITestCase):
             'quantity': '5', 'expiration_date': self.batch.expiration_date.isoformat()}, format='json')
         self.assertEqual(created.status_code, 201, created.data)
 
-    def test_staff_cannot_change_ingredient_cost_but_can_record_operational_outflow(self):
-        self.client.force_authenticate(self.staff)
-        self.assertEqual(self.client.patch(f'/inventory/ingredients/{self.ingredient.pk}/', {'unit_price': '999'}, format='json').status_code, 403)
-        response = self.client.post('/inventory/stock-adjustments/', {'product_batch_id': self.batch.pk,
-            'adjustment_type': 'spillage', 'quantity': '1', 'unit_cost': '50'}, format='json')
-        self.assertEqual(response.status_code, 201, response.data)
-        self.assertEqual(self.client.post(f'/inventory/ingredients/{self.ingredient.pk}/deactivate/').status_code, 200)
 
     def test_expired_disposal_counts_and_repeat_requests_are_consistent(self):
-        for batch in (self.batch, self.ingredient_batch):
+        for batch in (self.batch,):
             type(batch).objects.filter(pk=batch.pk).update(status='expired', expiration_date=self.today-timedelta(days=1))
-        self.assertEqual(inventory_status()['expired_batch_count'], 2)
-        for field, batch in [('product_batch_id', self.batch), ('ingredient_batch_id', self.ingredient_batch)]:
+        self.assertEqual(inventory_status()['expired_batch_count'], 1)
+        for (field, batch) in [('product_batch_id', self.batch)]:
             with self.subTest(field=field):
                 response = self.client.post('/inventory/stock-adjustments/', {field: batch.pk,
                     'adjustment_type': 'correction', 'quantity': '-1', 'unit_cost': '50'}, format='json')
@@ -92,12 +81,11 @@ class BackendFixTests(BusinessFixture, APITestCase):
                 self.assertEqual(self.client.post('/inventory/stock-adjustments/', payload, format='json').status_code, 400)
                 batch.refresh_from_db()
                 self.assertEqual((batch.remaining_quantity, batch.status), (0, 'disposed'))
-        self.assertEqual(StockAdjustment.objects.count(), 2)
+        self.assertEqual(StockAdjustment.objects.count(), 1)
         self.assertEqual(inventory_status()['expired_batch_count'], 0)
 
     def test_future_receipts_are_rejected_on_create_and_update(self):
-        for route, batch, field, item in [('product-batches', self.batch, 'product_id', self.product),
-                                          ('ingredient-batches', self.ingredient_batch, 'ingredient_id', self.ingredient)]:
+        for (route, batch, field, item) in [('product-batches', self.batch, 'product_id', self.product)]:
             with self.subTest(route=route):
                 payload = {field: item.pk, 'quantity': '5', 'date_received': (self.today+timedelta(days=1)).isoformat(),
                            'expiration_date': batch.expiration_date.isoformat()}
@@ -106,14 +94,9 @@ class BackendFixTests(BusinessFixture, APITestCase):
 
     def test_legacy_future_stock_is_not_counted_or_consumed(self):
         ProductBatch.objects.filter(pk=self.batch.pk).update(date_received=self.today+timedelta(days=1))
-        IngredientBatch.objects.filter(pk=self.ingredient_batch.pk).update(date_received=self.today+timedelta(days=1))
         product = self.client.get(f'/inventory/products/{self.product.pk}/').data
-        ingredient = self.client.get(f'/inventory/ingredients/{self.ingredient.pk}/').data
         self.assertEqual(Decimal(str(product['total_stock'])), 0)
-        self.assertEqual(Decimal(str(ingredient['total_stock'])), 0)
         self.assertEqual(self.client.post('/sales/checkout/', self.cart(), format='json').status_code, 400)
-        with self.assertRaises(ValueError):
-            BatchService.deduct_ingredient_batch(self.ingredient, Decimal('1'))
         self.assertTrue(all(item['quantity'] == 0 for item in inventory_status()['items']))
         self.assertEqual(inventory_status()['ledger']['rows'][0]['ending'], 0)
 

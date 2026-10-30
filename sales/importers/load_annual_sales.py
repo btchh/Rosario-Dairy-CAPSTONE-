@@ -11,7 +11,7 @@ from config.data_cache import invalidate_data_cache
 
 from accounts.models import Users
 from inventory.models import (
-    Category, Product, ProductBatch, Ingredient, IngredientBatch, Supplier,
+    Category, Product, ProductBatch,
     StockAdjustment, StockCount,
 )
 from sales.models import Customer, Order, OrderItem, Transaction, TransactionItem
@@ -39,8 +39,7 @@ def load(result, admin_username):
     owner = Users.objects.get(username=admin_username, role='admin', is_active=True)
 
     with db_transaction.atomic():
-        protected_models = (Category, Product, ProductBatch, Ingredient,
-                            IngredientBatch, Supplier, StockAdjustment, StockCount,
+        protected_models = (Category, Product, ProductBatch, StockAdjustment, StockCount,
                             Customer, Order, OrderItem, Transaction, TransactionItem)
         if any(model.objects.exists() for model in protected_models):
             raise ValueError('Business tables are not empty; refusing to overwrite or mix imported history.')

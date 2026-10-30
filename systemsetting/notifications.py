@@ -4,7 +4,7 @@ import json
 from django.utils import timezone
 from inventory.services.batch_service import BatchService
 from inventory.services.eligibility import expired_stock_filter
-from inventory.models import FEFOConf, IngredientBatch, ProductBatch
+from inventory.models import FEFOConf, ProductBatch
 from sales.models import Order
 from .models import NotificationSettings, NotificationState
 
@@ -23,7 +23,6 @@ def live_notifications(user):
         threshold = FEFOConf.get_config().low_stock_threshold
         for kind, rows, entity in (
             ('products', BatchService.check_product_stock(visible_to_staff=visible), 'product'),
-            ('ingredients', BatchService.check_ingredient_stock(), 'ingredient'),
         ):
             if rows:
                 source = sorted((row[entity].pk, str(row['remaining_quantity']), threshold) for row in rows)
@@ -41,12 +40,8 @@ def live_notifications(user):
                 product__is_active=True, product__category__is_active=True,
                 product__category__is_visible_to_staff=True,
             )
-        expired_ingredients = IngredientBatch.objects.filter(
-            expired_stock_filter(today),
-        ).select_related('ingredient')
         for kind, rows, entity in (
             ('product', expired_products, 'product'),
-            ('ingredient', expired_ingredients, 'ingredient'),
         ):
             for batch in rows:
                 item = getattr(batch, entity)
@@ -55,7 +50,6 @@ def live_notifications(user):
                     [batch.pk, batch.expiration_date, 'expired'])
         for kind, rows, entity, title in (
             ('product', BatchService.check_product_expiration(visible_to_staff=visible), 'product', 'Product Expiry Warning'),
-            ('ingredient', BatchService.check_ingredient_expiration().select_related('ingredient'), 'ingredient', 'Ingredient Expiry Warning'),
         ):
             for batch in rows:
                 item = getattr(batch, entity)

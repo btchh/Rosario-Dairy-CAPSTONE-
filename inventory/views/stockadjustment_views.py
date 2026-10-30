@@ -2,12 +2,11 @@ from config.data_cache import CachedListMixin
 from config.api_inputs import object_body
 from rest_framework import viewsets, status
 from rest_framework.response import Response
-from ..models import StockAdjustment, ProductBatch, IngredientBatch
+from ..models import StockAdjustment, ProductBatch
 from ..serializers import StockAdjustmentSerializer
 from ..services import batch_service
 from accounts.permissions import IsAdmin, IsStaff
 from decimal import Decimal
-from django.db.models import Q
 from config.api_inputs import parse_decimal, parse_optional_text, parse_positive_id
 from rest_framework import serializers
 
@@ -19,15 +18,13 @@ class StockAdjustmentViewSet(CachedListMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset().select_related(
-            'adjusted_by', 'product_batch__product__category', 'ingredient_batch__ingredient',
-            'ingredient_batch__supplier',
+            'adjusted_by', 'product_batch__product__category',
         ).order_by('-created_at', '-id')
         if self.request.user.role == 'staff':
             qs = qs.filter(
-                Q(product_batch__isnull=True) |
-                Q(product_batch__product__is_active=True,
+                product_batch__product__is_active=True,
                   product_batch__product__category__is_active=True,
-                  product_batch__product__category__is_visible_to_staff=True)
+                  product_batch__product__category__is_visible_to_staff=True
             )
         adjustment_type = self.request.query_params.get('adjustment_type')
         if adjustment_type:
@@ -46,18 +43,18 @@ class StockAdjustmentViewSet(CachedListMixin, viewsets.ModelViewSet):
         if 'end_date' in dates:
             qs = qs.filter(created_at__date__lte=dates['end_date'])
         return qs
-    
+
     @object_body
     def create(self, request, *args, **kwargs):
         product_batch_id = request.data.get('product_batch_id')
-        ingredient_batch_id = request.data.get('ingredient_batch_id')
+        if request.data.get('ingredient_batch_id') is not None:
+            return Response({'error': 'Ingredient inventory has been removed. Use product_batch_id.'}, status=status.HTTP_400_BAD_REQUEST)
         adjustment_type = request.data.get('adjustment_type')
         unit_cost = request.data.get('unit_cost')
         reason = request.data.get('reason')
 
         try:
-            product_batch_id = parse_positive_id(product_batch_id, 'product_batch_id') if product_batch_id not in (None, '') else None
-            ingredient_batch_id = parse_positive_id(ingredient_batch_id, 'ingredient_batch_id') if ingredient_batch_id not in (None, '') else None
+            product_batch_id = parse_positive_id(product_batch_id, 'product_batch_id')
             reason = parse_optional_text(reason, 'reason')
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -82,15 +79,14 @@ class StockAdjustmentViewSet(CachedListMixin, viewsets.ModelViewSet):
 
         try:
             product_batch = ProductBatch.objects.select_related('product__category').get(id=product_batch_id) if product_batch_id else None
-            ingredient_batch = IngredientBatch.objects.get(id=ingredient_batch_id) if ingredient_batch_id else None
-        except (ProductBatch.DoesNotExist, IngredientBatch.DoesNotExist, ValueError, TypeError):
-            return Response({'error': 'product_batch_id or ingredient_batch_id does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
+        except (ProductBatch.DoesNotExist, ValueError, TypeError):
+            return Response({'error': 'product_batch_id does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
 
         if (request.user.role == 'staff' and product_batch and
                 (not product_batch.product.is_active or
                  not product_batch.product.category.is_active or
                  not product_batch.product.category.is_visible_to_staff)):
-            return Response({'error': 'product_batch_id or ingredient_batch_id does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'product_batch_id does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             adjustment = batch_service.BatchService.create_stock_adjustment(
@@ -100,7 +96,6 @@ class StockAdjustmentViewSet(CachedListMixin, viewsets.ModelViewSet):
                 adjusted_by=request.user,
                 reason=reason,
                 product_batch=product_batch,
-                ingredient_batch=ingredient_batch
             )
             return Response(StockAdjustmentSerializer(adjustment).data, status=status.HTTP_201_CREATED)
         except ValueError as e:

@@ -1,5 +1,43 @@
 # Backend load and input validation — 2026-10-29
 
+## Product-only inventory cleanup — 2026-10-30
+
+Supplier, ingredient and ingredient-batch models/services are removed. Stock
+adjustments/counts require a product batch; product FEFO, sales, cancellations,
+reports, settings and alerts remain supported. Legacy collection GETs return
+empty lists for older frontend callers; retired writes/details return 410.
+
+Verification used a separate PostgreSQL test database with an in-memory cache
+and a fast test-only password hasher. No application security setting was changed.
+`manage.py test inventory config reporting systemsetting sales accounts --noinput`
+ran **653 tests: 652 passed, 1 skipped**, in 99 seconds. This includes the new
+product-only request/constraint tests and migration tests that verify empty
+retired tables are removed, product stock survives, and populated legacy data
+stops the migration before schema removal. This is regression evidence; the
+October 29 load measurements below were not repeated for this cleanup.
+
+The backend image rebuilt successfully. After a verified private database dump,
+`inventory.0012_product_only_inventory` was applied to the local Docker database.
+Canonical row counts/content hashes for all **19 protected inventory, sales and
+account tables** matched before and after. The three obsolete tables are absent,
+and product references on stock adjustments/counts are non-null. Business cache
+payloads were invalidated before restarting API and forecast workers. Private
+database exports and comparison files remain outside Git.
+
+Nineteen authenticated HTTP smoke reads passed through the Docker gateway,
+including product inventory, movements/counts, alerts, sales/customer lists,
+legacy empty lists, and the inventory preview/PDF. The database still contains
+170 products, 198 product batches, 324 customers and 4,835 transactions, with no
+2026 recorded transactions. Django checks, migration checks and database/cache/API
+health passed; the unauthenticated user endpoint correctly returned 401.
+
+The crow's-foot ERD, metadata, data dictionary, SVGs and eight-page A3 PDF were
+regenerated outside the backend repository in `../docs 2/`. All **47 tables and
+48 foreign keys** are covered by the detailed modules. Frontend source was not
+modified; removing its obsolete calls, DTOs and labels is a handoff request.
+
+## Earlier load measurements
+
 The backend met the requested **10-user test workload** after input-validation
 fixes and a forecast ledger-read optimization. This is a measured development
 check, not a production capacity guarantee. The 25-client burst stayed available

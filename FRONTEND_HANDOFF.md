@@ -28,6 +28,47 @@ fields and their meaning for developer documentation, capstone evaluation and
 internal verification; do not remove data, alter estimates or change approval
 rules to simplify the display.
 
+### Follow-up: orange connector and concise date controls
+
+**Pending frontend changes, confirmed 2026-10-30.** This follow-up supersedes
+the earlier neutral/gray connector instruction and requests removal of the
+verbose date-control help. Do not change backend calculations or date handling.
+
+- In `src/features/dashboard/components/admin/ForecastChart.tsx`, render the
+  existing `forecast-boundary-connector` in **orange**, matching the past
+  prediction line's color, width and dash pattern (`C.orange`, `2.5`, `5 4`).
+  The joining segment should visually continue the past series up to the
+  current point; the current point and onward remain green. This is a styling
+  convention, not an extra historical prediction or a change in forecast origin.
+  Preserve the adjacent-bucket checks, zero endpoints, genuine null gaps and
+  all prediction values. Do not add a gray connector legend or technical caption.
+- Remove the paragraph with `id="forecast-date-help"` beginning **“The To date
+  anchors the server's centered window and seasonal outlook.”** It is frontend
+  copy, not a backend response. Keep From/To labels, date errors and Apply controls.
+- Remove the paragraph with `id="report-date-help"` beginning **“Dates use
+  Asia/Manila time and apply to all reports.”** It is also frontend copy. Keep
+  the dates, validation, reset button and selected-range display; no replacement
+  documentation paragraph is needed.
+- Update `aria-describedby` when removing either help element so date inputs
+  refer to an existing error element only when an error is present. Preserve
+  accessible input labels and validation announcements.
+- Remove similar persistent developer explanations around the graph about
+  centered buckets, saved horizons, proration, model fitting and display bridges.
+  Use dates and short state messages instead, such as **No forecast available
+  for these dates** or **Earlier dates are unavailable** where appropriate.
+  Do not imply that the From date filters the full longer outlook: label that
+  view with its actual returned dates. Preserve current-inventory **As of [date]**
+  labels and genuine availability/approval notices.
+- Keep API `range_note` and date semantics for internal documentation. Do not
+  print its technical explanation verbatim in the client preview; use the short
+  status-based wording below. The PDF's existing range explanation is separate
+  from these two frontend-only paragraphs.
+
+Verify the connector color/dashes across Weekly, Monthly and Yearly for all
+three sales views. Verify both date dialogs no longer show the quoted help,
+have no dangling accessibility references, and still send the same valid date
+parameters. Date validation, reset, missing values and error states must work.
+
 Requested frontend revision:
 
 - Remove **Model evidence and limitations**, raw model orders/IDs, WAPE/baseline
@@ -91,14 +132,14 @@ evidence panel or issued-comparison switch.
 | Selected dates on all six report previews and PDF exports | Complete |
 | Historical receipt amount labels and preserved source values | Complete |
 | Mutation cache invalidation and manual report-refresh handling | Complete; respects separate preview/PDF cooldowns |
-| Adjacent past/current chart connector | Complete; neutral display bridge, genuine null gaps retained |
+| Adjacent past/current chart connector | Joining logic complete; pending orange styling to match the past series, with genuine null gaps retained |
 | Historical date controls on the dashboard forecast chart | Complete |
 | Per-customer lifetime total (`total_spent`) | Partial; table/profile/mobile displays implemented, but an open profile retains an old total after the list refreshes |
 | Server retry UUIDs for checkout/orders | Pending; existing unconfirmed-sale guard remains, but callers still send no UUID |
 | Explicit 52-week/12-month Seasonal outlook display | Complete; covered for all three sales views |
 | Latest outlook labels, origin/horizon tooltips and separate issued comparisons | Complete; zero-valued original issues remain separate |
 | Forecast diagnostics for research/verification | Graph metadata available; strict monthly evidence remains available from the backend. Showing technical approval details to the ordinary client is no longer requested |
-| Plain-language client forecasting and report summaries | Pending; simplify the technical panels, labels and report text according to the wording revision above |
+| Plain-language client forecasting and report summaries | Pending; simplify technical panels, labels and report text, and remove the verbose forecast/report date-help paragraphs as requested above |
 | Current-year nowcast, missing months and actual-floor explanations | Complete; server calculations and nulls retained |
 | Node 26 browser-storage test isolation | Pending; default suite still has seven POS failures; all 426 pass with the documented storage flag |
 | Production origin and staging workflows | Pending deployment verification |
@@ -352,16 +393,16 @@ Frontend implementation requested:
 3. Use each point's `is_current` and `end_date` for current-period membership.
    October 26–November 1 is the current week on October 28. Bucket start dates
    earlier than today do not make the current bucket a completed historical one.
-4. The upstream green `ReferenceLine` connector runs from the last past point
-   into the current point. Use a neutral boundary connector or explicitly label
-   it as a display bridge; its past endpoint is not a future prediction. Preserve
+4. The `ReferenceLine` connector runs from the last past point into the current
+   point. Follow the latest orange-styling request above; its past endpoint is
+   not a future prediction. Preserve
    true null gaps and all numeric values. Do not extend the latest-origin model
    backward through historical actuals to create a continuous-looking line.
 5. Replace generic “SARIMA estimates” wording where selected components are
    AR(1)/local-level. Use the returned readiness/model details and approval state.
 6. Test all nine views, zero-valued issues, unavailable components, missing closed
    months, January/December annual boundaries, same-origin current/future points,
-   immutable issue comparison, horizon labels, and the neutral connector. Do not
+   immutable issue comparison, horizon labels, and the orange connector. Do not
    test for an artificially seasonal/nonflat future curve.
 
 ## Change request: distinguish saved projections from validated forecasts
@@ -408,7 +449,7 @@ For Yearly, show each point's `forecast_origin`: completed past years retain
 pre-year information, while the current-year hybrid and future years share the
 latest closed-month model origin. Identify the current-year actual conditioning
 explicitly. Keep prediction-basis and partial-period explanations; adapt the
-completed connector implementation below to the neutral treatment above.
+completed connector implementation below to the latest orange styling above.
 
 ## Test follow-up: isolate browser storage under Node 26
 
@@ -427,12 +468,11 @@ state, and verify tests both individually and as a suite. Preserve the productio
 duplicate-sale guard. The runtime flag above is an isolated verification aid;
 no frontend source or dependency files were modified by this backend review.
 
-## Completed upstream: basic adjacent past/current forecast connector
+## Connector joining logic implemented; orange styling pending
 
-**Neutral connector implemented in frontend `49c3cb42`.** The earlier green
-reference implementation below is retained as historical context; the active
-frontend correctly uses a neutral bridge with a display-only explanation.
-Preserve this neutral treatment when changing the chart. The backend returns consecutive calendar
+**Gray connector implemented in frontend `49c3cb42`; orange requested next.**
+The joining logic is present. Change its styling to match the orange past line
+and remove the technical bridge caption, as requested above. The backend returns consecutive calendar
 buckets and intentionally separates `past_prediction` from
 `future_prediction`. The artificial break at the current-period boundary comes
 from `src/features/dashboard/components/admin/ForecastChart.tsx`: three
@@ -454,7 +494,7 @@ points must not flatten, smooth, refit or replace their amounts.
    equal current `date`. Reject malformed dates, missing endpoints, no current
    bucket, or a missing immediate predecessor. Do not search backwards or
    forwards for another known value.
-3. Render that segment as a dashed green `ReferenceLine`, which is supported by
+3. Render that segment as a dashed orange `ReferenceLine`, which is supported by
    the installed Recharts 2.15.2. Keep the existing three `Line` components and
    `connectNulls={false}`.
 
@@ -498,9 +538,9 @@ already imported there. Before the existing lines, render:
 {boundary && <ReferenceLine
   className="forecast-boundary-connector"
   segment={boundary}
-  stroke={C.green}
+  stroke={C.orange}
   strokeWidth={2.5}
-  strokeDasharray="3 4"
+  strokeDasharray="5 4"
   ifOverflow="discard"
   aria-hidden="true"
   pointerEvents="none"
@@ -513,8 +553,8 @@ or join actual sales to a prediction. Preserve raw response/cache objects,
 dates, nulls, prediction bases, partial-period flags and backend evaluations.
 The connector must not add a legend item, tooltip value, point, or evaluation
 sample. Keep the tooltip's original issued/reconstructed/current labels.
-Add a short caption explaining that adjacent prediction periods are connected
-for display while their historical/issued provenance remains separate.
+Keep this display/provenance explanation in developer documentation rather than
+adding another client-facing caption.
 
 ### Verification requested
 
@@ -626,7 +666,8 @@ Forecast response additions under `data` when dates are supplied:
 - When an otherwise ready forecast falls outside the selection, `forecast` is
   empty, `status` is `no_forecasts_in_range`, and the summary prediction amount is
   absent. Existing unavailable statuses such as `stale_data` remain unavailable.
-  Display `range_note`, including the explicit no-approved-forecast message.
+  Preserve `range_note` in the response; use short client availability messages
+  rather than printing its technical explanation verbatim.
 
 ### Frontend implementation requested
 
@@ -637,10 +678,11 @@ Forecast response additions under `data` when dates are supplied:
 3. Show the server-returned date range on both cards. Inventory descriptions
    should identify stock movements; label its health figures as current with
    `as_of`. Forecast descriptions should identify available predictions for the
-   selected dates and display `range_note` without implying a new fit was made.
-4. Update `ReportDateRangeControl.tsx`: the range applies to all reports. Replace
-   help text claiming inventory always uses today's ledger and forecasts ignore
-   the selection. Explain the inventory-health and full-period forecast semantics.
+   selected dates and show short availability messages without implying a new
+   fit was made. Keep technical `range_note` details in documentation.
+4. Update `ReportDateRangeControl.tsx`: the range applies to all reports. Remove
+   the verbose date-help paragraph per the latest wording revision. Keep current
+   health timestamps on inventory figures; date semantics belong in documentation.
 5. Extend the inventory, inventory-ledger, and forecast report types with the
    response fields above.
 6. Replace tests that expect these types to reject or discard custom dates. Verify

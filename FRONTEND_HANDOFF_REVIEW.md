@@ -12,6 +12,11 @@ evidence panels/issued-comparison controls from that view and shortening forecas
 report messages. See the authoritative **Client wording revision** section in
 `FRONTEND_HANDOFF.md`. Technical API fields and validation rules remain intact.
 
+**Further client feedback:** change the gray joining segment to orange, matching
+the past-prediction line up to the current point. Remove the verbose forecast
+and report date-help paragraphs. These are pending frontend requests, described
+in the handoff's **Follow-up: orange connector and concise date controls**.
+
 This is a source/contract, component-test, type-check and build review. It does
 not establish production capacity or replace browser/end-to-end staging tests.
 No frontend tracked files were changed, and no business database writes ran.
@@ -116,6 +121,28 @@ customer totals, previews/PDFs, refresh cooldowns and forecast availability
 against the actual staging configuration. Multi-account refresh and stock-once
 claims need integration verification; the component tests mock HTTP responses.
 
+### 7. Orange connector and concise date controls: newly requested
+
+Both quoted date explanations are hardcoded frontend paragraphs:
+
+- `src/features/dashboard/components/admin/ForecastChart.tsx:154`,
+  `forecast-date-help`, beginning “The To date anchors the server's centered
+  window and seasonal outlook.”
+- `src/features/reports/components/ReportDateRangeControl.tsx:57`,
+  `report-date-help`, beginning “Dates use Asia/Manila time and apply to all
+  reports.”
+
+Remove these paragraphs and their now-unused accessibility references; retain
+labels, validation, selected dates and reset. Remove similar persistent graph
+implementation notes, keeping short availability messages and accurate dates.
+No backend response change is needed for the quoted paragraphs.
+
+The connector currently uses `C.muted` in `ForecastChart.tsx:191`. Change it to
+`C.orange` with the past line's `5 4` dashes and existing width. Keep all endpoint
+and adjacency guards, null gaps and values. Green still begins at the current
+point. This supersedes the earlier neutral-color instruction, which the source
+implemented correctly; the new visual request is not yet implemented.
+
 ## Implemented requests
 
 | Request | Evidence / outcome |
@@ -123,9 +150,9 @@ claims need integration verification; the component tests mock HTTP responses.
 | Customer totals | `customers.service.ts` maps the server decimal string; `totalPurchases.ts` formats without floating-point conversion. Table, profile and mobile card display Total Purchases and the pending/voided definition. Zero, missing and large values have mapping/UI coverage. Refresh exception: item 2 above. |
 | Seasonal outlook | `ForecastChart.tsx` offers Centered window and Seasonal outlook. The full returned 52-week/12-month horizon is used for Regular, Feeding and Combined. Yearly returns to the annual centered view. |
 | Latest outlook and original issues | Separate Latest outlook line and optional Original issued comparison, with origin/horizon/provenance in tooltips. Numeric zero survives; missing components remain unavailable. |
-| Current period and boundary | `is_current`/`end_date` are retained. The boundary is neutral and explicitly display-only, with null gaps preserved. |
+| Current period and boundary | `is_current`/`end_date` and joining logic are implemented, with null gaps preserved. The current gray styling and technical caption need the orange/concise revision in item 7. |
 | Model metadata and freshness | Component diagnostics are implemented. The later client wording revision requests moving these details out of the ordinary client view; strict monthly evidence remains an internal API/documentation concern. |
-| Plain-language client forecasting | Newly requested simplification is pending. Keep meaningful availability/estimate notices; remove technical panels, issued-comparison controls and verbose report diagnostics from the normal client screen. |
+| Plain-language client forecasting | Newly requested simplification is pending. Keep meaningful availability/estimate notices; remove technical panels, issued-comparison controls, verbose report diagnostics and the forecast/report date-help paragraphs from the normal client screen. |
 | Annual nowcast | Calculation disclosure, completed/missing/invalid months, current-month actual floor and component breakdowns use server values. No client recomputation or monthly-to-annual accuracy claim. |
 | Forecast dates and nulls | Historical `as_of` remains in requests/cache keys. Centered buckets overlap the selected range without proration; Seasonal outlook preserves the full saved horizon. Missing values stay unknown. |
 | All six report date ranges | Shared validation supports inventory/forecast as well as the other four report types. Previews and PDFs use matching bounds and dated cache keys/filenames. Inventory health is separately timestamped; forecast range notes remain visible. |

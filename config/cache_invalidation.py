@@ -38,8 +38,11 @@ def invalidate_namespace(namespace, version_key, *, using=None):
             _rotate(version_key)
         except Exception:
             logger.exception('Cache invalidation failed; retaining pending change')
-            return
-        _remove_pending([pending.pk], using)
+        else:
+            _remove_pending([pending.pk], using)
+        if namespace == 'business-data':
+            from .live_events import publish_business_change
+            publish_business_change(pending.pk.hex)
 
     transaction.on_commit(invalidate, using=using)
 

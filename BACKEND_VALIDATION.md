@@ -1,5 +1,38 @@
 # Backend load and input validation — 2026-10-29
 
+## Live updates across sessions — 2026-10-30
+
+Added bearer-authenticated SSE at `/events/`, Redis notifications after business
+cache invalidations commit, an internal ASGI service, and unbuffered gateway and
+optional frontend-proxy routes. REST continues to use Gunicorn. No migrations,
+business records or frontend application files were changed for this feature.
+The frontend implementation request is in `FRONTEND_HANDOFF.md`.
+
+The 18 focused tests passed with a separate PostgreSQL test database and an
+explicitly supplied disposable Redis instance. They cover outer commit/rollback,
+failed sales, notification/cache failures, voids/payments, token validity,
+revocation, inactive accounts, password/role changes, two viewers, missed
+publications, reconnect resync, unavailable streams, and a separate ASGI process
+delivering a sale over authenticated HTTP with browser gzip/CORS headers. The
+HTTP test requires delivery within two seconds in its local test environment.
+
+The broader `config systemsetting sales inventory accounts` regression run
+completed **595 tests: 594 passed, 1 skipped**, in 89.951 seconds, including the
+Redis integration tests. It used the existing isolated test-database approach
+and a fast MD5 password hasher configured only in the test-runner process;
+application password/security settings were unchanged.
+
+A new backend image built successfully. A separate Compose project with its own
+database, Redis, volumes, Gunicorn, ASGI, gateway and stock Nginx frontend proxy
+passed the complete HTTP smoke check. Two viewers connected through one and two
+proxy layers received the staff sale notification in **0.281 seconds**; fresh
+history included the sale and its product batch changed from 10 to 8 units.
+The stream remained uncompressed and uncached with the expected CORS response.
+This is a local measurement, not a production latency guarantee. Both Nginx
+configurations and Compose validated, Django checks passed, and the migration
+check reported no changes. The isolated smoke project was removed afterwards.
+The existing application deployment and its business database were preserved.
+
 ## Product-only inventory cleanup — 2026-10-30
 
 Supplier, ingredient and ingredient-batch models/services are removed. Stock

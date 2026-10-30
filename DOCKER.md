@@ -8,8 +8,8 @@ For an image archive your frontend teammate can load, and an optional frontend
 service in the same stack, see [FRONTEND_DOCKER_HANDOFF.md](FRONTEND_DOCKER_HANDOFF.md).
 
 Services are PostgreSQL 18, Redis, a one-shot migration/static-file job, Gunicorn,
-the midnight forecast worker, and an Nginx gateway for API requests and Django
-static files. The API stays at `http://localhost:8000`; the usual frontend origin
+an ASGI live-events service, the midnight forecast worker, and an Nginx gateway
+for API requests and Django static files. The API stays at `http://localhost:8000`; the usual frontend origin
 remains `http://localhost:5173`. The Docker database starts empty in its own named
 volume. Existing host data is not imported or mounted automatically.
 
@@ -40,14 +40,15 @@ docker compose --env-file .env.docker config --quiet
 docker compose --env-file .env.docker build api
 docker compose --env-file .env.docker up -d --no-build
 docker compose --env-file .env.docker ps -a
-docker compose --env-file .env.docker logs migrate api forecast-worker
+docker compose --env-file .env.docker logs migrate api events forecast-worker
 docker compose --env-file .env.docker exec api python manage.py createsuperuser
 ```
 
 The migration service must finish with exit code 0. It applies all migrations,
 including `config.0001_initial`, then collects Django static files. API and worker
 startup depend on its successful completion and healthy database/cache services.
-The gateway waits for API health. These conditions use Docker Compose's
+The gateway waits for API and live-events health. These conditions use Docker
+Compose's
 [documented startup ordering](https://docs.docker.com/compose/how-tos/startup-order/).
 
 The API health check verifies a database query, a short-lived cache round trip
@@ -60,14 +61,15 @@ coordinate with manual refresh jobs. Empty history produces unavailable estimate
 
 ```bash
 curl -i http://localhost:8000/accounts/user/
+curl -i http://localhost:8000/events/
 curl -I http://localhost:8000/static/admin/css/base.css
 docker compose --env-file .env.docker exec api python docker/healthcheck.py
 docker compose --env-file .env.docker exec api python manage.py check
 docker compose --env-file .env.docker exec api python manage.py showmigrations config
 ```
 
-Expect HTTP 401 from the unauthenticated user endpoint, HTTP 200 for the admin
-stylesheet, a successful health-check exit, and `[X] 0001_initial`. Log in with
+Expect HTTP 401 from the unauthenticated user and events endpoints, HTTP 200 for
+the admin stylesheet, a successful health-check exit, and `[X] 0001_initial`. Log in with
 the created administrator through the unchanged frontend, create a product and
 batch, and verify a sale updates stock and reports. The fresh Docker database
 has no existing accounts or sales; host-database credentials do not create users
@@ -79,6 +81,60 @@ port 5173 until the frontend developer supplies and tests their image.
 
 If `API_PORT` is changed, update the frontend API environment and matching
 CSRF origins for that address. Keeping port 8000 preserves the existing URL.
+
+## Live updates on OVHcloud or another VPS
+
+The internal `events` service runs `uvicorn config.asgi:application` on port
+8001, using the same image/environment/database/Redis as the API. Only the
+gateway is published. `/events/` is routed to ASGI; all normal API paths continue
+to use Gunicorn. `python docker/events_healthcheck.py` checks that the ASGI
+listener returns 401 without a token. No database migration is added by this
+feature. Source changes still require a new backend image.
+
+The endpoint uses bearer-authenticated SSE. Successful business writes publish
+after the outer database commit; notification failures cannot fail the sale.
+The stream rechecks its session/shared version every 15 seconds, batches change
+bursts, and rotates after five minutes or token expiry. It never sends records
+or runs forecast jobs. The full event contract and pending frontend work are
+in `FRONTEND_HANDOFF.md`, under **Live updates across sessions**. Browser screens
+will retain their existing behavior until that frontend request is implemented.
+
+For a quick local native deployment, keep the API running normally and start
+ASGI separately with the same database and `REDIS_URL`:
+
+```bash
+venv/bin/uvicorn config.asgi:application --host 127.0.0.1 --port 8001 --lifespan off --no-proxy-headers
+```
+
+Point the native gateway's `/events/` route at that listener. WSGI and Django's
+standard `runserver` deliberately return 503 for authenticated stream requests;
+they must not eagerly consume an endless asynchronous response. Redis is
+required for streaming; ordinary API reads/writes still work without it in
+development.
+
+On an OVHcloud VPS, terminate HTTPS at the public reverse proxy and retain
+unbuffered, uncached streaming for `/events/` at every proxy layer. The supplied
+gateway and optional frontend proxy already set this; copy the behavior to the
+outer TLS proxy. Keep idle timeouts above the 15-second heartbeat. Forward the
+Authorization header. Configure trusted HTTPS forwarding explicitly using
+`deployment.env.example`. The local examples set `X-Forwarded-Proto` to their
+own `$scheme`; if a separate proxy terminates TLS, configure the trusted inner
+hops to preserve the original HTTPS scheme (or use a fixed `https` value for a
+production-only internal route). The public edge must overwrite client-supplied
+forwarding headers. Enabling Django's proxy trust alone does not fix an inner
+proxy replacing `https` with `http`. Do not expose the ASGI or database ports publicly.
+With a separately hosted frontend, allow its exact HTTPS origin in CORS.
+
+For the integration tests, use a disposable Redis instance, not the business
+cache (one HTTP test clears its configured cache):
+
+```bash
+ROSARIO_TEST_REDIS_URL=redis://127.0.0.1:16379/0 venv/bin/python manage.py test config.test_live_events --noinput
+```
+
+The Redis tests are skipped unless that variable is supplied. They include two
+viewers, missed publications, expiry/revocation, and an actual separate ASGI
+process delivering a committed sale over HTTP with browser gzip/CORS headers.
 
 ## Storage and updates
 
@@ -99,7 +155,7 @@ After code changes, stop the application services, rebuild, and rerun startup so
 the migration job runs before the new backend:
 
 ```bash
-docker compose --env-file .env.docker stop gateway api forecast-worker
+docker compose --env-file .env.docker stop gateway api events forecast-worker
 docker compose --env-file .env.docker build api
 docker compose --env-file .env.docker up --no-build --force-recreate -d
 docker compose --env-file .env.docker ps -a

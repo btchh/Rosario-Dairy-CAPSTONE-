@@ -17,6 +17,107 @@ on 2026-10-30, after pulling three upstream commits with a clean working tree.
 This review did not modify frontend application code, tests, dependencies or
 configuration.
 
+## Live updates across sessions — 2026-10-30
+
+**Backend implemented; frontend integration requested.** Transactions made by
+staff must appear on an administrator's open history screen without reloading
+the page. The existing frontend's three-minute freshness timer does not meet
+that requirement. This request covers sales history, orders, customer history,
+inventory and the corresponding dashboard/report summaries.
+
+### Backend contract
+
+- `GET /events/` on the API origin, or `/backend/events/` with the optional
+  same-origin frontend proxy. Send `Authorization: Bearer <access_token>` and
+  `Accept: text/event-stream`. Use the existing API base URL. Never place JWTs
+  in URLs. Native `EventSource` does not accept an Authorization header; use
+  an authenticated `fetch` stream (or a streaming client supporting headers).
+- Admin and staff accounts can connect. Existing API reads still enforce role,
+  ownership and product visibility. The stream contains only cache groups and
+  an opaque version, never transactions, customer details, prices or stock counts.
+- SSE fields are UTF-8 lines terminated by a blank line. Parse across arbitrary
+  network chunks, including split characters/lines and multiple frames in one
+  chunk. Ignore comment heartbeats and unknown event types. `retry: 3000` is a
+  suggested reconnect delay in milliseconds, not an application event.
+- `ready` always requests a resync, on first connection and every reconnect:
+
+  ```text
+  event: ready
+  data: {"groups":["sales","orders","inventory","categories","customers","dashboard","reports","settings","users"],"version":"opaque-value","resync":true}
+
+  event: data_changed
+  data: {"groups":["sales","orders","inventory","categories","customers","dashboard","reports","settings","users"],"version":"different-opaque-value"}
+
+  ```
+
+  The `users` group is included for administrators only. Other groups are broad
+  invalidation hints, not a promise that each group changed. The opaque version
+  is for change detection only; do not sort it or use it as a transaction ID.
+- `data_changed` follows committed business changes, including sales, orders,
+  voids, manually encoded payments, stock changes and model-backed settings.
+  Notifications are coalesced over approximately 150 ms. Bulk operations which
+  bypass model signals must call the existing `invalidate_data_cache()` helper.
+  No live connection starts forecasting or retrains models.
+- `: heartbeat` comments keep connections alive. Every 15 seconds the server
+  also checks the current session and shared data version, recovering missed
+  Redis publications. Streams rotate after five minutes or access-token expiry.
+  Reconnects always require resync; there is no event replay or `Last-Event-ID`
+  cursor. Current API data, not the stream, is the source of truth.
+- `reconnect` with `{"reason":"renew_connection"}` means renew/reopen the
+  connection. `auth_required` with `{"reason":"session_expired_or_changed"}`
+  means the session expired, was revoked, or changed permissions: use the
+  existing session/refresh handling and stop retrying if refresh is rejected.
+- `unavailable` with `{"retry_after":5}` means retry with backoff and use
+  fallback polling. EOF and transport failures require the same recovery.
+  Before streaming starts, missing/invalid access tokens return 401, unsupported
+  roles return 403, and unavailable dependencies/configuration can return 503.
+  WSGI/runserver cannot serve the stream: use the Docker gateway or ASGI.
+
+### Requested frontend implementation
+
+1. Open one shared stream per authenticated application tab, at the layout/auth
+   boundary, rather than one per widget. Abort it on logout, unmount, or account
+   change. Ignore late events and HTTP results from a previous session. Reuse
+   the existing single-flight token refresh flow; retain rotated token pairs.
+2. On `ready` and `data_changed`, invalidate the supplied recognized cache groups
+   through `src/lib/dataCache.ts`. This must bypass the three-minute freshness
+   window so mounted `useCachedQuery` subscribers fetch promptly. Coalesce bursts
+   and deduplicate requests. Preserve existing revision guards so a response
+   started before an event cannot overwrite fresher data.
+3. Update visible sales/order rows, summary totals, inventory and customer
+   history using fresh API responses. Preserve search, date/payment filters,
+   pagination where valid, scroll position, selections and unfinished sale forms.
+   Refresh open detail dialogs as appropriate, rather than retaining stale row
+   objects. Keep existing data visible during background requests.
+4. Reconnect with capped exponential backoff and jitter. Always resync after a
+   reconnect or return from offline/sleep; never assume missed events are
+   replayed. Renew an expired token before reopening. Treat 403 as an access
+   change, not an infinite retry loop. A reconnect must not resubmit a sale.
+5. While streaming is unavailable, poll the active operational screens every
+   five seconds when visible and online. Suspend that fallback when streaming
+   recovers, and avoid frequent full-history reads from hidden tabs or every
+   dashboard widget independently. Display a short connection message only if
+   useful; do not expose protocol/server details in normal product screens.
+
+Acceptance: with separate staff/admin sessions, completing a sale updates the
+admin's open history, totals and affected inventory automatically. Target roughly
+1–2 seconds in normal conditions; measure through the deployment proxies rather
+than claiming a guaranteed latency. Verify failed/rolled-back sales do not appear,
+voids/payments refresh, filters/forms survive, multiple widgets share one stream,
+and logout, expiry, role changes, network interruption, reconnect and fallback
+polling all recover without duplicate submissions or cross-session data.
+
+### Deployment dependency
+
+The backend Compose stack adds an internal `events` ASGI service on port 8001;
+the existing gateway routes only `/events/` to it. REST calls continue to use
+Gunicorn. Redis must be shared between writers and the event service. Both the
+gateway and optional frontend Nginx examples disable stream buffering/caching;
+apply the same behavior to any OVHcloud TLS proxy in front of them. Use HTTPS in
+production. Rebuild/export the backend image before distributing this contract.
+For a separately hosted frontend, configure its exact HTTPS CORS origin and keep
+the stream on the API origin. No frontend application files were changed here.
+
 ## Client wording revision — 2026-10-30
 
 The client needs a sales-planning screen, with short explanations of what is

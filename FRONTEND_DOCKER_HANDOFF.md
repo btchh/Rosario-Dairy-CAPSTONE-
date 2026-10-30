@@ -20,6 +20,14 @@ machine; a native build for another architecture requires the backend source.
 
 ## Start on the receiving machine
 
+Live updates add an internal `events` service to this stack. Rebuild/export a
+current backend image before sending this Compose file; older images do not
+contain Uvicorn or the SSE endpoint. The gateway waits for both API and event
+service health. See **Live updates across sessions** in `FRONTEND_HANDOFF.md`
+for the pending frontend integration. The optional frontend Nginx example now
+forwards `/backend/events/` without buffering; preserve this behavior in any
+additional hosting proxy. Database migrations are unchanged by live updates.
+
 The product-only cleanup requires migration
 `inventory.0012_product_only_inventory`. Rebuild/export the backend image to
 include it; old archives do not contain the cleanup. Back up an existing database

@@ -16,8 +16,10 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import include, path
+from .live_events import events
 
 urlpatterns = [
+    path('events/', events, name='live-events'),
     path('admin/', admin.site.urls),
     path('inventory/', include('inventory.urls')),
     path('accounts/', include('accounts.urls')),

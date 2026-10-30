@@ -83,6 +83,25 @@ services:
     restart: unless-stopped
     stop_grace_period: 60s
 
+  events:
+    <<: *backend
+    command: ["uvicorn", "config.asgi:application", "--host=0.0.0.0", "--port=8001", "--no-proxy-headers", "--lifespan=off", "--timeout-graceful-shutdown=10"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "docker/events_healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped
+    stop_grace_period: 15s
+
   forecast-worker:
     <<: *backend
     command: ["python", "manage.py", "watch_forecast_models"]
@@ -105,6 +124,8 @@ services:
       - staticfiles:/srv/static:ro
     depends_on:
       api:
+        condition: service_healthy
+      events:
         condition: service_healthy
     restart: unless-stopped
 

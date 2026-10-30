@@ -1,0 +1,133 @@
+{
+  "run_id": "39b8bfb0fa",
+  "database": "disposable QA database",
+  "passed": true,
+  "http_cases": 169,
+  "http_statuses": {
+    "400": 150,
+    "415": 1,
+    "404": 4,
+    "401": 8,
+    "403": 4,
+    "200": 1,
+    "409": 1
+  },
+  "unexpected_responses": [],
+  "phases": [
+    {
+      "phase": "malformed JSON and body types",
+      "passed": true,
+      "seconds": 4.898,
+      "requests": 82,
+      "business_state": "unchanged"
+    },
+    {
+      "phase": "invalid sale values and decimal boundaries",
+      "passed": true,
+      "seconds": 3.255,
+      "requests": 55,
+      "business_state": "unchanged"
+    },
+    {
+      "phase": "filters, identifiers and text length",
+      "passed": true,
+      "seconds": 0.883
+    },
+    {
+      "phase": "authentication, permissions and hidden inventory",
+      "passed": true,
+      "seconds": 1.146
+    },
+    {
+      "phase": "multi-item rollback and corrected retry",
+      "passed": true,
+      "seconds": 0.458,
+      "failed_cart": "rolled back completely",
+      "same_uuid_after_stock_correction": 201
+    },
+    {
+      "phase": "real password hashing, refresh rotation and logout revocation",
+      "passed": true,
+      "seconds": 7.355,
+      "password_hasher": "pbkdf2_sha256",
+      "login": 200,
+      "concurrent_refresh_statuses": [
+        200,
+        401
+      ],
+      "logout": 200,
+      "old_and_new_access_after_logout": 401,
+      "refresh_after_logout": 401
+    },
+    {
+      "phase": "100 invalid writes across ten clients",
+      "passed": true,
+      "seconds": 4.056,
+      "requests": 100,
+      "concurrent_clients": 10,
+      "statuses": {
+        "400": 100
+      },
+      "business_state": "unchanged"
+    },
+    {
+      "phase": "ten simultaneous retries with one request UUID",
+      "passed": true,
+      "seconds": 0.604,
+      "requests": 10,
+      "statuses": {
+        "200": 9,
+        "201": 1
+      },
+      "receipts_created": 1,
+      "stock_deductions": 1
+    },
+    {
+      "phase": "ten simultaneous order retries with one request UUID",
+      "passed": true,
+      "seconds": 0.916,
+      "requests": 10,
+      "statuses": {
+        "200": 9,
+        "201": 1
+      },
+      "orders_created": 1,
+      "receipts_created": 1
+    },
+    {
+      "phase": "ten buyers competing for three units",
+      "passed": true,
+      "seconds": 0.605,
+      "requests": 10,
+      "statuses": {
+        "400": 7,
+        "201": 3
+      },
+      "receipts_created": 3,
+      "stock_remaining": "0"
+    },
+    {
+      "phase": "ten simultaneous cancellation attempts",
+      "passed": true,
+      "seconds": 1.163,
+      "requests": 10,
+      "statuses": {
+        "400": 9,
+        "200": 1
+      },
+      "stock_returns": 1
+    },
+    {
+      "phase": "write throttle and retry instructions",
+      "passed": true,
+      "seconds": 4.118,
+      "requests": 32,
+      "statuses": {
+        "400": 30,
+        "429": 2
+      },
+      "retry_after": "positive"
+    }
+  ],
+  "read_load_accounts": 20
+}

@@ -265,6 +265,53 @@ class DatabaseTimeoutConfigurationTests(SimpleTestCase):
                     runpy.run_path(str(Path(__file__).with_name('settings.py')))
 
 
+class RedisTimeoutConfigurationTests(SimpleTestCase):
+    def test_unresponsive_redis_times_out_without_retries_before_the_browser_deadline(self):
+        import os
+        from pathlib import Path
+        import runpy
+        import socket
+        from threading import Event, Thread
+        import time
+        from django.core.cache.backends.redis import RedisCache
+        from redis.exceptions import TimeoutError as RedisTimeoutError
+
+        stop = Event()
+        with socket.socket() as listener:
+            listener.bind(('127.0.0.1', 0))
+            listener.listen(1)
+            listener.settimeout(5)
+            url = f'redis://127.0.0.1:{listener.getsockname()[1]}/0'
+
+            def blackhole():
+                try:
+                    peer, _ = listener.accept()
+                    with peer:
+                        # Accept TCP but never answer a Redis command. A dead
+                        # broker differs from an immediately refused socket.
+                        stop.wait(4)
+                except OSError:
+                    pass
+
+            worker = Thread(target=blackhole, daemon=True)
+            worker.start()
+            with patch.dict(os.environ, {'DJANGO_ENV': 'development', 'REDIS_URL': url}):
+                configured = runpy.run_path(str(Path(__file__).with_name('settings.py')))
+            backend = configured['CACHES']['default']
+            client = RedisCache(backend['LOCATION'], backend)
+            try:
+                pool = client._cache.get_client().connection_pool
+                self.assertEqual(pool.connection_kwargs['socket_connect_timeout'], 1)
+                started = time.monotonic()
+                with self.assertRaises(RedisTimeoutError):
+                    client.get('qa-stalled-broker')
+                self.assertLess(time.monotonic() - started, 2.5)
+            finally:
+                stop.set()
+                client.close()
+                worker.join(timeout=1)
+
+
 class BatchBusinessDateAuditTests(APITestCase):
     def setUp(self):
         from inventory.models import Category, Product

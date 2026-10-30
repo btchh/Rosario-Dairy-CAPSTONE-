@@ -16,8 +16,22 @@
 !systemsetting/
 !systemsetting/**
 !docker/
-!docker/**
+# Only container entry points and the frontend build's Nginx input are needed.
+docker/**
+!docker/healthcheck.py
+!docker/events_healthcheck.py
+!docker/production_preflight.py
+!docker/provision_database.py
+!docker/frontend.nginx.conf
+# Keep QA and host scheduler examples in Git, outside the runtime image.
+**/test_*.py
+**/tests.py
+**/tests/
+forecasting/deploy/
 **/__pycache__/
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
 **/*.py[cod]
 **/*.log
 **/.env

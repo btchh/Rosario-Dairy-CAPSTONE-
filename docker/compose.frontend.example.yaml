@@ -1,13 +1,24 @@
 # Merge with the backend compose.yaml; all paths resolve from that base file.
-# The frontend image must serve its built Vite assets from /usr/share/nginx/html.
+# Add compose.frontend.build.yaml to build it from the sibling frontend checkout.
 services:
   frontend:
     image: ${FRONTEND_IMAGE:-rosario-dairy-frontend:local}
     ports:
-      - "127.0.0.1:5173:80"
+      - "127.0.0.1:${FRONTEND_PORT:-5173}:80"
     volumes:
       - ./docker/frontend.nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       gateway:
         condition: service_started
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/index.html"]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
     restart: unless-stopped

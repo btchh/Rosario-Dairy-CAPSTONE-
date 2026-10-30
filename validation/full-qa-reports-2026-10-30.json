@@ -1,0 +1,78 @@
+{
+  "passed": true,
+  "requests": [
+    {
+      "report": "daily_sales",
+      "route": "preview",
+      "status": 200,
+      "seconds": 0.057
+    },
+    {
+      "report": "daily_sales",
+      "route": "export-pdf",
+      "status": 200,
+      "seconds": 0.325
+    },
+    {
+      "report": "weekly_sales",
+      "route": "preview",
+      "status": 200,
+      "seconds": 0.08
+    },
+    {
+      "report": "weekly_sales",
+      "route": "export-pdf",
+      "status": 200,
+      "seconds": 0.27
+    },
+    {
+      "report": "monthly_sales",
+      "route": "preview",
+      "status": 200,
+      "seconds": 0.123
+    },
+    {
+      "report": "monthly_sales",
+      "route": "export-pdf",
+      "status": 200,
+      "seconds": 0.127
+    },
+    {
+      "report": "inventory",
+      "route": "preview",
+      "status": 200,
+      "seconds": 0.059
+    },
+    {
+      "report": "inventory",
+      "route": "export-pdf",
+      "status": 200,
+      "seconds": 1.654
+    },
+    {
+      "report": "sarima_forecast",
+      "route": "preview",
+      "status": 200,
+      "seconds": 0.157
+    },
+    {
+      "report": "sarima_forecast",
+      "route": "export-pdf",
+      "status": 200,
+      "seconds": 0.049
+    },
+    {
+      "report": "customer",
+      "route": "preview",
+      "status": 200,
+      "seconds": 0.087
+    },
+    {
+      "report": "customer",
+      "route": "export-pdf",
+      "status": 200,
+      "seconds": 0.067
+    }
+  ],
+  "forecast_model_and_job_counts": "unchanged"
+}

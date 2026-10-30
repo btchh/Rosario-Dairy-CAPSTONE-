@@ -1,0 +1,37 @@
+{
+  "result": "passed",
+  "frontend_commit": "63ecff33",
+  "authenticated_browser_contexts": 1,
+  "event_stream_statuses": [
+    [
+      200,
+      200
+    ]
+  ],
+  "sales_history_responses_before": [
+    2
+  ],
+  "sales_history_responses_after": [
+    3
+  ],
+  "sale_to_history_response_ms": 598,
+  "preserved_date_filter": "2026-10-30",
+  "document_reloads_during_refresh": 0,
+  "browser_exceptions": 0,
+  "failed_api_responses": 0,
+  "initial_history_receipts": 4861,
+  "initial_history_render_ms": 19164,
+  "initial_history_http_responses": 52,
+  "offline_reconnect_and_resync": "passed",
+  "filter_preserved_after_reconnect": true,
+  "logout_endpoint_status": 200,
+  "old_access_after_logout": 401,
+  "trigger": "two staff checkouts in disposable QA database, one while admin offline",
+  "staff_checkout_statuses": [
+    201,
+    201
+  ],
+  "visible_history_count_increase": 2,
+  "stock_remaining": "7.00",
+  "staff_receipts_created": 2
+}

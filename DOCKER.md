@@ -1,11 +1,24 @@
 # Local Docker preparation
 
-This stack runs the backend while the existing frontend stays on its current
-development server. It is a local deployment rehearsal. Production hosting,
-TLS, SMTP and separate migration/runtime database roles still need configuration.
+The base stack runs the backend; the frontend can use its development server or
+the optional Docker frontend built from its sibling checkout. It is a local deployment rehearsal.
+For the separate production stack, database roles and HTTPS proxy configuration,
+follow [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md). The actual hosting,
+domain, SMTP account and backup/recovery setup still need configuring.
 
 For an image archive your frontend teammate can load, and an optional frontend
 service in the same stack, see [FRONTEND_DOCKER_HANDOFF.md](FRONTEND_DOCKER_HANDOFF.md).
+
+The backend image contains application code, migrations and container startup
+scripts. Tests, QA evidence, documentation, host deployment examples, local
+environments and private data stay outside the image. Run automated test suites
+from the source checkout; use the container checks below for runtime health.
+
+To add the frontend to an already running backend, follow **Add the frontend
+image to the same stack** in that guide. It builds with
+`docker/compose.frontend.build.yaml` and starts only the frontend service;
+the existing backend and database stay running. The local Docker frontend uses
+port 5174 while the native Vite server occupies 5173.
 
 Services are PostgreSQL 18, Redis, a one-shot migration/static-file job, Gunicorn,
 an ASGI live-events service, the midnight forecast worker, and an Nginx gateway
@@ -76,8 +89,9 @@ has no existing accounts or sales; host-database credentials do not create users
 inside it.
 
 Opening `http://localhost:8000/` returns 404 because the backend has no root
-page. Use the API checks above to verify it. The frontend runs separately on
-port 5173 until the frontend developer supplies and tests their image.
+page. Use the API checks above to verify it. The optional Docker frontend is
+available on port 5174 on the preparation machine; the native Vite server uses
+port 5173.
 
 If `API_PORT` is changed, update the frontend API environment and matching
 CSRF origins for that address. Keeping port 8000 preserves the existing URL.
@@ -95,9 +109,10 @@ The endpoint uses bearer-authenticated SSE. Successful business writes publish
 after the outer database commit; notification failures cannot fail the sale.
 The stream rechecks its session/shared version every 15 seconds, batches change
 bursts, and rotates after five minutes or token expiry. It never sends records
-or runs forecast jobs. The full event contract and pending frontend work are
-in `FRONTEND_HANDOFF.md`, under **Live updates across sessions**. Browser screens
-will retain their existing behavior until that frontend request is implemented.
+or runs forecast jobs. The full event contract is in `FRONTEND_HANDOFF.md`, under
+**Live updates across sessions**. The frontend implementation was verified in
+the October 30 QA run; the remaining history pagination request is documented
+in that handoff.
 
 For a quick local native deployment, keep the API running normally and start
 ASGI separately with the same database and `REDIS_URL`:
@@ -181,8 +196,8 @@ deletes these volumes. A named volume is not a recovery backup; take a separate
 private database export before importing real data or changing the schema.
 
 The sample PostgreSQL owner has local development administration privileges.
-Before production, provision a dedicated runtime role, migration credentials,
-HTTPS proxy/origins, Redis and real SMTP using `deployment.env.example`. Then
+For production, use the standalone configuration described in
+`PRODUCTION_DEPLOYMENT.md` with `deployment.env.example`. Then
 verify `manage.py check --deploy --database default` with the runtime credentials.
 Review the official [Python image](https://hub.docker.com/_/python) and pin tested
 image digests for release reproducibility after the first successful build.

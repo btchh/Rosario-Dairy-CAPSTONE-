@@ -11,15 +11,81 @@ imply production forecast approval.
 implementation requests through this document; do not edit the sibling frontend
 repository during backend maintenance.
 
-Reviewed frontend `origin/main` at
+Latest frontend pull: `63ecff33` on 2026-10-30. It implements the live-update
+client and product-only inventory cleanup requested below. The rebuilt local
+Docker frontend is running at `http://localhost:5174`, with the matching backend
+and ASGI events service. All 472 frontend tests and strict TypeScript checks
+passed. Isolated QA subsequently completed the interrupted browser checks:
+staff sales refreshed filtered admin history, filters survived offline/reconnect,
+and logout revoked access. Unfiltered history still has the performance issue
+requested below. No frontend source was edited locally.
+
+The earlier detailed review inspected frontend `origin/main` at
 [`49c3cb42`](https://github.com/JayMarkRocero/Rosario-Dairy-Capstone/commit/49c3cb42)
 on 2026-10-30, after pulling three upstream commits with a clean working tree.
 This review did not modify frontend application code, tests, dependencies or
 configuration.
 
+## QA follow-up: history and dashboard pagination — 2026-10-30
+
+**Frontend changes requested after full QA of `63ecff33`.** The real-sale browser
+flow passed: a staff sale reached date-filtered admin history in 598 ms, another
+sale made offline appeared after reconnect, the date filter survived and logout
+revoked access. However, opening unfiltered history with 4,861 receipts took
+18.279–19.164 seconds. The first run observed 52 history HTTP responses by initial
+render and 97 background order-page requests. The complete results are in
+`QA_REPORT_2026-10-30.md` and `validation/full-qa-browser*.json`.
+
+1. Replace full-list `salesService.getAll()` / `getAllPages()` reads in visible
+   history/order tables with server pagination. Keep full-result summaries and
+   search correct: do not sum/search only the current page while presenting them
+   as complete totals/results. Existing APIs paginate transactions (maximum
+   page size 200) and orders (maximum 500); coordinate any additional search,
+   aggregate and order-filter contracts with the backend before using them.
+   Unsupported query parameters must not be assumed to filter server results.
+2. Replace the admin `KPICards` fallback that downloads every order to count
+   fulfilled orders whose transaction has `payment_status === "pending"`.
+   Request an appropriate server aggregate; preserve that payment-count meaning
+   and existing role/category visibility. It is not the count of an order
+   workflow status named pending, and it must not be replaced with zero.
+3. Cancel obsolete paginated reads when navigating, changing filters, switching
+   accounts or invalidating an in-flight query. Pass an abort signal through
+   the HTTP/page-loading layer. Avoid completing an old whole-history chain
+   before starting its replacement after `ready`/resync. Keep required resync,
+   epoch/revision guards, deduplication and draft-form preservation.
+4. Preserve filters, selected records and valid pagination during live updates.
+   Verify both filtered and unfiltered views with at least the copied 4,800+
+   receipt dataset and concurrent staff writes. Test reconnect/fallback without
+   repeatedly downloading every page from inactive screens.
+
+Acceptance: the first usable history page and KPI counts must not require
+exhausting the complete receipt/order histories. Record end-to-end initial and
+live-update latency on representative data. The sub-second filtered QA sample
+does not establish the same latency for the current unfiltered screen.
+No frontend source changes were made during this backend QA task.
+
+## Docker frontend packaging — 2026-10-30
+
+**Implemented in the backend repository; rebuilt for frontend `63ecff33`.** The Node/Vite
+build and Nginx runtime are defined in `docker/frontend.Dockerfile`, with the
+source build context supplied by `docker/compose.frontend.build.yaml`.
+`docker/compose.frontend.example.yaml` adds the frontend image to the existing
+backend network. See `FRONTEND_DOCKER_HANDOFF.md` for build/start/update commands.
+No frontend application files were changed. The frontend image uses `/backend`
+for API calls and already has the server-side proxy route for the live event
+stream. Frontend `63ecff33` now supplies the client connection described below.
+
 ## Live updates across sessions — 2026-10-30
 
-**Backend implemented; frontend integration requested.** Transactions made by
+**Backend and frontend implemented; local service/HTTP integration verified.**
+Frontend `63ecff33` adds one authenticated fetch stream at the application
+boundary, cache-group invalidation, reconnect/session handling, visible-page
+polling fallback and refreshed open records. The contract and acceptance checks
+below remain the reference. The staff/admin browser history flow, date-filter
+preservation, offline resync and logout passed isolated QA. The unfiltered
+history performance follow-up above remains outstanding.
+
+Transactions made by
 staff must appear on an administrator's open history screen without reloading
 the page. The existing frontend's three-minute freshness timer does not meet
 that requirement. This request covers sales history, orders, customer history,
@@ -73,7 +139,7 @@ inventory and the corresponding dashboard/report summaries.
   roles return 403, and unavailable dependencies/configuration can return 503.
   WSGI/runserver cannot serve the stream: use the Docker gateway or ASGI.
 
-### Requested frontend implementation
+### Frontend implementation contract
 
 1. Open one shared stream per authenticated application tab, at the layout/auth
    boundary, rather than one per widget. Abort it on logout, unmount, or account
@@ -227,7 +293,10 @@ evidence panel or issued-comparison switch.
 
 ## Product-only inventory cleanup — 2026-10-30
 
-**Backend implemented; frontend references still need removal.** Supplier and
+**Backend and frontend implemented (`63ecff33`).** Updated frontend inventory,
+outflows, notifications, stock/batch components, settings labels and report
+types use products only. The requirements below remain the contract for older
+clients. Supplier and
 ingredient management are retired. Inventory consists of products, product
 batches, categories, stock movements/counts and FEFO settings. Milk feeding is
 a sales group of products and remains supported; it is not ingredient inventory.

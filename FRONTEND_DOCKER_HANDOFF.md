@@ -24,7 +24,7 @@ Live updates add an internal `events` service to this stack. Rebuild/export a
 current backend image before sending this Compose file; older images do not
 contain Uvicorn or the SSE endpoint. The gateway waits for both API and event
 service health. See **Live updates across sessions** in `FRONTEND_HANDOFF.md`
-for the pending frontend integration. The optional frontend Nginx example now
+for the client integration implemented in frontend `63ecff33`. The optional frontend Nginx example now
 forwards `/backend/events/` without buffering; preserve this behavior in any
 additional hosting proxy. Database migrations are unchanged by live updates.
 
@@ -34,7 +34,7 @@ include it; old archives do not contain the cleanup. Back up an existing databas
 and stop API/forecast workers before migrating. Migration stops if retired
 ingredient/supplier data exists; archive it explicitly before retrying. Product,
 sales and customer records are retained. See `FRONTEND_HANDOFF.md` for the
-remaining frontend cleanup and temporary empty legacy-list responses.
+completed frontend cleanup and temporary empty legacy-list responses for older clients.
 
 Install Docker with Compose. Verify the downloaded archive against its checksum,
 extract it, and open the extracted directory. Then run:
@@ -65,46 +65,97 @@ backend Git repository.
 
 The API/UI requests are documented in [FRONTEND_HANDOFF.md](FRONTEND_HANDOFF.md),
 which is also included in newly exported archives. In particular, the backend
-returns customer `total_spent`; frontend `49c3cb42` displays it, with the open-profile
-refresh correction tracked in `FRONTEND_HANDOFF_REVIEW.md`. Rebuild
+returns customer `total_spent`; frontend `9986a769` displays it and derives an
+open profile from the refreshed customer list. Rebuild
 the backend image and generate a fresh archive after backend changes, so the
 shared image matches the handoff.
 
 ## Add the frontend image to the same stack
 
-Build the frontend as its own image tagged `rosario-dairy-frontend:local`. The
-provided example assumes an Nginx-based image with the built Vite assets at
-`/usr/share/nginx/html`. The frontend teammate maintains that Dockerfile in the
-frontend repository.
+**Implemented 2026-10-30; rebuilt for frontend `63ecff33`.** All container packaging lives
+in the backend repository; the frontend checkout is used as build input and
+its application files are unchanged. Keep the checkouts alongside each other:
 
-Review on 2026-10-30: frontend `49c3cb42` does not include a Dockerfile or an
-Nginx frontend configuration, so the optional combined-stack packaging below
-remains outstanding. The proposed Cloudflare Pages frontend can instead use
-its own deployment while the backend/database run in Docker on OVHcloud.
+```text
+CodingProjects/
+  SarimaHoes/               # Run the commands below from here.
+  SarimaHoesButFrontend/    # Frontend source and package-lock.json.
+```
 
-Build Vite with `VITE_API_BASE_URL=/backend` and no overriding `VITE_API_URL`.
-These values are embedded at build time. The supplied frontend Nginx configuration
-forwards `/backend/` to the backend gateway on the Compose network and serves
-client-side routes through `index.html`. This matches the existing frontend's
-`/backend` API base without changing its application code.
+`docker/frontend.Dockerfile` uses Node 24 to run `npm ci` and `npm run build`,
+then copies only the built Vite output into an Nginx runtime image. The build
+copies an explicit set of source/configuration/assets from the named frontend
+context; frontend `.env` files, `.git` and host `node_modules` are not copied.
+The build override uses Docker's
+[named build contexts](https://docs.docker.com/build/concepts/context/#named-contexts),
+requiring BuildKit and Docker Compose 2.17 or newer. The preparation machine's
+Compose 5.6.1 supports this.
+
+Build the image from the backend directory:
 
 ```bash
 docker compose --env-file .env.docker \
-  -f compose.yaml -f docker/compose.frontend.example.yaml up -d --no-build
+  -f compose.yaml \
+  -f docker/compose.frontend.example.yaml \
+  -f docker/compose.frontend.build.yaml build frontend
+```
+
+The image is tagged `rosario-dairy-frontend:local`. Set `FRONTEND_SOURCE` in
+`.env.docker` if the frontend checkout is elsewhere; relative paths resolve from
+the backend Compose directory. Set `FRONTEND_IMAGE` to choose another image tag.
+
+For an already running backend, add just the frontend container:
+
+```bash
+docker compose --env-file .env.docker \
+  -f compose.yaml -f docker/compose.frontend.example.yaml \
+  up -d --no-deps frontend
+```
+
+`--no-deps` preserves the running backend services. For a fresh or updated full
+stack, first build the current backend image as described in `DOCKER.md`, then
+run the same command with `up -d --no-build` and without `--no-deps frontend`.
+The backend migration/event services must be current before that full startup.
+
+The default UI address is `http://localhost:5173`. If native Vite already uses
+that port, set `FRONTEND_PORT=5174` in `.env.docker` and open
+`http://localhost:5174`. The preparation machine uses 5174 for Docker alongside
+native Vite on 5173. Check it with the port selected in your environment:
+
+```bash
+docker compose --env-file .env.docker \
+  -f compose.yaml -f docker/compose.frontend.example.yaml ps frontend
 curl -i http://localhost:5173/backend/accounts/user/
 ```
 
-Open `http://localhost:5173`. The proxied user request should also return 401
-before login. Test login, one stock change and one sale from the UI. A different
-frontend image tag can be selected with `FRONTEND_IMAGE` in `.env.docker`.
+Use port 5174 in the curl URL when configured. The proxied user endpoint returns
+401 before login. A running frontend becomes healthy once Nginx serves
+`index.html`; the container uses a read-only filesystem with temporary Nginx
+directories mounted separately. Route fallback serves `index.html` when opening
+or refreshing an application URL.
 
-Browsers use `localhost:5173`; service names such as `gateway` are for container
-traffic. No database credentials belong in the frontend image. While the frontend
-still runs with native Vite, its existing proxy to `localhost:8000` works with the
-backend-only stack.
+The browser sends API requests to its own `/backend` path. Frontend Nginx strips
+that prefix and forwards to `gateway:8080` inside the Compose network. The image
+build fixes `VITE_API_BASE_URL=/backend`; these Vite values are embedded at build
+time, so changing an environment variable on an existing container does not
+rebuild the JavaScript. Database credentials stay with Django. The frontend
+proxy supports unbuffered `/backend/events/`; frontend `63ecff33` includes the
+client integration described in `FRONTEND_HANDOFF.md`. The local backend image
+and events service were also updated, and both proxied streams passed HTTP
+verification. Subsequent isolated browser QA passed real staff-to-admin updates,
+preserved date filters, offline recovery and logout. The remaining pagination
+performance request is documented in `FRONTEND_HANDOFF.md`.
 
-These are local development defaults. Remote access, production TLS/origins and
-database roles require the deployment configuration described in `DOCKER.md`.
+After frontend pulls, repeat the image build, then `up -d --no-deps frontend`.
+This changes the UI container while retaining the existing backend/database.
+For deployment without source, send/load the frontend image separately and
+start using only the first two Compose files; the normal backend export includes
+the frontend packaging files but does not embed the frontend image. A separately
+hosted Cloudflare Pages frontend remains an alternative to this container.
+
+These addresses bind to loopback for local use. On OVHcloud, put an HTTPS reverse
+proxy/domain in front of the UI, preserve the API/event routes, and apply the
+production environment/role settings in `DOCKER.md` before public deployment.
 
 ## Optional private package with existing business data
 
@@ -140,8 +191,9 @@ intact. Use the newest package; older archives are superseded.
 
 The load/input audit and its measured limits are documented in
 `BACKEND_VALIDATION.md`. Checkout/order request UUIDs are supported by the
-backend; the pending client retry integration is described in
-`FRONTEND_HANDOFF.md`. A Git pull and a previously exported image are separate
+backend; frontend `9986a769` sends request UUIDs and offers saved-submission
+recovery. The live event client is still requested in `FRONTEND_HANDOFF.md`.
+A Git pull and a previously exported image are separate
 versions: load the newest image package to receive the audit fixes.
 
 Report previews and PDF exports now have independent request budgets; forecast

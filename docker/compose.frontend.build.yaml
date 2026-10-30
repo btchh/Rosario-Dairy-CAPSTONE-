@@ -1,0 +1,9 @@
+# Use after compose.frontend.example.yaml when the frontend source is available.
+# All local paths resolve from the backend's base compose.yaml directory.
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      additional_contexts:
+        frontend: ${FRONTEND_SOURCE:-../SarimaHoesButFrontend}

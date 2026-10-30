@@ -1,0 +1,103 @@
+{
+  "date": "2026-10-30",
+  "scope": "isolated local QA; not an OVHcloud capacity qualification",
+  "backend_full_before_fix": {
+    "tests": 916,
+    "passed": 915,
+    "skipped": 1,
+    "seconds": 713.002
+  },
+  "backend_affected_after_fix": {
+    "tests": 687,
+    "passed": 686,
+    "skipped": 1,
+    "seconds": 110.203
+  },
+  "backend_focused_timeout_deployment": {
+    "passed": 26
+  },
+  "skip_reason": "Native Windows ACL APIs unavailable on Linux",
+  "frontend": {
+    "commit": "63ecff33",
+    "tests_passed": 472,
+    "typescript": "passed",
+    "production_build": "passed"
+  },
+  "dependencies": {
+    "python_image_distributions": 30,
+    "python_known_vulnerabilities": 0,
+    "npm_dependency_entries": 381,
+    "npm_known_vulnerabilities": 0
+  },
+  "http_qa_after_fix": true,
+  "redis_fix": {
+    "scenario": "stalled QA Redis during invalid checkout; no business mutation",
+    "before": {
+      "status": 503,
+      "seconds": 15.073,
+      "timeout": false,
+      "json_response": true
+    },
+    "after": {
+      "status": 503,
+      "seconds": 3.053,
+      "timeout": false,
+      "json_response": true
+    }
+  },
+  "loads": [
+    {
+      "file": "full-qa-load-5-users-2026-10-30.json",
+      "clients": 5,
+      "requests": 218,
+      "failed_requests": 0,
+      "p95_ms": 953.31,
+      "latency_target_passed": true
+    },
+    {
+      "file": "full-qa-load-10-users-2026-10-30.json",
+      "clients": 10,
+      "requests": 734,
+      "failed_requests": 0,
+      "p95_ms": 1419.91,
+      "latency_target_passed": true
+    },
+    {
+      "file": "full-qa-load-20-users-2026-10-30.json",
+      "clients": 20,
+      "requests": 416,
+      "failed_requests": 0,
+      "p95_ms": 3345.32,
+      "latency_target_passed": false
+    },
+    {
+      "file": "full-qa-load-postfix-10-users-2026-10-30.json",
+      "clients": 10,
+      "requests": 345,
+      "failed_requests": 0,
+      "p95_ms": 1563.01,
+      "latency_target_passed": true
+    },
+    {
+      "file": "full-qa-load-postfix-20-users-2026-10-30.json",
+      "clients": 20,
+      "requests": 435,
+      "failed_requests": 0,
+      "p95_ms": 3793.9,
+      "latency_target_passed": false
+    }
+  ],
+  "read_requests": 2148,
+  "read_failures": 0,
+  "browser_real_sales": "validation/full-qa-browser-sales-2026-10-30.json",
+  "remaining_findings": [
+    "Unfiltered frontend history took 18\u201319 seconds; pagination/aggregates/cancellation request added to FRONTEND_HANDOFF.md",
+    "20-reader stages exceeded the 2000 ms p95 target"
+  ],
+  "working_services": "healthy after applying verified backend image",
+  "working_business_tables_unchanged": 15,
+  "backend_running_image": "sha256:ef65ca92a40e0a171db83ae9aa449a5d3738904c8508f41706ab19806b8e40c1",
+  "qa_project_and_private_credentials_removed": true,
+  "frontend_source_edits": false,
+  "changes_pushed": false
+}

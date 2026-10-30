@@ -1,0 +1,15 @@
+{
+  "scenario": "stalled QA Redis during invalid checkout; no business mutation",
+  "before": {
+    "status": 503,
+    "seconds": 15.073,
+    "timeout": false,
+    "json_response": true
+  },
+  "after": {
+    "status": 503,
+    "seconds": 3.053,
+    "timeout": false,
+    "json_response": true
+  }
+}

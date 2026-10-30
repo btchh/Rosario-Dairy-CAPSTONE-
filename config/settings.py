@@ -61,6 +61,7 @@ if IS_PRODUCTION and not ALLOWED_HOSTS:
     raise ImproperlyConfigured('DJANGO_ALLOWED_HOSTS is required in production.')
 if IS_PRODUCTION and any('*' in host for host in ALLOWED_HOSTS):
     raise ImproperlyConfigured('DJANGO_ALLOWED_HOSTS must use explicit hosts in production.')
+HEALTHCHECK_HOST = os.getenv('DJANGO_HEALTHCHECK_HOST', '').strip()
 
 
 # Application definition
@@ -154,10 +155,21 @@ REDIS_URL = os.getenv('REDIS_URL', '')
 API_DATA_CACHE_TIMEOUT = int(os.getenv('API_DATA_CACHE_TIMEOUT', '300'))
 HISTORY_CACHE_TIMEOUT = int(os.getenv('HISTORY_CACHE_TIMEOUT', '3600'))
 if REDIS_URL:
+    from redis.backoff import NoBackoff
+    from redis.retry import Retry
+
     CACHES = {
         'default': {
             'BACKEND': 'django.core.cache.backends.redis.RedisCache',
             'LOCATION': REDIS_URL,
+            # Several cache reads can precede a throttle decision. Bound each
+            # operation so a stalled broker does not outlast the browser's
+            # request timeout. Never retry ambiguous cache writes implicitly.
+            'OPTIONS': {
+                'socket_connect_timeout': 1,
+                'socket_timeout': 1,
+                'retry': Retry(NoBackoff(), 0),
+            },
         }
     }
 elif IS_PRODUCTION:

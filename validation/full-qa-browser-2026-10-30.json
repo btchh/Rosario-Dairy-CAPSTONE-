@@ -1,0 +1,32 @@
+{
+  "result": "passed",
+  "frontend_commit": "63ecff33",
+  "authenticated_browser_contexts": 1,
+  "event_stream_statuses": [
+    [
+      200,
+      200
+    ]
+  ],
+  "sales_history_responses_before": [
+    2
+  ],
+  "sales_history_responses_after": [
+    3
+  ],
+  "live_refresh_after_invalidation_ms": 490,
+  "preserved_date_filter": "2026-10-30",
+  "document_reloads_during_refresh": 0,
+  "browser_exceptions": 0,
+  "failed_api_responses": 0,
+  "initial_history_receipts": 4861,
+  "initial_history_render_ms": 18279,
+  "initial_history_http_responses": 52,
+  "offline_reconnect_and_resync": "passed",
+  "filter_preserved_after_reconnect": true,
+  "logout_endpoint_status": 200,
+  "old_access_after_logout": 401,
+  "trigger": "business cache invalidation only; no sale or business record created",
+  "background_order_page_requests": 97,
+  "largest_background_order_page": 97
+}

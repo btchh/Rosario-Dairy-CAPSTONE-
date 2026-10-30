@@ -25,6 +25,11 @@ or historical forecasts. Defaults remain report-specific when dates are omitted.
 For the local Docker stack, see [DOCKER.md](DOCKER.md). It includes a separate
 PostgreSQL database, Redis, API/static gateway and the forecast scheduler.
 
+For hosting, follow [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md), using
+the standalone `compose.production.yaml` and `deployment.env.example`. It also
+supports the frontend in the same stack. The latest test results and remaining
+performance work are recorded in [QA_REPORT_2026-10-30.md](QA_REPORT_2026-10-30.md).
+
 Always apply migrations before starting, including after pulling backend code:
 
 ```bash
@@ -33,9 +38,9 @@ venv/bin/python manage.py migrate
 ```
 
 For local development, run `venv/bin/python manage.py runserver 127.0.0.1:8000`.
-For production, configure the secrets/settings in `deployment.env.example`, run
-`venv/bin/python manage.py collectstatic --noinput`, and serve
-`config.wsgi:application` with Gunicorn behind the hosting provider's HTTPS proxy.
+For a native production installation, configure `deployment.env.example`, run
+`venv/bin/python manage.py collectstatic --noinput`, and supervise Gunicorn,
+the ASGI events listener and the forecast worker behind a trusted HTTPS proxy.
 Keep SQL recovery backups and original source files private; they are excluded
 from Git. Apply `sales.0017_transaction_void_reason_transaction_voided_at_and_more`
 along with all other pending migrations before serving requests.

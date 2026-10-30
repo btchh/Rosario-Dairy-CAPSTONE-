@@ -1,0 +1,108 @@
+{
+  "date": "2026-10-30",
+  "scope": "isolated local production Docker rehearsal; no public deployment",
+  "backend_image": "rosario-dairy-backend:production-test",
+  "focused_tests": {
+    "count": 42,
+    "passed": 42,
+    "seconds": 18.807
+  },
+  "database": {
+    "separate_disposable_volumes": true,
+    "migrations": "passed",
+    "runtime_elevated_flags": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ],
+    "public_object_owner": "migration role",
+    "runtime_crud": "passed",
+    "forbidden_operations_blocked": [
+      "create table",
+      "create temporary table",
+      "create schema",
+      "alter table",
+      "truncate table"
+    ],
+    "provisioning_guards": [
+      "elevated role rejected",
+      "inherited role rejected",
+      "foreign object owner rejected",
+      "repeat provisioning passed"
+    ]
+  },
+  "preflight": {
+    "result": "passed",
+    "visible_hsts_scope_advisories": [
+      "security.W005",
+      "security.W021"
+    ],
+    "other_warnings_and_errors": "block startup"
+  },
+  "http": {
+    "result": "passed",
+    "certificate_hostname_and_ca": "verified_self_signed_test_certificate",
+    "http_redirect": 301,
+    "spa": 200,
+    "unauthenticated_api_and_events": 401,
+    "https_forwarded_header_overwrite": "passed",
+    "hsts": "max-age=3600",
+    "unknown_host_rejected_at_edge": 404,
+    "spoofed_forwarded_client_ips_login_statuses": [
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      400,
+      429
+    ]
+  },
+  "live_events_final_warm_sample": {
+    "result": "passed",
+    "viewers": 2,
+    "proxy_layers": [
+      3,
+      3
+    ],
+    "production_https_settings": true,
+    "sale_to_both_notifications_seconds": 0.242,
+    "checkout_seconds": 0.1,
+    "notifications_after_checkout_seconds": 0.141,
+    "history_count": 3,
+    "stock_remaining": "8.00"
+  },
+  "live_events_initial_cold_sample": {
+    "seconds": 3.289,
+    "notifications_delivered": true,
+    "two_second_target": "exceeded"
+  },
+  "checks": [
+    "API and events health",
+    "worker initial run",
+    "Nginx syntax for three proxy layers",
+    "local and production Compose validation",
+    "export script shell syntax",
+    "git diff whitespace"
+  ],
+  "unchanged": [
+    "existing local backend deployment",
+    "existing business data",
+    "frontend application source"
+  ],
+  "not_verified": [
+    "actual OVHcloud server and public TLS/certificate renewal",
+    "real SMTP delivery",
+    "existing-data migration",
+    "full off-server backup and restore",
+    "alerts",
+    "VPS workload capacity",
+    "frontend live-event client integration"
+  ]
+}

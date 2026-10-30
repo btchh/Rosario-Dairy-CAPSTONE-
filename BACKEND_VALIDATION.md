@@ -1,4 +1,173 @@
-# Backend load and input validation — 2026-10-29
+# Backend validation
+
+## Hosting cleanup — 2026-10-30
+
+Removed 37 generated Python bytecode directories (2,784,882 bytes) from the
+source checkout. Kept private environments, business data, backups, migration
+history, tests and operational tooling. Tightened `.dockerignore` to exclude
+tests, host scheduler examples and host-only Docker tooling from the runtime
+image while preserving the frontend build's Nginx input.
+
+All 26 focused deployment/health/Redis-timeout tests passed again. Backend and
+frontend verification images built successfully. Inspected the rebuilt backend
+package for excluded artifacts and required entry points; all 48 application
+migrations remain. Django system and pending-migration checks passed using the
+rebuilt backend against the existing local services. No migrations were applied
+or business writes performed. The running stack was not recreated for cleanup.
+Reviewed candidate Git files for private/generated artifacts and credential
+signatures; none were found. QA JSON evidence parses successfully.
+
+## Full QA and debugging — 2026-10-30
+
+Full results, remaining findings, evidence and scope are in
+[QA_REPORT_2026-10-30.md](QA_REPORT_2026-10-30.md).
+
+The initial full backend run completed 916 tests (915 passed, one Windows-only
+skip); all 472 frontend tests, strict TypeScript and the frontend build passed.
+A real QA Redis interruption exposed a slow availability response: 15.073
+seconds, exceeding the frontend request timeout. One-second cache socket/connect
+timeouts and no implicit retries reduced the measured safe 503 to 3.053 seconds.
+The affected backend suites then completed 687 tests (686 passed, the same skip),
+and 26 focused timeout/deployment checks passed. Counts overlap.
+
+The guarded HTTP harness passed 169 scripted checks and 12 phases on the
+disposable database, including malformed inputs, permission boundaries, 100
+concurrent invalid writes, checkout/order UUID retry races, last-stock buyers,
+cancellation races, atomic rollback, real password hashing and token rotation/
+logout. All six report previews and PDF exports passed without creating forecast
+model/job rows. Python image/npm advisory audits reported no known vulnerabilities.
+
+All 2,148 read-load requests returned 200. Post-fix p95 was 1.563 seconds for ten
+readers, and 3.794 seconds for twenty: the twenty-reader stage missed the
+two-second target. This is a local capacity finding, not a deployment guarantee.
+
+Real staff sales appeared in date-filtered admin history in 598 ms without
+reload; another sale made offline appeared after reconnect. Date filters and
+logout/revocation passed; stock moved from 10 to 7 for exactly two QA sales.
+Opening unfiltered history with 4,861 receipts took 18–19 seconds and caused
+excessive page reads, including a 97-page background order scan. The frontend
+pagination/aggregate/cancellation request is in `FRONTEND_HANDOFF.md`; frontend
+application source remains unchanged.
+
+## Frontend pull, local Docker update and health check — 2026-10-30
+
+Pulled frontend `63ecff33` from `9986a769` with a clean fast-forward. It adds
+the shared live-event client, reconnect/session handling, cache-driven updates
+to mounted queries and open records, and product-only inventory/outflow/alert
+cleanup. All **472 frontend tests passed**, strict TypeScript checks passed,
+and the production frontend build succeeded. No frontend source was edited
+locally.
+
+Rebuilt `rosario-dairy-frontend:local` and `rosario-dairy-backend:local`, updated
+the local API/worker, added the matching ASGI events service and recreated the
+gateway/frontend proxies. The running frontend image ID matches the new build
+(`22ae35a3f14a…`); API and events share the rebuilt backend (`3d8a47ec0720…`).
+The local stack combines `compose.yaml` with
+`docker/compose.frontend.example.yaml`; the separate production definition
+already includes the frontend under its optional `frontend` profile.
+
+The frontend is healthy at `http://localhost:5174`. API/events/database/Redis
+health checks, Django checks, pending-migration checks, both Nginx syntax checks
+and the worker's latest tracked maintenance job passed. UI and SPA refresh
+returned 200; all six compiled image/JS/CSS assets returned 200 with the correct
+MIME types. Both user and event routes returned 401 without authentication,
+through the frontend and API gateway. Authenticated frontend-proxied reads of
+user, products, product batches and one-page sales history returned 200.
+
+Two authenticated event readers through the gateway and frontend proxy received
+a business-cache invalidation in **0.303 seconds**. Streams stayed uncompressed
+and uncached. This checked the deployed notification path without creating a
+sale, stock adjustment or account. The separate full-browser check for history
+refresh with a preserved date filter timed out while host RAM/swap were under
+pressure and remains unverified; the initial unfiltered browser probe did not
+establish that acceptance criterion. No public deployment latency is claimed.
+
+A private full database dump was taken before updating, and its archive contents
+were checked with `pg_restore --list`. Previous running images were tagged for
+rollback. Counts and content fingerprints for all **15 account/inventory/sales
+tables** matched before and after the update and health checks. Existing database
+and Redis containers/volumes were retained. No OVHcloud deployment, real SMTP
+delivery or off-server backup/restore qualification was performed.
+
+## Production Docker verification — 2026-10-30
+
+Built `rosario-dairy-backend:production-test` from the current checkout and
+passed **42 focused tests** covering production settings, restricted database
+role checks, connection security, internal health probes, Compose credential
+separation and startup gating. The test database was separate from application
+data. The first isolated startup exposed the deliberate HSTS subdomain/preload
+advisories blocking an overly strict preflight. The corrected preflight prints
+those two advisories and blocks all other deployment warnings/errors; tests
+cover both cases. Positive HSTS and the existing required HTTPS settings remain
+enforced.
+
+A disposable production Compose project with fresh volumes passed database
+provisioning, every migration, static collection, preflight, API/events health
+checks and the worker's initial forecast-maintenance run. Its empty history
+correctly remained ineligible for production forecast approval. Repeat database
+provisioning passed after migrations and application writes.
+
+The actual runtime database account had all five elevated role flags disabled.
+Every public table/sequence/view was owned by the migration role. Runtime CRUD
+passed, while table creation, temporary-table creation, schema creation, table
+alteration and truncation each failed with insufficient privileges. Separate
+provisioning checks rejected elevated roles, inherited privileges and existing
+objects owned by another role. These checks modified only the disposable stack.
+
+The supplied TLS edge example was exercised with a temporary, CA-verified
+self-signed certificate for `app.example.test`, substituting the test frontend
+service for its host-loopback upstream. HTTPS requests traversed edge, frontend
+proxy and API gateway. SPA refresh returned 200; unauthenticated user/events
+requests returned 401 with HSTS; HTTP redirected to HTTPS; an unknown Host was
+rejected at the edge. An incoming `X-Forwarded-Proto: http` did not override the
+trusted HTTPS scheme. Eleven malformed login requests, each supplying a
+different fake forwarded IP, produced ten 400 responses then 429: the edge
+prevented spoofed IPs from bypassing the configured login throttle.
+
+Two authenticated viewers received a staff checkout event through all three
+proxy layers in **0.242 seconds** in the final warm sample (checkout response
+0.100 seconds; both notifications received 0.141 seconds after that response).
+Fresh history contained the sale and batch stock changed from 10 to 8 units.
+SSE remained uncompressed, uncached and correctly allowed the configured HTTPS
+origin. An earlier cold-start probe delivered both notifications but exceeded
+its two-second target at 3.289 seconds; these are local samples, not a production
+latency guarantee or an OVHcloud load test.
+
+Gateway/frontend/edge Nginx syntax, local and production Compose configurations,
+export-shell syntax and whitespace checks passed. The production application
+image runs as the unprivileged `dairy` user with a read-only root filesystem;
+container log rotation is 10 MB times three files. The disposable project,
+including its database volumes and TLS edge, was removed after verification.
+The existing local services/data and frontend checkout were preserved. No real
+SMTP email was sent and no public deployment was performed.
+
+Use `PRODUCTION_DEPLOYMENT.md` for the standalone deployment workflow. Actual
+OVHcloud/domain/TLS setup, SMTP delivery, data transfer, full off-server backups
+with a restore test, alerting and VPS capacity remain to be verified. The
+frontend live-event client remains the request in `FRONTEND_HANDOFF.md`.
+
+## Docker frontend packaging — 2026-10-30
+
+Built frontend `9986a769` as `rosario-dairy-frontend:local` using the backend-owned
+Node 24/Vite build and Nginx runtime. BuildKit named contexts copy only selected
+frontend build inputs; the runtime image contains compiled assets, without
+frontend source, host dependencies or environment files. The Linux amd64 image
+is approximately 95 MB. No frontend application code was modified.
+
+The frontend is healthy at `http://localhost:5174`, alongside native Vite on
+5173. The local private Docker environment records `FRONTEND_PORT=5174`.
+The existing backend containers stayed running. Chromium rendered the React
+landing page; the compiled JPEG, JavaScript and CSS assets returned HTTP 200
+with correct content types, and refreshing `/sales` served the SPA entry point.
+The frontend proxy returned the expected unauthenticated HTTP 401 and successful
+authenticated HTTP 200 reads for user, inventory and sales history endpoints.
+Verification used an access token with the account's current token version and
+did not create accounts, sales or stock changes. Nginx syntax, both frontend
+Compose variants, the export script syntax and whitespace checks passed.
+
+Build/start/update instructions are in `FRONTEND_DOCKER_HANDOFF.md`. This adds
+container packaging; the live event client's frontend implementation remains
+the separate request in `FRONTEND_HANDOFF.md`.
 
 ## Live updates across sessions — 2026-10-30
 

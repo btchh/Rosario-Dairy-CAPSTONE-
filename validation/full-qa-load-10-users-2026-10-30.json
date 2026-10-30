@@ -1,0 +1,72 @@
+{
+  "timestamp_utc": "2026-10-30T07:47:02.531204+00:00",
+  "base_url": "http://127.0.0.1:32777",
+  "concurrent_clients": 10,
+  "duration_seconds": 60.06,
+  "think_time_seconds": 0.5,
+  "requests": 734,
+  "requests_per_second": 12.22,
+  "statuses": {
+    "200": 734
+  },
+  "errors": {},
+  "failed_requests": 0,
+  "p50_ms": 85.21,
+  "p95_ms": 1419.91,
+  "p99_ms": 2198.9,
+  "max_ms": 3063.25,
+  "throttled_with_retry_after": 0,
+  "max_p95_ms": 2000.0,
+  "endpoints": {
+    "/backend/inventory/products/": {
+      "requests": 108,
+      "statuses": {
+        "200": 108
+      },
+      "p95_ms": 778.57
+    },
+    "/backend/sales/customers/": {
+      "requests": 108,
+      "statuses": {
+        "200": 108
+      },
+      "p95_ms": 594.73
+    },
+    "/backend/sales/transactions/?page_size=50": {
+      "requests": 106,
+      "statuses": {
+        "200": 106
+      },
+      "p95_ms": 705.72
+    },
+    "/backend/settings/": {
+      "requests": 105,
+      "statuses": {
+        "200": 105
+      },
+      "p95_ms": 796.04
+    },
+    "/backend/api/forecasting/graph/?period=monthly": {
+      "requests": 104,
+      "statuses": {
+        "200": 104
+      },
+      "p95_ms": 2289.05
+    },
+    "/backend/api/reports/preview/?type=daily_sales": {
+      "requests": 103,
+      "statuses": {
+        "200": 103
+      },
+      "p95_ms": 927.55
+    },
+    "/backend/api/reports/preview/?type=inventory": {
+      "requests": 100,
+      "statuses": {
+        "200": 100
+      },
+      "p95_ms": 583.19
+    }
+  },
+  "passed": true
+}

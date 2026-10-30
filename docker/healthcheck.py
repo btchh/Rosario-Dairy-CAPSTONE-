@@ -14,6 +14,7 @@ def check():
 
     from django.core.cache import cache
     from django.db import connection
+    from config.health import healthcheck_headers
 
     with connection.cursor() as cursor:
         cursor.execute('SELECT 1')
@@ -31,7 +32,7 @@ def check():
     probe = http.client.HTTPConnection('127.0.0.1', 8000, timeout=5)
     try:
         # An unauthenticated user read returns 401 without consuming login throttles.
-        probe.request('GET', '/accounts/user/', headers={'Host': 'localhost'})
+        probe.request('GET', '/accounts/user/', headers=healthcheck_headers())
         if probe.getresponse().status != 401:
             raise RuntimeError('API probe failed')
     finally:

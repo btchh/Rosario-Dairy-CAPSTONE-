@@ -26,6 +26,116 @@ on 2026-10-30, after pulling three upstream commits with a clean working tree.
 This review did not modify frontend application code, tests, dependencies or
 configuration.
 
+## Discount removal from the system — 2026-10-30
+
+**Backend implemented; frontend changes requested. Existing data must remain
+exactly as stored.** This supersedes earlier discount controls and historical
+receipt-display requests. The user explicitly reaffirmed that frontend source
+must remain untouched during this backend task.
+
+The backend rejects percentage/fixed/nonzero discounts for new checkout,
+orders and manual encoding, for both admins and staff. It uses the entered
+final selling price directly. Discount fields are removed from transaction,
+item, order and customer-history responses, report previews and report PDFs.
+New report payloads omit `discounts`; `product_revenue_basis` now identifies
+`recorded_line_amounts`. Cache namespaces changed so old response shapes are
+not served after release. No database migration or historical rewrite is part
+of this change: existing discount columns, values, invoice totals, quantities,
+prices and source records are retained, including private recovery exports.
+Historical workbook import/refresh tooling retains its source-data handling.
+The local Docker backend now runs this change. Fresh daily/weekly/monthly
+report previews and PDFs were verified through the existing frontend proxy;
+PDF text has no discount cards or rate. Frontend source and its container were
+not changed, so the UI removal below remains outstanding.
+
+Frontend `63ecff33` still enables admin checkout discounts and displays them in
+receipts/orders. Required changes:
+
+1. Remove discount selectors, value inputs, permissions/prompts, calculations
+   and summaries from every checkout, order and manual-encoding form. Remove
+   the `canDiscount` path in `SaleComposer`/`SaleLineEditor`; simplify
+   `manualPricing` to quantity times the entered final selling price. Omit
+   discount fields from new request payloads and frontend API types. The
+   backend tolerates old clients' neutral `none`/zero defaults during the
+   transition; active discounts return 400 and must never be silently ignored.
+2. Remove discount rows, badges, columns, rates, explanatory discount text and
+   report cards everywhere, including old receipt/history/order displays.
+   Update `receiptDetails`, admin/staff order details, report types/mappings,
+   exported/printed frontend receipts and any report preview UI. Remove the
+   notification advice to discount expiring stock; retain FEFO/dispatch advice.
+   The user requested removal from the system's presentation, including reports.
+3. Keep all saved historical values and totals authoritative. Do not erase
+   stored discounts, add them back to old totals, reprice older invoices, or
+   assume an absent API field means the database was rewritten. Show recorded
+   invoice/line amounts as supplied. Historical line and invoice totals may
+   differ; explain that using neutral recorded-amount wording where needed.
+4. Handle saved/unconfirmed drafts explicitly. Never strip a discount and
+   resubmit a changed total under an old request ID, or issue a new sale before
+   checking whether the original succeeded. Keep duplicate-sale protections.
+   Ordinary undiscounted backend UUID fingerprints remain compatible; an old
+   active-discount draft requires history verification and a deliberate new
+   entry at the final selling price, rather than automatic conversion.
+
+Acceptance: admin/staff desktop and mobile flows have no discount controls,
+calculations or output. API writes cannot apply discounts. Sales/history and
+report displays still show the exact recorded invoice totals, and original
+stored discount data remains unchanged. Verify old receipts, pending/paid
+updates, saved drafts, PDF/print output and live refresh alongside the encoder
+and payment-status labels below. No frontend application files were changed.
+
+## History labels: encoder and payment status — 2026-10-30
+
+**Frontend changes requested by the user. Backend fields already exist; no
+database migration or API change is required.** An administrator's manually
+encoded sale must be identified in history, and unpaid transactions must show
+their pending payment status without opening the details dialog.
+
+Frontend `63ecff33` currently shows payment method (Cash/Online) in admin/staff
+history rows and `MobileSaleCard`. Payment status is already available in
+`TransactionDetails`, the encoding list and customer history. Manual receipts
+are titled "Encoded Sales Record" in details, but the encoder is not shown in
+the history row; the Cashier field correctly remains "Not recorded" when the
+original cashier is unknown.
+
+Required display:
+
+- For `is_manually_encoded === true`, show an encoding label in the history
+  row/card and details, using the transaction's `handled_by.username` and
+  `handled_by.role`. Example: **Encoded by Admin — encodingadmin**. Use the
+  actual encoder's role, rather than the viewer's role. Staff encodings should
+  likewise identify their encoder. `encoded_at` supplies the actual entry time;
+  `transaction_date`/`created_at` remains the effective sale date.
+- Keep encoder identity separate from `recorded_cashier`. Manual encoding does
+  not establish who originally handled the sale. Do not replace a missing
+  original cashier with the encoding administrator, or infer manual encoding
+  from `handled_by.role` alone. Imported historical records must retain their
+  existing source classification.
+- Display **Pending**, **Paid**, or **Not recorded** from `payment_status`
+  (`pending`, `paid`, or `unknown`/missing) alongside the payment method. Reuse
+  `PaymentStatusBadge` in admin/staff sales history and mobile cards. A Cash or
+  Online payment method does not establish that payment has been received.
+  Preserve the existing status display in customer history and receipt details.
+- Refresh these labels on the existing sales cache invalidation, including an
+  open detail dialog. Payment updates must change the badge on the existing
+  transaction without creating another receipt. Preserve filters, selected
+  records, pagination and existing role/category visibility.
+
+Contract: `POST /sales/encoding/` returns a shared history transaction with
+`is_manually_encoded`, `encoded_at`, `handled_by: {id, username, role}` and
+`payment_status`. Those fields are also returned by `GET /sales/transactions/`,
+transaction detail, encoding history and customer transaction history. Encoding
+defaults to `pending` when omitted. `PATCH /sales/encoding/{id}/payment/` updates
+payment status and invalidates shared sales/history caches.
+
+Acceptance: an admin encodes a pending sale and another authorized user's open
+history shows **Encoded by Admin — username** and **Pending**, on desktop and
+mobile, without reload. Marking that same sale paid changes its badge to
+**Paid** and preserves encoder identity. Repeat for staff encoding, ordinary
+checkout and unknown legacy payment status; do not mislabel either the original
+cashier or the transaction source. These requirements can be implemented with
+the existing payload and shared badge component. No frontend source was edited
+in this backend task.
+
 ## QA follow-up: history and dashboard pagination — 2026-10-30
 
 **Frontend changes requested after full QA of `63ecff33`.** The real-sale browser
@@ -57,6 +167,16 @@ render and 97 background order-page requests. The complete results are in
    Verify both filtered and unfiltered views with at least the copied 4,800+
    receipt dataset and concurrent staff writes. Test reconnect/fallback without
    repeatedly downloading every page from inactive screens.
+
+Staff dashboard follow-up: the user observed sales appearing late after a
+successful POS transaction, then confirmed they did load. `StaffKPICards`
+currently waits for today's sales, every order and inventory together through
+`Promise.all`, with a 30-second deadline. Before that resolves, empty fallback
+arrays can display zero sales while the card says Updating. Load KPI groups
+independently, show a loading state until their own data arrives, and replace
+the complete order scan with an appropriate server aggregate. Preserve the
+current staff identity/category scope and Asia/Manila day boundaries. Verify a
+successful POS sale appears without waiting for unrelated order-page downloads.
 
 Acceptance: the first usable history page and KPI counts must not require
 exhausting the complete receipt/order histories. Record end-to-end initial and
@@ -371,8 +491,7 @@ responses. Existing summary fields and receipt/history responses remain compatib
 
 The amount sums each linked, non-voided transaction's saved `total_amount` across
 the customer's entire history. It includes direct checkout, order-linked,
-manually encoded and imported receipts once each, using final invoice amounts
-after recorded discounts. It is independent of purchase-history pagination.
+manually encoded and imported receipts once each, using the recorded final invoice amounts. It is independent of purchase-history pagination.
 Customers without qualifying sales return `"0.00"`; inactive customers retain
 their totals. Staff totals follow the same visibility rules as their transaction
 count and history: hidden, inactive-category and mixed restricted receipts are
@@ -908,24 +1027,18 @@ date ranges. Run `npm test` and `npm run build` and report the results.
 Implemented in frontend `d4d35f44`; the source-value explanation and preservation
 requirements below are retained for regression review.
 
-In `src/features/sales/utils/receiptDetails.ts`, imported records use
-`source_line_total` for their displayed line amounts. Those source amounts can
-remain gross when a discount was recorded only on the invoice header. The
-`Net amount` heading in `TransactionDetails.tsx` therefore overstates what is
-known about each imported line.
+The recorded-amount distinction remains relevant in
+`src/features/sales/utils/receiptDetails.ts`: imported receipts use
+`source_line_total` and should label it **Recorded line amount**. Historical
+line and invoice amounts may differ; do not infer an allocation or change
+stored values. Preserve `source_reference`, `source_line_total`, `subtotal`
+and `total_amount`, and treat missing values as unknown.
 
-Use **Recorded line amount** for imported receipts and retain **Net amount** for
-ordinary local sales. Explain that historical line amounts are recorded source
-values and may precede an invoice-level discount; line discount allocations
-were not recorded. Preserve the server's subtotal, discount and invoice total.
-Do not allocate header discounts across lines, change historical values, or
-treat missing values as zero. The existing transaction API already supplies
-`source_reference`, `source_line_total`, `subtotal`, `discount_amount` and
-`total_amount`; no backend contract change is needed.
-
-Cover imported invoices with header discounts, missing source amounts, grouped
-lines, and ordinary discounted checkout receipts in the receipt mapping/UI
-tests. Verify invoice totals remain exactly as recorded.
+The newer **Discount removal from the system** request above supersedes the
+previous instruction to show discount amounts/explanations. Remove all such
+UI rows and text; discount fields are no longer returned by the API. Regression
+fixtures should include older adjusted invoices, missing source amounts and
+grouped lines to verify invoice totals remain exactly as recorded.
 
 ## Report availability and refresh handling
 

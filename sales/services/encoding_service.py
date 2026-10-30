@@ -37,7 +37,7 @@ def encode_transaction(*, items, handled_by, transaction_date, request_id,
         'si_number': si_number, 'note': note, 'payment_method': payment_method, 'payment_status': payment_status,
         'amount_tendered': str(amount_tendered) if amount_tendered is not None else None,
         'items': [(line.product.pk, str(line.quantity), str(line.unit_price),
-                   line.discount_type, str(line.discount_value)) for line in lines],
+                   'none', '0.00') for line in lines],
     }, sort_keys=True).encode()).hexdigest()
     existing = Transaction.objects.filter(encoding_request_id=request_id).first()
     if existing:

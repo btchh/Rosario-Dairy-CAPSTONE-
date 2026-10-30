@@ -63,10 +63,14 @@ class BackendRegressionTests(TestCase):
 
     def sale(self):
         response = self.client.post('/sales/checkout/', {
-            'items': [{'product_id': self.product.pk, 'quantity': '2.00', 'unit_price': '50', 'discount_type': 'percent', 'discount_value': '10.00'}],
+            'items': [{'product_id': self.product.pk, 'quantity': '2.00', 'unit_price': '50'}],
             'payment_method': 'cash', 'amount_tendered': '100.00',
         }, format='json')
         self.assertEqual(response.status_code, 201, response.data)
+        # Existing historical values remain authoritative after feature removal.
+        Transaction.objects.filter(pk=response.data['id']).update(
+            discount_type='percent', discount_value=10, discount_amount=10,
+            total_amount=90, change_due=10)
         return Transaction.objects.get(pk=response.data['id'])
 
     def test_weekly_breakdown_reconciles_discounted_transaction_totals(self):
@@ -189,7 +193,7 @@ class BackendRegressionTests(TestCase):
         for kind in ('daily_sales', 'weekly_sales', 'monthly_sales'):
             with self.subTest(kind=kind):
                 response = self.client.get(f'/api/reports/preview/?type={kind}')
-                self.assertEqual(response.data['data']['product_revenue_basis'], 'gross_before_discounts')
+                self.assertEqual(response.data['data']['product_revenue_basis'], 'recorded_line_amounts')
 
 
 # Shared data caches

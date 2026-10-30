@@ -83,8 +83,8 @@ def cache_api_response(handler):
             request.build_absolute_uri(), timezone.get_current_timezone_name(),
             str(timezone.localdate()),
         )
-        # v3 stores shared payloads together with their original expiry.
-        key = 'api-data:v3:' + sha256(json.dumps(identity).encode()).hexdigest()
+        # v4 removes retired pricing fields from cached response contracts.
+        key = 'api-data:v4:' + sha256(json.dumps(identity).encode()).hexdigest()
         timeout = getattr(self, 'data_cache_timeout', settings.API_DATA_CACHE_TIMEOUT)
         try:
             payload = get_payload(key)

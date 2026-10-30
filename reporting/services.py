@@ -23,7 +23,7 @@ REPORT_TYPES = (
     'daily_sales', 'weekly_sales', 'monthly_sales', 'inventory',
     'sarima_forecast', 'customer',
 )
-CACHE_PREFIX = 'reporting:preview:v10:'
+CACHE_PREFIX = 'reporting:preview:v11:'
 CACHE_TIMEOUT = 300
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ def _sales_drivers(start_date, end_date, visible_to_staff=False):
         created_at__date__lte=end_date,
     )
     totals = transactions.aggregate(
-        gross_sales=Sum('subtotal'), discounts=Sum('discount_amount'),
+        gross_sales=Sum('subtotal'),
         net_sales=Sum('total_amount'), transaction_count=Count('id'),
     )
     payment_mix = list(transactions.values('payment_method').annotate(
@@ -105,7 +105,6 @@ def _sales_drivers(start_date, end_date, visible_to_staff=False):
     count = totals['transaction_count']
     return {
         'gross_sales': _money(totals['gross_sales']),
-        'discounts': _money(totals['discounts']),
         'average_ticket': net / count if count else Decimal('0.00'),
         'payment_mix': payment_mix,
         'category_mix': category_mix,
@@ -147,7 +146,7 @@ def daily_sales(visible_to_staff=False, start_date=None, end_date=None):
     return {
         'date': end_date, 'start_date': start_date, 'end_date': end_date,
         'previous_period_start': previous_start, 'previous_period_end': previous_end,
-        'product_revenue_basis': 'gross_before_discounts',
+        'product_revenue_basis': 'recorded_line_amounts',
         'total_revenue': revenue,
         'transaction_count': count,
         'previous_revenue': previous_revenue,
@@ -229,7 +228,7 @@ def weekly_sales(visible_to_staff=False, start_date=None, end_date=None):
     top_products = _top_products(start_date, end_date, visible_to_staff)
     return {
         'start_date': start_date, 'end_date': end_date, 'revenue': revenue,
-        'product_revenue_basis': 'gross_before_discounts',
+        'product_revenue_basis': 'recorded_line_amounts',
         'transaction_count': count, 'previous_revenue': previous_revenue,
         'previous_transaction_count': previous_count,
         'growth_rate': _growth_rate(revenue, previous_revenue),
@@ -273,7 +272,7 @@ def monthly_sales(visible_to_staff=False, start_date=None, end_date=None):
     top_products = _top_products(start_date, end_date, visible_to_staff)
     return {
         'start_date': start_date, 'end_date': end_date, 'revenue': revenue,
-        'product_revenue_basis': 'gross_before_discounts',
+        'product_revenue_basis': 'recorded_line_amounts',
         'transaction_count': count, 'previous_revenue': previous_revenue,
         'previous_transaction_count': previous_count,
         'previous_period_start': previous_start, 'previous_period_end': previous_end,

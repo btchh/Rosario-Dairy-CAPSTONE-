@@ -31,7 +31,6 @@ class SalesDriversSerializer(serializers.Serializer):
     previous_period_start = serializers.DateField(required=False)
     previous_period_end = serializers.DateField(required=False)
     gross_sales = serializers.DecimalField(max_digits=24, decimal_places=2)
-    discounts = serializers.DecimalField(max_digits=24, decimal_places=2)
     average_ticket = serializers.DecimalField(max_digits=24, decimal_places=2)
     payment_mix = PaymentMixSerializer(many=True)
     category_mix = CategoryMixSerializer(many=True)

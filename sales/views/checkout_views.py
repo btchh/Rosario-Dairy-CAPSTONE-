@@ -6,7 +6,7 @@ from ..serializers import TransactionSerializer
 from ..models import Customer
 from ..services import SalesService
 from ..serializers.sale_input_serializer import encoded_sale_items
-from ..services.item_pricing import reject_invoice_discount
+from ..services.item_pricing import reject_discount_fields
 from decimal import Decimal
 from config.api_inputs import parse_decimal, parse_positive_id
 from accounts.throttles import SaleWriteRateThrottle
@@ -21,7 +21,6 @@ class CheckoutView(viewsets.ViewSet):
         key = request_id(request)
         raw_items = request.data.get('items', [])
         payment_method = request.data.get('payment_method', 'cash')
-        discount_type = request.data.get('discount_type', 'none')
         customer_id = request.data.get('customer_id')
 
         customer = None
@@ -33,7 +32,7 @@ class CheckoutView(viewsets.ViewSet):
                 return Response({'error': 'Customer not found.'}, status=400)
 
         try:
-            reject_invoice_discount(discount_type, request.data.get('discount_value', '0'))
+            reject_discount_fields(request.data)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=400)
 

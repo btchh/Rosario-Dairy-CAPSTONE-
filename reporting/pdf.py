@@ -205,14 +205,10 @@ class Report:
         net = value(d['total_revenue'] if daily else d['revenue'])
         count = d['transaction_count']
         gross = value(d.get('gross_sales', net))
-        discounts = value(d.get('discounts', 0))
         self.cards([
             ('Net sales', money(net, self.currency)),
             ('Transactions', str(count)),
             ('Average sale', money(d.get('average_ticket', net / count if count else 0), self.currency)),
-            ('Gross before discounts', money(gross, self.currency)),
-            ('Discounts', money(discounts, self.currency)),
-            ('Discount rate', pct(discounts, gross)),
         ])
         products = d['items'] if daily else d['top_products']
         top = products[0] if products else None
@@ -230,8 +226,6 @@ class Report:
             lines.append(f'{active} of {days} days recorded a sale. Net revenue changed {change} against the preceding comparison period ({money(d["previous_revenue"], self.currency)} from {d.get("previous_transaction_count", 0)} sales).')
         if self.type == 'monthly_sales':
             lines.append(f'The comparison period ({d.get("previous_period_start")} to {d.get("previous_period_end")}) produced {money(d["previous_revenue"], self.currency)} from {d.get("previous_transaction_count", 0)} sales.')
-        if discounts:
-            lines.append(f'Discounts reduced gross sales by {money(discounts, self.currency)} ({pct(discounts, gross)}).')
         self.insights(lines)
         if self.type == 'weekly_sales':
             self.section('Day-by-day performance')
@@ -263,7 +257,7 @@ class Report:
             [label(r['payment_method']), r['transaction_count'], money(r['revenue'], self.currency), pct(r['revenue'], net)]
             for r in d.get('payment_mix', [])
         ], [.30, .16, .37, .17], numeric=(1, 2, 3))
-        self.note('Product and category amounts are gross line values before transaction discounts; period and payment totals are net. Shares may differ slightly when discounts apply.')
+        self.note('Product and category figures use recorded line amounts; period and payment totals use recorded invoice amounts. Historical line and invoice amounts may differ.')
 
     def inventory_ledger(self):
         ledger = self.data['ledger']

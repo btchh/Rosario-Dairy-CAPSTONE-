@@ -8,7 +8,7 @@ from . import checkout_service
 
 def place_order(customer, items, handled_by, discount_type='none', discount_value=None,
                  payment_method='cash', amount_tendered=None, payment_status='paid'):
-    """Encode explicit item prices/discounts and immediately fulfill atomically."""
+    """Encode final item prices and immediately fulfill atomically."""
     from .item_pricing import ZERO, price_items, reject_invoice_discount
     reject_invoice_discount(discount_type, ZERO if discount_value is None else discount_value)
     lines = price_items(items, handled_by)
@@ -17,8 +17,7 @@ def place_order(customer, items, handled_by, discount_type='none', discount_valu
         OrderItem.objects.bulk_create([
             OrderItem(order=order, product=line.product, quantity=line.quantity,
                       unit_price=line.unit_price, subtotal=line.subtotal,
-                      discount_type=line.discount_type, discount_value=line.discount_value,
-                      discount_amount=line.discount_amount, total_amount=line.total_amount)
+                      total_amount=line.total_amount)
             for line in lines
         ])
         txn = checkout_service.checkout(

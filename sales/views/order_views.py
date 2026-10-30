@@ -19,7 +19,7 @@ from ..serializers.order_serializer import OrderListSerializer
 from ..services import SalesService
 from config.api_inputs import parse_decimal, parse_positive_id
 from ..serializers.sale_input_serializer import encoded_sale_items
-from ..services.item_pricing import reject_invoice_discount
+from ..services.item_pricing import reject_discount_fields
 from accounts.throttles import SaleWriteRateThrottle
 from .transaction_views import CancellationInput
 from ..services.submission_service import request_id, submit_sale
@@ -106,7 +106,7 @@ class OrderViewSet(CachedListMixin, viewsets.ModelViewSet):
             return Response({'error': 'Request body must be a JSON object.'}, status=400)
         key = request_id(request)
         try:
-            reject_invoice_discount(request.data.get('discount_type', 'none'), request.data.get('discount_value', '0'))
+            reject_discount_fields(request.data)
             items = encoded_sale_items(request.data.get('items', []), request)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=400)

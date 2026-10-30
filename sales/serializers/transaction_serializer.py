@@ -30,7 +30,7 @@ class TransactionItemSerializer(serializers.ModelSerializer):
         model = TransactionItem
         fields = [
             'id', 'product_batch', 'quantity', 'unit_price', 'line_number',
-            'discount_type', 'discount_value', 'discount_amount', 'subtotal', 'total_amount',
+            'subtotal', 'total_amount',
             'source_product_label', 'source_line_total',
             'product_id_snapshot', 'product_name_snapshot',
             'product_variant_snapshot', 'category_id_snapshot',
@@ -66,5 +66,5 @@ class TransactionSerializer(TransactionNumberMixin, serializers.ModelSerializer)
 
     class Meta:
         model = Transaction
-        fields = ['id', 'transaction_number', 'transaction_date', 'is_manually_encoded', 'recorded_cashier', 'encoded_at', 'encoding_request_id', 'handled_by', 'customer', 'subtotal', 'discount_type', 'discount_value', 'discount_amount', 'total_amount', 'amount_tendered', 'change_due', 'payment_method', 'payment_status', 'payment_updated_at', 'payment_updated_by', 'delivery_status', 'is_voided', 'voided_at', 'voided_by', 'void_reason', 'items', 'created_at', 'source_reference', 'source_invoice_number', 'source_customer_label', 'source_sales_segment', 'source_note']
-        read_only_fields = ['id', 'handled_by', 'subtotal', 'discount_type', 'discount_value', 'discount_amount', 'total_amount', 'change_due', 'delivery_status', 'is_voided', 'voided_at', 'voided_by', 'void_reason', 'items', 'created_at', 'encoded_at', 'encoding_request_id', 'payment_status', 'payment_updated_at', 'payment_updated_by']
+        fields = ['id', 'transaction_number', 'transaction_date', 'is_manually_encoded', 'recorded_cashier', 'encoded_at', 'encoding_request_id', 'handled_by', 'customer', 'subtotal', 'total_amount', 'amount_tendered', 'change_due', 'payment_method', 'payment_status', 'payment_updated_at', 'payment_updated_by', 'delivery_status', 'is_voided', 'voided_at', 'voided_by', 'void_reason', 'items', 'created_at', 'source_reference', 'source_invoice_number', 'source_customer_label', 'source_sales_segment', 'source_note']
+        read_only_fields = ['id', 'handled_by', 'subtotal', 'total_amount', 'change_due', 'delivery_status', 'is_voided', 'voided_at', 'voided_by', 'void_reason', 'items', 'created_at', 'encoded_at', 'encoding_request_id', 'payment_status', 'payment_updated_at', 'payment_updated_by']

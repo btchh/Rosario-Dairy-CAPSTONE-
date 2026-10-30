@@ -15,7 +15,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = OrderItem
-        fields = ['id', 'product', 'quantity', 'unit_price', 'subtotal', 'discount_type', 'discount_value', 'discount_amount', 'total_amount']
+        fields = ['id', 'product', 'quantity', 'unit_price', 'subtotal', 'total_amount']
         read_only_fields = fields
 
 
@@ -30,8 +30,8 @@ class OrderSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Order
-        fields = ['id', 'customer', 'customer_id', 'handled_by', 'status', 'warning', 'discount_type', 'discount_value', 'transaction', 'items', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'handled_by', 'status', 'warning', 'transaction', 'discount_type', 'discount_value', 'created_at', 'updated_at']
+        fields = ['id', 'customer', 'customer_id', 'handled_by', 'status', 'warning', 'transaction', 'items', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'handled_by', 'status', 'warning', 'transaction', 'created_at', 'updated_at']
 
 class OrderListProductSerializer(serializers.ModelSerializer):
     class Meta:
@@ -44,7 +44,7 @@ class OrderListItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = OrderItem
-        fields = ['id', 'product', 'quantity', 'unit_price', 'subtotal', 'discount_type', 'discount_value', 'discount_amount', 'total_amount']
+        fields = ['id', 'product', 'quantity', 'unit_price', 'subtotal', 'total_amount']
 
 
 class OrderListTransactionSerializer(TransactionNumberMixin, serializers.ModelSerializer):
@@ -52,7 +52,7 @@ class OrderListTransactionSerializer(TransactionNumberMixin, serializers.ModelSe
         model = Transaction
         fields = [
             'id', 'transaction_number', 'transaction_date', 'is_manually_encoded', 'recorded_cashier', 'encoded_at', 'encoding_request_id',
-            'subtotal', 'discount_amount', 'total_amount', 'payment_method', 'payment_status', 'payment_updated_at', 'payment_updated_by',
+            'subtotal', 'total_amount', 'payment_method', 'payment_status', 'payment_updated_at', 'payment_updated_by',
             'amount_tendered', 'change_due', 'source_reference', 'source_invoice_number',
         ]
 

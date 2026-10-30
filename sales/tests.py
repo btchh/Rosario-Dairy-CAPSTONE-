@@ -782,16 +782,16 @@ class PlaceOrderTests(TestCase):
         self.assertIsNotNone(response.data['transaction'])
         self.assertEqual(response.data['transaction']['change_due'], '50.00')
 
-    def test_discount_applies_correctly_on_creation(self):
+    def test_admin_order_discount_is_retired(self):
         self.client.force_authenticate(make_user('discountadmin', role='admin'))
         response = self.client.post('/sales/orders/', {
             'customer_id': self.customer.pk,
             'items': [{'product_id': self.product.pk, 'quantity': '2.00', 'unit_price': '50.00', 'discount_type': 'percent', 'discount_value': '10'}],
             'amount_tendered': '90.00',
         }, format='json')
-        self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.data['transaction']['discount_amount'], '10.00')
-        self.assertEqual(response.data['transaction']['total_amount'], '90.00')
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Order.objects.exists())
+        self.assertFalse(Transaction.objects.exists())
 
     def test_invalid_percent_discount_rejected(self):
         response = self.client.post('/sales/orders/', {
@@ -1328,7 +1328,7 @@ class CustomerTransactionHistoryTests(TestCase):
         self.assertEqual(row['total_amount'], '100.00')
         self.assertIn('items', row)
         self.assertIn('payment_method', row)
-        self.assertIn('discount_amount', row)
+        self.assertNotIn('discount_amount', row)
 
     def test_unrecorded_transaction_number_is_null(self):
         self.sale()
@@ -1521,15 +1521,15 @@ class StaffEncodingTests(TestCase):
         self.assertIsNone(response.data['customer'])
         self.assertEqual(timezone.localtime(Transaction.objects.get().encoded_at).date(), timezone.localdate())
 
-    def test_existing_staff_discount_permission_and_admin_item_discounts(self):
+    def test_item_discounts_are_retired_for_staff_and_admin(self):
         payload = self.payload()
         payload['items'][0].update(discount_type='percent', discount_value='10')
         self.assertEqual(self.post(payload).status_code, 400)
         self.client.force_authenticate(self.admin)
         response = self.post(payload)
-        self.assertEqual(response.status_code, 201, response.data)
-        self.assertEqual(response.data['total_amount'], '270.00')
-        self.assertEqual(response.data['discount_amount'], '30.00')
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertFalse(Transaction.objects.exists())
+        self.assertFalse(Order.objects.exists())
 
     def test_hidden_products_are_unavailable_to_staff_and_manual_history_obeys_visibility(self):
         payload = self.payload()
@@ -1985,7 +1985,7 @@ cache.set('business-data:version:v1', uuid.uuid4().hex, timeout=None)
         self.assertEqual(first.content, repeated.content)
 
 
-# Manual item prices and line discounts
+# Final item prices
 # ----------------------------------------------------------------------------
 
 class ManualItemPricingTests(TestCase):
@@ -2010,36 +2010,36 @@ class ManualItemPricingTests(TestCase):
 
     def payload(self):
         return {'customer_id': self.customer.pk, 'payment_method': 'online', 'items': [
-            {'product_id': self.product.pk, 'quantity': '10', 'unit_price': '150', 'discount_type': 'fixed', 'discount_value': '50'},
-            {'product_id': self.other.pk, 'quantity': '5', 'unit_price': '160', 'discount_type': 'percent', 'discount_value': '10'},
+            {'product_id': self.product.pk, 'quantity': '10', 'unit_price': '150'},
+            {'product_id': self.other.pk, 'quantity': '5', 'unit_price': '160'},
         ]}
 
-    def test_checkout_prices_discount_each_line_and_split_stock_once(self):
+    def test_checkout_uses_final_prices_and_splits_stock_once(self):
         response = self.client.post('/sales/checkout/', self.payload(), format='json')
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data['subtotal'], '2300.00')
-        self.assertEqual(response.data['discount_amount'], '130.00')
-        self.assertEqual(response.data['total_amount'], '2170.00')
-        self.assertEqual(response.data['discount_type'], 'none')
+        self.assertNotIn('discount_amount', response.data)
+        self.assertEqual(response.data['total_amount'], '2300.00')
+        self.assertNotIn('discount_type', response.data)
         milk = [i for i in response.data['items'] if i['product_id_snapshot'] == self.product.pk]
         self.assertEqual(len(milk), 2)
-        self.assertEqual(sum(Decimal(i['discount_amount']) for i in milk), Decimal('50'))
-        self.assertEqual(sum(Decimal(i['total_amount']) for i in milk), Decimal('1450'))
+        self.assertTrue(all('discount_amount' not in i for i in milk))
+        self.assertEqual(sum(Decimal(i['total_amount']) for i in milk), Decimal('1500'))
         self.assertEqual({i['unit_price'] for i in milk}, {'150.00'})
         self.assertEqual({i['line_number'] for i in milk}, {1})
-        self.assertEqual(sum(Decimal(i['total_amount']) for i in response.data['items']), Decimal('2170'))
+        self.assertEqual(sum(Decimal(i['total_amount']) for i in response.data['items']), Decimal('2300'))
 
-    def test_order_prices_and_item_discounts_match_checkout_and_history(self):
+    def test_order_final_prices_match_checkout_and_history(self):
         response = self.client.post('/sales/orders/', self.payload(), format='json')
         self.assertEqual(response.status_code, 201, response.data)
-        self.assertEqual(response.data['transaction']['total_amount'], '2170.00')
-        self.assertEqual([i['total_amount'] for i in response.data['items']], ['1450.00', '720.00'])
-        self.assertEqual([i['discount_value'] for i in response.data['items']], ['50.00', '10.00'])
+        self.assertEqual(response.data['transaction']['total_amount'], '2300.00')
+        self.assertEqual([i['total_amount'] for i in response.data['items']], ['1500.00', '800.00'])
+        self.assertTrue(all('discount_value' not in i for i in response.data['items']))
         listed = self.client.get('/sales/orders/').data['results'][0]
-        self.assertEqual(listed['items'][0]['total_amount'], '1450.00')
+        self.assertEqual(listed['items'][0]['total_amount'], '1500.00')
         history = self.client.get(f'/sales/customers/{self.customer.pk}/transactions/').data['results'][0]
-        self.assertEqual(history['total_amount'], '2170.00')
-        self.assertEqual(sum(Decimal(i['discount_amount']) for i in history['items']), Decimal('130'))
+        self.assertEqual(history['total_amount'], '2300.00')
+        self.assertTrue(all('discount_amount' not in i for i in history['items']))
 
     def test_price_required_every_time_no_batch_fallback_and_invalid_values_rollback(self):
         for endpoint in ('/sales/checkout/', '/sales/orders/'):
@@ -2080,13 +2080,16 @@ class ManualItemPricingTests(TestCase):
         self.assertEqual(Transaction.objects.get(pk=first.data['id']).total_amount, Decimal('75'))
         self.assertEqual(Transaction.objects.get(pk=second.data['id']).total_amount, Decimal('95'))
 
-    def test_free_items_require_explicit_price_or_full_item_discount(self):
+    def test_free_items_require_explicit_zero_price(self):
         for price, kind, value in [('0', 'none', '0'), ('150', 'percent', '100')]:
             response = self.client.post('/sales/checkout/', {'payment_method': 'online', 'items': [
                 {'product_id': self.product.pk, 'quantity': '1', 'unit_price': price,
                  'discount_type': kind, 'discount_value': value}]}, format='json')
-            self.assertEqual(response.status_code, 201, response.data)
-            self.assertEqual(response.data['total_amount'], '0.00')
+            if kind == 'none':
+                self.assertEqual(response.status_code, 201, response.data)
+                self.assertEqual(response.data['total_amount'], '0.00')
+            else:
+                self.assertEqual(response.status_code, 400, response.data)
 
     def test_invalid_item_discounts_and_global_discounts_are_rejected(self):
         for endpoint in ('/sales/checkout/', '/sales/orders/'):
@@ -2101,29 +2104,28 @@ class ManualItemPricingTests(TestCase):
         self.assertFalse(Transaction.objects.exists())
         self.assertFalse(Order.objects.exists())
 
-    def test_staff_can_enter_price_but_existing_discount_permission_remains(self):
+    def test_staff_can_enter_final_price_but_cannot_discount(self):
         self.client.force_authenticate(self.staff)
         payload = {'payment_method': 'online', 'items': [{'product_id': self.product.pk, 'quantity': '1', 'unit_price': '12.34'}]}
         self.assertEqual(self.client.post('/sales/checkout/', payload, format='json').status_code, 201)
         payload['items'][0].update(discount_type='fixed', discount_value='1')
         self.assertEqual(self.client.post('/sales/checkout/', payload, format='json').status_code, 400)
 
-    def test_fixed_discount_is_per_line_not_per_unit_and_cash_uses_net_total(self):
+    def test_fixed_discount_cannot_reduce_cash_due(self):
         payload = {'payment_method': 'cash', 'amount_tendered': '300', 'items': [
             {'product_id': self.product.pk, 'quantity': '2', 'unit_price': '150', 'discount_type': 'fixed', 'discount_value': '50'}]}
         response = self.client.post('/sales/checkout/', payload, format='json')
-        self.assertEqual(response.status_code, 201, response.data)
-        self.assertEqual(response.data['total_amount'], '250.00')
-        self.assertEqual(response.data['change_due'], '50.00')
+        self.assertEqual(response.status_code, 400, response.data)
+        self.assertFalse(Transaction.objects.exists())
 
     def test_fractional_quantities_reconcile_across_batches_with_rounding(self):
         ProductBatch.objects.filter(product=self.product).delete()
         self.stock(self.product, 'ROUND-A', Decimal('.01'))
         self.stock(self.product, 'ROUND-B', Decimal('.04'), days=8)
-        txn = SalesService.checkout([(self.product, Decimal('.05'), Decimal('.33'), 'percent', Decimal('50'))], self.admin, payment_method='online')
+        txn = SalesService.checkout([(self.product, Decimal('.05'), Decimal('.33'))], self.admin, payment_method='online')
         items = list(txn.items.all())
         self.assertEqual(txn.subtotal, Decimal('.02'))
-        self.assertEqual(txn.discount_amount, Decimal('.01'))
+        self.assertEqual(txn.discount_amount, Decimal('0.00'))
         self.assertEqual(sum(i.subtotal for i in items), txn.subtotal)
         self.assertEqual(sum(i.discount_amount for i in items), txn.discount_amount)
         self.assertEqual(sum(i.total_amount for i in items), txn.total_amount)

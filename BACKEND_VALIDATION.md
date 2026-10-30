@@ -1,5 +1,44 @@
 # Backend validation
 
+## Discount feature removal; historical data retained — 2026-10-30
+
+New checkout, orders and manual encoding reject active discounts for both
+roles, including direct service calls. Final entered prices determine new
+totals; neutral defaults from older clients remain compatible. Discount fields
+are absent from receipt/order/customer-history APIs and report previews/PDFs.
+Response cache namespaces changed to retire older payload shapes.
+
+Existing model columns, source import/refresh handling, recovery exports and
+stored amounts remain unchanged. No data/schema migration was added;
+`makemigrations --check --dry-run` reported no changes. Regression fixtures
+verify every legacy sale/item/order/batch row remains identical after history
+and report reads, and later payment uses the original recorded invoice total.
+Ordinary pre-removal UUID fingerprints still replay their original receipts.
+
+The affected config/accounts/sales/inventory/reporting/settings/scheduling run
+found 693 tests: 686 passed, six Redis tests required an explicit disposable
+broker, and one required native Windows ACL APIs. All six Redis tests were then
+run successfully against a separate Redis instance: 692 unique tests passed,
+with only the Windows test unverified. The main run took 73.758 seconds; the
+Redis run took 5.618 seconds. Tests used a separate ephemeral PostgreSQL
+container and a test-only fast hasher; working services/data were not changed.
+The backend verification image built and passed Django checks with its Redis
+cache configuration. Frontend source remains unchanged; complete UI/report
+removal, historical-value preservation and saved-draft requirements are in
+`FRONTEND_HANDOFF.md`.
+
+Local Docker follow-up: applied the verified backend image (`2b4042d846a8…`)
+to API/events/worker after saving a private database dump and rollback image.
+No migrations were applied. The API/events probes passed and the gateway was
+reloaded; the frontend container and source were unchanged. Authenticated
+daily/weekly/monthly previews and PDF exports through the existing frontend
+proxy all returned 200. Extracted text from all three fresh PDFs contained no
+Discount rate, Discounts or Gross before discounts cards. All 17 account,
+inventory and sales tables retained identical row counts and content hashes.
+The OVHcloud deployment has not been performed. Release review retained the
+isolated regression results above and rechecked the running API/events probes,
+Django system checks and migration state. Frontend source remains unchanged.
+
 ## Hosting cleanup — 2026-10-30
 
 Removed 37 generated Python bytecode directories (2,784,882 bytes) from the

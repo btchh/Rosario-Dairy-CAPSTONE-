@@ -49,7 +49,8 @@ backend Git repository.
 
 The API/UI requests are documented in [FRONTEND_HANDOFF.md](FRONTEND_HANDOFF.md),
 which is also included in newly exported archives. In particular, the backend
-returns customer `total_spent`; its frontend display remains pending. Rebuild
+returns customer `total_spent`; frontend `49c3cb42` displays it, with the open-profile
+refresh correction tracked in `FRONTEND_HANDOFF_REVIEW.md`. Rebuild
 the backend image and generate a fresh archive after backend changes, so the
 shared image matches the handoff.
 
@@ -59,6 +60,11 @@ Build the frontend as its own image tagged `rosario-dairy-frontend:local`. The
 provided example assumes an Nginx-based image with the built Vite assets at
 `/usr/share/nginx/html`. The frontend teammate maintains that Dockerfile in the
 frontend repository.
+
+Review on 2026-10-30: frontend `49c3cb42` does not include a Dockerfile or an
+Nginx frontend configuration, so the optional combined-stack packaging below
+remains outstanding. The proposed Cloudflare Pages frontend can instead use
+its own deployment while the backend/database run in Docker on OVHcloud.
 
 Build Vite with `VITE_API_BASE_URL=/backend` and no overriding `VITE_API_URL`.
 These values are embedded at build time. The supplied frontend Nginx configuration

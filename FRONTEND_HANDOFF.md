@@ -1,59 +1,119 @@
 # Frontend handoff and completion status
 
-Updated 2026-10-29 (Asia/Manila).
+Updated 2026-10-30 (Asia/Manila).
 
-**Overall status: partially satisfied.** Implement the outstanding changes below
-in `JayMarkRocero/Rosario-Dairy-Capstone`. The backend exposes the required API
-fields; this does not imply production forecast approval.
+**Overall status: partially satisfied.** The latest frontend implements most
+requested UI work. Remaining changes and verification evidence are detailed in
+[FRONTEND_HANDOFF_REVIEW.md](FRONTEND_HANDOFF_REVIEW.md). These displays do not
+imply production forecast approval.
 
 **Work boundary:** make backend changes in this repository. Communicate frontend
 implementation requests through this document; do not edit the sibling frontend
 repository during backend maintenance.
 
-Checked on 2026-10-29: the frontend was fetched and reset to the latest
-`origin/main`, commit
-[`7d59b2ef`](https://github.com/JayMarkRocero/Rosario-Dairy-Capstone/commit/7d59b2ef6e184023af48587510b108d3a3fd484f),
-with a clean working tree. This update adds sidebar toggles; it does not
-implement the pending forecast or customer-total work below. Our local frontend
-implementation and its beta branch have been discarded at the user's request.
-Its test results and combined frontend Docker archive are no longer the active
-handoff. Future implementation requests belong in this backend document.
+Reviewed frontend `origin/main` at
+[`49c3cb42`](https://github.com/JayMarkRocero/Rosario-Dairy-Capstone/commit/49c3cb42)
+on 2026-10-30, after pulling three upstream commits with a clean working tree.
+This review did not modify frontend application code, tests, dependencies or
+configuration.
+
+## Client wording revision — 2026-10-30
+
+The client needs a sales-planning screen, with short explanations of what is
+available and what action is needed. The earlier request to expose extensive
+model evidence, publication gates and provenance in the normal client interface
+is withdrawn. **This section supersedes the detailed display instructions below
+where they ask for research diagnostics on the client screen.** Keep those API
+fields and their meaning for developer documentation, capstone evaluation and
+internal verification; do not remove data, alter estimates or change approval
+rules to simplify the display.
+
+Requested frontend revision:
+
+- Remove **Model evidence and limitations**, raw model orders/IDs, WAPE/baseline
+  tables, training-step counts, source fingerprints, publication-gate codes and
+  technical provenance from the ordinary client dashboard and report summary.
+- Remove **Compare issued forecasts** from the ordinary client controls. It
+  compares a previously saved prediction with the latest estimate for the same
+  period; it is an internal evaluation feature. Keep original issued values
+  separate and unchanged in the API and research evidence.
+- Show the selected sales group, date range, **Recorded sales** and **Estimated
+  sales**. For the longer display, use **Next 12 months** or **Next 52 weeks**
+  instead of asking the client to interpret “Seasonal outlook.”
+- Keep an honest short notice such as **For planning only** when estimates are
+  not approved for operational use. Missing data stays unavailable, not zero.
+  For the current annual point, **Year-end estimate** with “Recorded sales plus
+  estimates for the remaining months” is enough; detailed calculation fields
+  belong in documentation.
+- Do not append `quality_gate.reasons`, `warnings`, `limitations`, model scores
+  or raw status identifiers to the Sales Forecast Report card. The shared
+  `forecastExplanation` currently displays backend `status_message` verbatim
+  and appends “Quality checks”; replace that client-facing path with a short
+  status-based explanation. Keep technical fields available internally.
+
+Suggested report copy (preserve the underlying status and forecast data):
+
+| Backend status | Client message |
+| --- | --- |
+| `stale_data` | A current forecast is unavailable because recent sales records are missing. |
+| `research_only` | The forecast is still being checked and is not ready to use. |
+| `refresh_required` | The forecast needs updating. |
+| `training_required`, `pending_update`, insufficient-history states | There is not enough sales history to prepare a forecast yet. |
+| `unsupported_horizon` | A forecast is not available for this period. |
+| `no_forecasts_in_range` | No forecast is available for the selected dates. |
+| `ready` | A forecast is available for the selected period. |
+| Unrecognized status or request failure | Forecast information is currently unavailable. |
+
+If helpful, show **Latest sales record: [date]** from `data_end`. Do not print a
+list of missing model approvals, “demo data excluded,” or “12 prospective
+reviewed months.” Those remain internal requirements; adding recent sales does
+not automatically satisfy every approval check. Do not offer a button as a
+guaranteed fix for missing observations or a pending review.
+
+The downloadable forecast PDF already uses short availability messages in
+`reporting/pdf.py`; the browser card should be similarly readable. The backend
+`forecasting/serving.py` still supplies diagnostic `status_message` text for
+compatibility. Frontend display selection can simplify it without changing the
+response shape or hiding availability/approval facts.
+
+Verification: inject the quoted stale-data response with all three quality
+reasons and confirm the card shows only the plain explanation (and optional
+last-record date). Check pending review, missing dates, zero forecasts, current
+annual estimates, all sales views and loading/error states. Verify the graph
+values and API metadata remain unchanged, and client controls contain no model
+evidence panel or issued-comparison switch.
 
 ## Current completion checklist
 
-| Requirement | Status in frontend `7d59b2ef` |
+| Requirement | Status in frontend `49c3cb42` |
 | --- | --- |
-| Registration length limits and Unicode handling | Complete; retained from `d4d35f44` |
-| Selected dates on all six report previews and PDF exports | Complete; retained from `d4d35f44` |
-| Historical receipt amount labels and preserved source values | Complete; retained from `d4d35f44` |
-| Mutation cache invalidation and manual report-refresh cooldown handling | Complete; retained from `d4d35f44` |
-| Adjacent past/current chart connector | Basic gap fix complete; green connector still needs the origin/outlook distinction below |
-| Historical date controls on the dashboard forecast chart | Complete; new upstream behavior described below |
-| Per-customer lifetime total (`total_spent`) | Backend complete; frontend pending |
-| Server retry UUIDs for checkout/orders | Backend supports them; frontend still uses its existing unconfirmed-sale guard without sending a UUID |
-| Explicit 52-week/12-month Seasonal outlook display | Pending |
-| Latest outlook labeling, origin/horizon tooltips and separate issued comparisons | Pending |
-| Per-component model details, source freshness, production approval and baseline comparison | Pending |
-| Current-year nowcast calculation, missing months and actual-floor explanations | Pending |
-| Node 26 browser-storage test isolation | Pending; seven failures previously reproduced before sidebar update |
-| Production origin, staging workflows and dependency review | Pending deployment follow-up |
+| Registration length limits and Unicode handling | Complete |
+| Selected dates on all six report previews and PDF exports | Complete |
+| Historical receipt amount labels and preserved source values | Complete |
+| Mutation cache invalidation and manual report-refresh handling | Complete; respects separate preview/PDF cooldowns |
+| Adjacent past/current chart connector | Complete; neutral display bridge, genuine null gaps retained |
+| Historical date controls on the dashboard forecast chart | Complete |
+| Per-customer lifetime total (`total_spent`) | Partial; table/profile/mobile displays implemented, but an open profile retains an old total after the list refreshes |
+| Server retry UUIDs for checkout/orders | Pending; existing unconfirmed-sale guard remains, but callers still send no UUID |
+| Explicit 52-week/12-month Seasonal outlook display | Complete; covered for all three sales views |
+| Latest outlook labels, origin/horizon tooltips and separate issued comparisons | Complete; zero-valued original issues remain separate |
+| Forecast diagnostics for research/verification | Graph metadata available; strict monthly evidence remains available from the backend. Showing technical approval details to the ordinary client is no longer requested |
+| Plain-language client forecasting and report summaries | Pending; simplify the technical panels, labels and report text according to the wording revision above |
+| Current-year nowcast, missing months and actual-floor explanations | Complete; server calculations and nulls retained |
+| Node 26 browser-storage test isolation | Pending; default suite still has seven POS failures; all 426 pass with the documented storage flag |
+| Production origin and staging workflows | Pending deployment verification |
+| Dependency review | Pending; current registry audit reports 9 high and 1 moderate affected packages |
 
-The graph interfaces and chart still use the earlier centered fields. They do
-not consume `seasonal_outlook`, `model_details`, graph `readiness`, origin/horizon
-metadata, issued comparisons or annual-outlook details. The chart still uses
-generic "SARIMA estimates" and "Future predictions" labels. The implementation
-requirements below remain outstanding even though the existing chart renders.
-
-Earlier verification of `de34e12c`: Vite build and strict TypeScript checks
-passed. Its suite passed 378/378 with the documented Node storage flag; the
-default Node 26 run had seven POS UI failures. The latest sidebar update adds
-tests, so those counts do not verify `7d59b2ef`. The discarded local frontend's
-397-test result and dependency fixes do not apply to upstream main. Recheck the
-upstream checkout's tests and dependencies when the frontend developer resumes.
+Verification of `49c3cb42`: the production build and strict TypeScript checks
+pass. Under Node 26.12.1, the default suite passes **419/426**, while the
+`--no-experimental-webstorage` verification run passes **426/426**. A separate
+in-memory probe reproduces the stale open customer profile; it ran outside the
+frontend repository and is not part of those 426 upstream tests. No live sale,
+customer edit, cancellation or stock write was made during this review.
 
 ## Customer lifetime sales total
 
-**Backend implemented; frontend display pending.** Customer summaries include
+**Backend implemented; frontend display implemented, open-profile refresh pending.** Customer summaries include
 the read-only `total_spent` field, a decimal string with two fractional digits
 (for example, `"1250.50"`). This is an additive response field on
 `GET /sales/customers/`, `GET /sales/customers/{id}/`, and customer create/update
@@ -72,14 +132,21 @@ All payment statuses count, including pending and unknown, so this is recorded
 sales value rather than verified cash collected. Unassigned transactions do not
 belong to a customer's total, and original imported source amounts are unchanged.
 
-Requested frontend implementation: map the server's decimal string to
+Implemented in `49c3cb42`: map the server's decimal string to
 `totalSpent` and display **Total purchases** in the admin customer table,
 profile and mobile card. Preserve decimal precision when formatting; do not
 calculate totals from paginated receipt history. If an older API omits the
 field, display Unavailable rather than zero. Refresh customer summaries after
 sales and cancellations using the existing mutation cache invalidation.
-Explain that the total includes pending-payment recorded sales. Add mapping
-and display tests for zero, missing values, large amounts and voided receipts.
+Explain that the total includes pending-payment recorded sales. Mapping/display
+tests cover zero, missing values, large amounts and the voided-receipt definition.
+The backend remains responsible for the actual voided-receipt sum.
+
+Remaining correction: `AdminCustomers` stores the selected profile as a separate
+customer object. When the cached list refreshes, its table/mobile totals update,
+but an already-open profile keeps the old total. Resolve the displayed profile
+by customer ID against fresh list data, or refresh its detail record. Cover a
+sale/cancellation refresh while the profile stays open.
 
 No database migration is needed. Restart backend processes after deployment.
 For a warm shared cache, retire older business API payloads after restarting:
@@ -121,7 +188,7 @@ out-of-range `customer_id`/`handled_by` sales filters now return 400. Keep form
 values and display the existing backend error shapes; successful response
 contracts are unchanged. Honor `Retry-After` on 429 responses.
 
-Checkout and order callers in frontend `7d59b2ef` do not send a request UUID.
+Checkout and order callers in frontend `49c3cb42` still do not send a request UUID.
 Keep their existing unconfirmed-sale guard. As a follow-up, generate and retain
 one UUID per logical submission, send it as `request_id` or `Idempotency-Key`,
 and reuse it only with the same payload when retrying an ambiguous outcome.
@@ -163,12 +230,14 @@ centered window; it does not retrieve arbitrary earlier history. If the range
 starts before that window, the chart explains that those earlier periods were
 not retrieved. Historical `refresh_required` results retain recorded sales and
 available original issues and explain that Refresh forecast updates the current
-window only. These date controls do not implement the longer seasonal outlook
-or the pending model/readiness presentation.
+window only. The separate Seasonal outlook control and graph model/readiness
+presentation are implemented in `49c3cb42`; the client wording revision above
+now requests a simpler presentation.
 
 ## Forecast response and full seasonal outlook
 
-**Backend implemented; frontend display pending in `7d59b2ef`.**
+**Backend implemented; frontend display implemented in `49c3cb42`.** The contract
+below is retained for regression checks.
 
 Graph engine `centered-beta-sarima-v6` and provisional engine
 `actual-provisional-sarima-v4` expose the selected model through the response
@@ -217,9 +286,11 @@ one-period evidence; do not display it as the accuracy of a 52-week path.
 
 ## Data freshness and cache alignment
 
-**Partially implemented.** Existing forecast-refresh and business-mutation
-invalidation includes graph, report and PDF cache groups. Source-freshness,
-approval and annual-null explanations still need the presentation below.
+**Graph/report presentation implemented in `49c3cb42`.** Forecast-refresh and
+business-mutation invalidation includes graph, report and PDF cache groups.
+Source-freshness, graph approval and annual-null explanations are displayed.
+The open customer-profile refresh and plain-language forecasting revision are
+separate remaining requests, documented above and in the review.
 
 Read available history dates, source freshness and approval from the server.
 Refreshing saved forecasts does not make stale observations current. Keep
@@ -232,7 +303,7 @@ results or hardcode history dates, model scores or approval states.
 
 ## Change request: one latest outlook and separate issued comparisons
 
-**Backend implemented; frontend adoption pending.** Graph v6 preserves the
+**Backend implemented; frontend adopted in `49c3cb42`.** Graph v6 preserves the
 endpoint, permissions, nine views, field types and legacy statuses. Current and
 future points use one latest outlook; older issued forecasts remain separate
 comparisons. The current annual point is a disclosed nowcast.
@@ -295,7 +366,8 @@ Frontend implementation requested:
 
 ## Change request: distinguish saved projections from validated forecasts
 
-**Backend ready; frontend presentation pending.** `GET /api/forecasting/graph/`
+**Graph diagnostics implemented in `49c3cb42`; simplify the ordinary client view
+according to the wording revision above.** `GET /api/forecasting/graph/`
 retains existing fields, permissions and legacy `status` values. Graph v6's
 current-outlook fields are specified above.
 It now adds diagnostics without fitting models during requests:
@@ -304,8 +376,8 @@ It now adds diagnostics without fitting models during requests:
   or `unavailable`, based on actual prediction endpoints. A saved graph can
   retain legacy `status=ready` while prediction availability is `unavailable`.
 - `readiness.production_approved` is always false for this projection graph;
-  top-level `readiness.publication_status` is `research_only`. Read strict
-  monthly approval and missing evidence from the existing
+  top-level `readiness.publication_status` is `research_only`. For internal
+verification, read strict monthly approval and missing evidence from the existing
   `/api/forecasting/models/` endpoint, also linked by
   `readiness.primary_monthly_status_url`.
 - Each view adds `model_details` for its current bucket. Every point also adds
@@ -357,11 +429,10 @@ no frontend source or dependency files were modified by this backend review.
 
 ## Completed upstream: basic adjacent past/current forecast connector
 
-**Implemented in frontend `d4d35f44`.** The requirements and reference code below
-are retained for regression review and remain present at `7d59b2ef`. The green
-reference implementation fixes the original gap; adapt its color/label for the
-pending latest-outlook distinction above rather than treating it as the final
-presentation. The backend returns consecutive calendar
+**Neutral connector implemented in frontend `49c3cb42`.** The earlier green
+reference implementation below is retained as historical context; the active
+frontend correctly uses a neutral bridge with a display-only explanation.
+Preserve this neutral treatment when changing the chart. The backend returns consecutive calendar
 buckets and intentionally separates `past_prediction` from
 `future_prediction`. The artificial break at the current-period boundary comes
 from `src/features/dashboard/components/admin/ForecastChart.tsx`: three
@@ -471,9 +542,10 @@ tests passed in a disposable PostgreSQL database. The suggested helper passed
 preserved zero/null values, and retained exactly three existing legend entries.
 These were backend/reference-code checks. Upstream implemented the connector
 in `d4d35f44`; its dedicated connector and rendering regressions were also
-reviewed on 2026-10-28. The current local frontend matches upstream `7d59b2ef`.
-Earlier browser checks of the archived local preview do not establish that this
-upstream version satisfies the newer seasonal, provenance and readiness requests.
+reviewed on 2026-10-28. The current local frontend matches upstream `49c3cb42`.
+The 2026-10-30 source/component review confirms the newer seasonal, provenance
+and graph-readiness displays; remaining gaps and staging limits are recorded
+in `FRONTEND_HANDOFF_REVIEW.md`.
 
 ## Completed upstream: registration field length limits
 
@@ -659,7 +731,7 @@ Set the production build's API origin to the provisioned HTTPS backend and
 verify login, both roles and complete sale/report workflows in staging. The
 local development origin is not a production deployment configuration.
 
-A read-only `npm audit --json` on 2026-10-27 reports **10 affected packages**
+A read-only `npm audit --json` on 2026-10-30 still reports **10 affected packages**
 (9 high, 1 moderate) in this checkout's lockfile: `baseline-browser-mapping`,
 `browserslist`, `follow-redirects`, `nanoid`, `postcss`, `react-router`,
 `react-router-dom`, `source-map-js`, `tar`, and `vite`. These are registry advisory

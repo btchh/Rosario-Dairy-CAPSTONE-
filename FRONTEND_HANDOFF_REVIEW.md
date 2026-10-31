@@ -1,15 +1,11 @@
 # Frontend handoff review — 30 October 2026
 
-**Historical review.** As of 2026-10-31, frontend `305bdf49` supersedes the
-checkout reviewed below. Its 535 tests and strict TypeScript pass, and it now
-contains UUID recovery, discount removal, encoder/payment labels, obsolete-read
-cancellation and independent staff KPI loading. Do not treat this older review's
-missing-feature claims or dependency counts as a fresh audit. Current backend
-summary/search/filter contracts and remaining frontend pagination work are in
-[FRONTEND_HANDOFF.md](FRONTEND_HANDOFF.md#backend-pagination-and-summaries-ready--2026-10-31).
-The local backend was subsequently rebuilt/deployed with the 2026-10-31 cashier
-correction and summary/filter routes. The frontend image still predates the
-latest frontend source; see the handoff for deployment and integration status.
+**Historical review, not an active request list.** Frontend `7295f413` is now
+deployed locally and passed 580 tests, TypeScript and admin/staff browser smoke
+checks. Its current open requests and API details are in
+[FRONTEND_HANDOFF.md](FRONTEND_HANDOFF.md). The older missing-feature claims and
+dependency counts below are not a fresh audit. Removed handoff sections remain
+in the [versioned handoff](https://github.com/btchh/Rosario-Dairy-CAPSTONE-/blob/7a75a0ab/FRONTEND_HANDOFF.md).
 
 **Result: partially satisfied.** Reviewed frontend `main` at `49c3cb42`
 against `FRONTEND_HANDOFF.md`, with the Docker handoff checked separately.

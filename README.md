@@ -116,7 +116,7 @@ historical cancellation dates or return quantities.
 three series: past predictions, recorded sales and future predictions. Weekly
 and monthly ranges contain three earlier periods, the selected period and three
 later periods. Yearly contains two earlier years, the selected year and two later
-years. See `FRONTEND_HANDOFF.md` for the API contract. Existing chart endpoints
+years. See the [versioned forecast API contract](https://github.com/btchh/Rosario-Dairy-CAPSTONE-/blob/7a75a0ab/FRONTEND_HANDOFF.md#forecast-response-and-full-seasonal-outlook). Existing chart endpoints
 remain compatible until the frontend adopts the new graph API.
 
 Only eligible real dairy invoices train the models. Explicit imported sales
@@ -156,7 +156,7 @@ starting with the current bucket. The existing centered windows remain intact;
 yearly has no synthetic annual-cycle expansion. Model details expose actual
 projection steps from fitted history, source freshness and correctly scoped
 rolling backtests. Saved availability does not imply fresh data or production
-approval. See `FRONTEND_HANDOFF.md` for the integration requirements and the
+approval. See the [versioned forecast integration reference](https://github.com/btchh/Rosario-Dairy-CAPSTONE-/blob/7a75a0ab/FRONTEND_HANDOFF.md#change-request-one-latest-outlook-and-separate-issued-comparisons) and the
 archived `FORECAST_FINALIZATION.md` for implementation verification.
 
 The original-only Chapter 4 comparison covers ARIMA, SARIMA, calendar SARIMAX,

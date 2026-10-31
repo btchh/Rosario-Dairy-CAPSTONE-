@@ -166,8 +166,8 @@ The endpoint uses bearer-authenticated SSE. Successful business writes publish
 after the outer database commit; notification failures cannot fail the sale.
 The stream rechecks its session/shared version every 15 seconds, batches change
 bursts, and rotates after five minutes or token expiry. It never sends records
-or runs forecast jobs. The full event contract is in `FRONTEND_HANDOFF.md`, under
-**Live updates across sessions**. The frontend implementation was verified in
+or runs forecast jobs. See the [versioned live-event contract](https://github.com/btchh/Rosario-Dairy-CAPSTONE-/blob/7a75a0ab/FRONTEND_HANDOFF.md#live-updates-across-sessions--2026-10-30).
+The frontend implementation was verified in
 the October 30 QA run; the remaining history pagination request is documented
 in that handoff.
 

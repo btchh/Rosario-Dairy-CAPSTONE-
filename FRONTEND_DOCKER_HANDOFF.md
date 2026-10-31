@@ -42,7 +42,7 @@ machine; a native build for another architecture requires the backend source.
 Live updates add an internal `events` service to this stack. Rebuild/export a
 current backend image before sending this Compose file; older images do not
 contain Uvicorn or the SSE endpoint. The gateway waits for both API and event
-service health. See **Live updates across sessions** in `FRONTEND_HANDOFF.md`
+service health. See the [versioned live-event contract](https://github.com/btchh/Rosario-Dairy-CAPSTONE-/blob/7a75a0ab/FRONTEND_HANDOFF.md#live-updates-across-sessions--2026-10-30)
 for the client integration implemented in frontend `63ecff33`. The optional frontend Nginx example now
 forwards `/backend/events/` without buffering; preserve this behavior in any
 additional hosting proxy. Database migrations are unchanged by live updates.
@@ -52,8 +52,8 @@ The product-only cleanup requires migration
 include it; old archives do not contain the cleanup. Back up an existing database
 and stop API/forecast workers before migrating. Migration stops if retired
 ingredient/supplier data exists; archive it explicitly before retrying. Product,
-sales and customer records are retained. See `FRONTEND_HANDOFF.md` for the
-completed frontend cleanup and temporary empty legacy-list responses for older clients.
+sales and customer records are retained. See the [completed cleanup reference](https://github.com/btchh/Rosario-Dairy-CAPSTONE-/blob/7a75a0ab/FRONTEND_HANDOFF.md#product-only-inventory-cleanup--2026-10-30)
+for temporary empty legacy-list responses for older clients.
 
 Install Docker with Compose. Verify the downloaded archive against its checksum,
 extract it, and open the extracted directory. Then run:
@@ -159,7 +159,7 @@ build fixes `VITE_API_BASE_URL=/backend`; these Vite values are embedded at buil
 time, so changing an environment variable on an existing container does not
 rebuild the JavaScript. Database credentials stay with Django. The frontend
 proxy supports unbuffered `/backend/events/`; frontend `63ecff33` includes the
-client integration described in `FRONTEND_HANDOFF.md`. The local backend image
+client integration described in the versioned live-event contract above. The local backend image
 and events service were also updated, and both proxied streams passed HTTP
 verification. Subsequent isolated browser QA passed real staff-to-admin updates,
 preserved date filters, offline recovery and logout. The remaining pagination
@@ -211,7 +211,7 @@ intact. Use the newest package; older archives are superseded.
 The load/input audit and its measured limits are documented in
 `BACKEND_VALIDATION.md`. Checkout/order request UUIDs are supported by the
 backend; frontend `9986a769` sends request UUIDs and offers saved-submission
-recovery. The live event client is still requested in `FRONTEND_HANDOFF.md`.
+recovery. The live-event client has since been implemented; its contract is linked above.
 A Git pull and a previously exported image are separate
 versions: load the newest image package to receive the audit fixes.
 
@@ -219,4 +219,4 @@ Report previews and PDF exports now have independent request budgets; forecast
 polling does not consume either allowance. Repeated manual report refreshes
 return 200 with `refresh_status: coalesced` while the rebuild lock/cooldown remains
 in force. Current frontend callers already handle this success response; see
-`FRONTEND_HANDOFF.md` for the exact response fields and limits.
+the [versioned report-refresh contract](https://github.com/btchh/Rosario-Dairy-CAPSTONE-/blob/7a75a0ab/FRONTEND_HANDOFF.md#report-availability-and-refresh-handling) for the exact response fields and limits.

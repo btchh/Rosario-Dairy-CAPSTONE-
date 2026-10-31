@@ -1,5 +1,24 @@
 # Backend image and frontend integration
 
+## Current local release — 2026-10-31
+
+Frontend `7295f413` has been built and deployed at `http://localhost:5174` as
+`rosario-dairy-frontend:frontend-7295f413-20261031` (also `:local`), image
+`sha256:7f7018565b65d122c8272e73eafc7a7c7c459315875b3b816842b89d5db3c243`.
+The previous image is retained as `:before-frontend-7295f413-20261031`.
+All 580 frontend tests, TypeScript checks and authenticated admin/staff browser
+smoke checks passed. Payment locks, plain encoder names and payment updater
+details are included. Pagination remains partial; see `FRONTEND_HANDOFF.md`.
+
+The current backend image is retained with Gmail SMTP configured and OTP receipt
+confirmed by the user. The frontend still lacks the requested idle-session
+client. Coordinate that implementation with migration `accounts.0005_loginsession`
+before building/promoting the latest backend source to runtime. The newer
+SMTP diagnostic management command is also source-only until that image update.
+No new image export/archive was created by this frontend-only deployment.
+
+## Sharing an image
+
 Share the exported archive with the frontend teammate. It contains the backend
 image, Compose stack, Nginx configuration and environment template. Database
 contents, accounts, private backups and `.env.docker` are not included. PostgreSQL,

@@ -2,6 +2,26 @@
 
 **Decision: not ready for public production deployment as currently configured.**
 
+## SMTP follow-up — 2026-10-31
+
+The running local image was confirmed to use console email, with no SMTP
+credentials. Earlier native email behavior is not inherited by Docker. The
+local Compose definition now forwards optional `SMTP_*`/`DEFAULT_FROM_EMAIL`
+settings, and `check_smtp` in the newer source explicitly rejects console mail
+as a delivery check. Production Compose already required SMTP configuration.
+After the user supplied the Gmail App Password privately, API/events/worker
+were recreated with their existing image. Gmail TLS connection and SMTP
+authentication passed both before activation and from the running API. API/
+events health, Django/migration checks and frontend/gateway HTTP checks passed.
+No email or reset challenge was sent by the agent during verification. The user
+subsequently requested an OTP and confirmed successful delivery. API health
+alone does not cover mail. Frontend `7295f413` is now built/deployed locally and
+passed 580 tests, TypeScript and authenticated browser smoke checks. Idle-session
+frontend integration and some full-list history paths remain pending; the newer
+session-enforcing backend image/migration has not been activated. The OVHcloud operational
+requirements below remain release requirements. Local SMTP authentication
+does not establish public deployment readiness.
+
 ## Production configuration follow-up
 
 The original findings below describe the local deployment and are retained as

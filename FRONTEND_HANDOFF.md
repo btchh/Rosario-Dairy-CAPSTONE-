@@ -2,26 +2,47 @@
 
 Updated 2026-10-31 (Asia/Manila).
 
-**Overall status: partially satisfied.** Frontend `305bdf49` is now checked out.
-Backend pagination support is implemented below; the frontend still needs to
-consume it. The local backend was rebuilt and deployed on 2026-10-31 with the
-cashier correction, paid-payment lock, payment-updater identity and summary/filter
-endpoints; the frontend image still predates the latest pull. Earlier dated reviews below
-describe their original checkouts and are not the status of the latest source.
-These displays do not imply production forecast approval. The idle-session backend
-below is a newer source change and has not been deployed to the running stack.
+**Overall status: partially satisfied.** Frontend `7295f413` is checked out and
+deployed to the local Docker frontend. It implements plain encoder names,
+payment-updater details, paid-payment UI locks, summary consumers, and partial
+server pagination. The current backend image already supports those APIs and
+now sends OTPs through Gmail; the user confirmed receipt. Idle-session frontend
+integration remains missing, so its newer backend source/migration is still
+held from runtime deployment. Earlier dated reviews below describe their
+original checkouts; this overview supersedes their completion labels.
+These displays do not imply production forecast approval or OVHcloud readiness.
 
 **Work boundary:** make backend changes in this repository. Communicate frontend
 implementation requests through this document; do not edit the sibling frontend
 repository during backend maintenance.
 
-Latest frontend pull: `305bdf49` on 2026-10-31. It removes discount presentation,
+Latest frontend pull: `7295f413` on 2026-10-31, fast-forwarding two commits from
+`305bdf49`. All **580 frontend tests** and `tsc --noEmit` passed. Rebuilt and
+deployed `rosario-dairy-frontend:frontend-7295f413-20261031` (also `:local`), image
+`sha256:7f7018565b65d122c8272e73eafc7a7c7c459315875b3b816842b89d5db3c243`.
+Retained `:before-frontend-7295f413-20261031` for rollback. The frontend is healthy
+at `http://localhost:5174`. Authenticated Chromium checks for admin and staff
+confirmed server-paged encoding reads, a plain Entered by account name, visible
+payment-updater details and no payment edit action on paid details. These checks
+performed no business writes or logout. No frontend source was edited locally.
+
+**Remaining requests:** admin sales history and Sales Encoding page their
+default unsorted/unsearched lists, but search/sort switch back to complete-list
+reads. Staff sales history and both Orders pages still download complete lists;
+their new page service methods do not establish completed UI integration.
+Continue the pagination request below for those paths. No activity/session
+deadline client, warning dialog or idle cleanup is present in `7295f413`;
+implement the idle request below before deploying backend migration `0005` and
+the new session-enforcing image. The current deployed backend image is retained
+at `sha256:2a63d72d59647a22ccc05376e7a7e5d7b6b7bf1163e0d7945145e8a2d1f4e7b6`.
+
+Previous source review: `305bdf49` on 2026-10-31. It removes discount presentation,
 preserves recorded decimal amounts, adds encoder/payment-status labels, cancels
 obsolete history reads, and loads staff KPI groups independently. Source review
 found these API expectations compatible with the backend. All **535 frontend
 tests** and strict TypeScript checks passed on this checkout. Full-list history
 and order downloads remain; use the new contract below to replace them. The
-local Docker frontend image still predates this pull.
+local Docker frontend image at the time predated that pull; `7295f413` is now deployed.
 
 Previous deployed frontend: `63ecff33` on 2026-10-30. It implements the live-update
 client and product-only inventory cleanup requested below. The rebuilt local
@@ -53,8 +74,9 @@ Apply it before starting the new backend. Existing JWTs lack a session ID and
 will require a fresh sign-in once the backend is deployed. Deploy the frontend
 integration with this backend: the current frontend sends no activity reports,
 so even an actively used browser would expire 15 minutes after sign-in. The
-running local backend/frontend images have deliberately not been replaced by
-this change. Previous sections' deployment statements describe earlier changes.
+running local backend image has deliberately not been replaced by this change.
+Frontend `7295f413` is deployed for its other changes but still lacks activity
+reporting. Previous sections' deployment statements describe earlier changes.
 
 Each successful sign-in creates a database-backed session. Its signed `sid`
 claim is copied into access tokens and retained by refresh-token rotation.
@@ -192,7 +214,7 @@ No database migration or historical identity rewrite is required. API cache
 namespace v8 retires earlier response shapes; history queries eager-load the
 updater to avoid one extra database read per row.
 
-**Frontend implementation pending:**
+**Original frontend request — implemented in `7295f413`:**
 
 1. In `SalesEncoding.tsx`, retain header `Entered by` and replace the cell's
    `encodedByLabel()` text/title with `sale.transaction.handled_by?.username`.
@@ -217,9 +239,10 @@ GETs for SI1093 show **Entered by ADMIN** and **Payment updated by STAFF**, with
 the saved update time `2026-10-31T14:22:49.949357+08:00`, across transaction and
 encoding history/details and linked orders. It remains Paid and noneditable.
 All 19 business-table counts/content hashes were unchanged. The affected
-295-test regression passed 294 tests with one Windows-only skip. Frontend
-source/image were not changed, so the plain-name cell and visible payment audit
-still require the frontend implementation above.
+295-test regression passed 294 tests with one Windows-only skip. That earlier
+backend-only deployment did not include the frontend changes. The later
+`7295f413` pull/build now includes the plain-name cell and visible payment audit,
+verified in authenticated Chromium for both roles.
 
 ## Paid payments are final — 2026-10-31
 
@@ -251,8 +274,8 @@ updates to false in the successful pending-to-paid PATCH response. The API cache
 namespace changed to v7 so older response shapes are not reused. No schema
 migration or historical payment rewrite is needed.
 
-**Frontend implementation pending; backend work does not hide the current UI
-button.** In `PaymentUpdateControl.tsx`, hide the Update payment action and
+**Frontend implemented in `7295f413`; verified for both roles in Chromium.**
+The following is the original request. In `PaymentUpdateControl.tsx`, hide the Update payment action and
 editor whenever `can_update_payment === false` or `payment_status === "paid"`.
 Keep the manual/voided guards, and add the optional boolean to `DjangoTransaction`
 and the compact order type. For compatibility with an older backend that omits
@@ -282,13 +305,14 @@ counts/content hashes remained identical. The affected regression passed
 292 tests with one Windows-only skip; competing different finalizations were
 tested in disposable PostgreSQL and produced one 200 and one 409. No test
 payment writes ran against the working business database. See
-`BACKEND_VALIDATION.md`. Frontend source/image remain unchanged, so hiding the
-button, showing the plain Entered by name and displaying the payment updater
-are still frontend tasks.
+`BACKEND_VALIDATION.md`. The later `7295f413` frontend pull/build now hides the
+paid-payment action, shows the plain Entered by name and displays the payment
+updater; those displays passed browser smoke checks for both roles.
 
 ## Backend pagination and summaries ready — 2026-10-31
 
-**Backend implemented; frontend integration pending.** No schema migration or
+**Backend implemented; frontend integration partially complete in `7295f413`.**
+See the latest overview for the remaining full-list paths. No schema migration or
 historical-data rewrite is required. The routes are relative to the configured
 API base: with the local proxy, `/sales/transactions/` becomes
 `/backend/sales/transactions/`. The local backend now serves the summary routes;

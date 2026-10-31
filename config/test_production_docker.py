@@ -138,3 +138,35 @@ class ProductionComposeTests(SimpleTestCase):
             self.assertFalse(services[name].get('ports'))
         for name in ('gateway', 'frontend'):
             self.assertTrue(all(port['host_ip'] == '127.0.0.1' for port in services[name]['ports']))
+
+
+@unittest.skipUnless(shutil.which('docker'), 'Requires the Docker Compose CLI')
+class LocalSmtpComposeTests(SimpleTestCase):
+    def config(self, smtp=None):
+        environment = {k:v for k,v in os.environ.items()
+                       if not k.startswith('SMTP_') and k != 'DEFAULT_FROM_EMAIL'}
+        environment.update(DJANGO_SECRET_KEY='test-only-compose-secret', DB_PASSWORD='test-only-database-password')
+        environment.update(smtp or {})
+        result = subprocess.run(['docker', 'compose', '--env-file', '/dev/null', '-f',
+            str(ROOT/'compose.yaml'), 'config', '--format', 'json'], env=environment,
+            capture_output=True, text=True, check=True)
+        return json.loads(result.stdout)['services']
+
+    def test_local_smtp_values_reach_all_backend_services(self):
+        smtp = {'SMTP_HOST': 'smtp.gmail.com', 'SMTP_PORT': '587',
+            'SMTP_USER': 'sender@example.test', 'SMTP_PASSWORD': 'private-test-compose-password',
+            'SMTP_USE_TLS': 'true', 'SMTP_USE_SSL': 'false',
+            'DEFAULT_FROM_EMAIL': 'Rosario Dairy <sender@example.test>'}
+        services = self.config(smtp)
+        for name in ('api', 'events', 'forecast-worker', 'migrate'):
+            with self.subTest(service=name):
+                for key, value in smtp.items():
+                    self.assertEqual(services[name]['environment'][key], value)
+        for name in ('db', 'redis', 'gateway'):
+            self.assertNotIn('SMTP_PASSWORD', services[name].get('environment', {}))
+
+    def test_local_without_smtp_keeps_credentials_empty(self):
+        services = self.config()
+        for name in ('api', 'events', 'forecast-worker', 'migrate'):
+            for key in ('SMTP_HOST', 'SMTP_USER', 'SMTP_PASSWORD', 'DEFAULT_FROM_EMAIL'):
+                self.assertEqual(services[name]['environment'][key], '')

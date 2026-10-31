@@ -1,5 +1,99 @@
 # Backend validation
 
+## Frontend pull, Docker update and confirmed OTP delivery — 2026-10-31
+
+The user confirmed that requesting an OTP now delivers email after Gmail SMTP
+activation. The agent did not send a diagnostic email or trigger a reset.
+
+Pulled frontend `305bdf49` to `7295f413` with `git pull --ff-only` (two commits,
+clean checkout). All **580 frontend tests** passed in 12.232 seconds and
+`tsc --noEmit` passed. Rebuilt/deployed only the frontend service, retaining the
+working backend image because this frontend has no idle-session integration.
+The frontend image is
+`sha256:7f7018565b65d122c8272e73eafc7a7c7c459315875b3b816842b89d5db3c243`,
+tagged `rosario-dairy-frontend:frontend-7295f413-20261031` and `:local`, with
+`:before-frontend-7295f413-20261031` preserving the previous image. Container
+health passed. No database migration or backend source promotion occurred.
+
+Authenticated Chromium checks against the actual Docker frontend passed for
+both admin and staff: encoding tables requested server pages, Entered by
+displayed plain account names, transaction details showed Payment updated by,
+and paid records exposed no Update payment action. No browser runtime exceptions
+or business writes occurred in these checks. Temporary read-only access tokens
+and browser profiles were removed; no real user session was logged out.
+
+History integration is partial: default admin history/encoding reads are paged,
+but search/sort use the complete-list path, as do staff sales history and both
+Orders pages. `FRONTEND_HANDOFF.md` records these remaining requests and the
+still-missing idle activity/warning/logout client. Current backend runtime
+remains the compatible payment-updater image with Gmail SMTP configured.
+SMTP configuration/command/Compose checks were rerun before push: **36 passed**.
+
+Logs: `/tmp/frontend-release-tests-20261031.log`,
+`/tmp/frontend-release-types-20261031.log`,
+`/tmp/frontend-release-build-20261031.log`,
+`/tmp/frontend-release-browser-20261031.log`, and
+`/tmp/backend-smtp-release-tests-20261031.log`.
+
+## Docker SMTP wiring and safe verification — 2026-10-31
+
+The running local API was confirmed to use the console mail backend, with no
+SMTP host/login/password configured. Local Compose did not forward SMTP
+settings. It now forwards optional SMTP host, port, login, password, TLS/SSL
+and sender into the application services; database/Redis/gateway receive no
+SMTP credentials. Production Compose already forwarded these values. Blank
+local SMTP settings retain console development with a valid default From;
+complete SMTP credentials select SMTP, and partial credentials fail startup.
+
+Added `python manage.py check_smtp` to reject console/test mail as a delivery
+check and authenticate SMTP with sanitized errors. Its default mode sends no
+message and issues no OTP. Only an explicit `--send-to` sends a diagnostic
+email; SMTP acceptance still requires inbox confirmation. Public recovery
+responses remain non-enumerating and no account or OTP behavior was changed.
+Local and production runbooks now distinguish API health, SMTP authentication
+and delivered email, and document environment recreation instead of restart.
+
+Focused configuration/command/Compose regression: **36 tests passed**.
+Broader accounts/config/sales/inventory/reporting/systemsetting regression:
+**737 discovered, 736 passed, one Windows-only ACL skip**, in 148.326 seconds,
+using disposable PostgreSQL 18 and Redis. Coverage includes actual Django SMTP
+backend calls with mocked transport for TLS, login, no-send checks, explicitly
+requested diagnostic mail, rejected senders, invalid recipients, sanitized
+provider failures, empty/complete/partial configuration, and real Compose
+environment resolution. Existing OTP, auth, inventory, payment, reporting,
+live-event and deployment regressions passed. No real email was sent.
+Migration drift, Compose validation, Python syntax and diff checks passed.
+Logs: `/tmp/backend-smtp-config-tests-20261031.log` and
+`/tmp/backend-smtp-regression-20261031.log`.
+
+**SMTP activated locally after the user supplied the App Password privately.**
+The ignored, mode-0600 `.env.docker` identifies the user-confirmed Gmail sender
+`thoushaltnotrespond@gmail.com` and Gmail port 587 with TLS. Removed Google's
+display-format spaces from the supplied App Password without displaying its
+contents. A disposable one-off container using the deployed image passed TLS
+connection and SMTP authentication before activation. Recreated API/events/
+worker with the existing image and reloaded the gateway; the running API then
+passed the same authentication check. No email was sent and no reset challenge
+was issued by these checks.
+
+All three application services retain image
+`sha256:2a63d72d59647a22ccc05376e7a7e5d7b6b7bf1163e0d7945145e8a2d1f4e7b6`.
+No new image or migration was applied. API/events became healthy, the worker
+is running, Django checks and the deployed image's migration check passed.
+HTTP checks verified the frontend returns 200 and its proxied unauthenticated
+user/events routes return 401, as do the direct gateway routes. The new idle
+environment variables are harmless on this older image; pending idle-session
+source/migration and the new `check_smtp` command remain undeployed until
+frontend integration. Runtime SMTP verification used Django's existing mail
+connection directly, without depending on the newer management command.
+
+The earlier search of project configuration, archived files, saved environment
+files, shell configuration and Git stashes did not recover the old password.
+Older tracked revisions used Brevo, but the user confirmed their working setup
+used Gmail; no provider switch was made. No credential contents were printed.
+The user subsequently confirmed actual OTP delivery. OVHcloud release
+requirements remain unverified.
+
 ## Idle-session enforcement and frontend request — 2026-10-31
 
 Added database-backed `LoginSession` and migration `accounts.0005_loginsession`.

@@ -33,6 +33,15 @@ and an eligible account's Google app password. `DEFAULT_FROM_EMAIL` should
 identify that sender. SMTP wiring is provided, but delivery must be tested
 with the real account on the VPS.
 
+The source includes an explicit SMTP diagnostic. After starting the release,
+run `docker compose --env-file .env.production -f compose.production.yaml exec
+api python manage.py check_smtp`. This authenticates without sending email and
+fails for console/test backends. For an explicitly approved recipient, append
+`--send-to approved-inbox@example.com` and confirm inbox delivery. These checks
+do not issue an OTP or change account data. Healthy API/event containers and a
+successful preflight do not prove email delivery; it remains a release check.
+If credentials change, recreate containers; a restart retains the old environment.
+
 ```bash
 docker compose --env-file .env.production -f compose.production.yaml config --quiet
 docker compose --env-file .env.production -f compose.production.yaml build api

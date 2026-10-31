@@ -57,6 +57,21 @@ class ProductionSettingsTests(SimpleTestCase):
             with self.subTest(changes=changes), self.assertRaises(ImproperlyConfigured):
                 self.configure(changes)
 
+    def test_local_blank_compose_smtp_uses_console_with_a_default_sender(self):
+        configured = self.configure({'DJANGO_ENV': 'development', 'SMTP_HOST': '',
+            'SMTP_USER': '', 'SMTP_PASSWORD': '', 'DEFAULT_FROM_EMAIL': ''})
+        self.assertEqual(configured['EMAIL_BACKEND'], 'django.core.mail.backends.console.EmailBackend')
+        self.assertEqual(configured['DEFAULT_FROM_EMAIL'], 'Rosario Dairy <noreply@localhost>')
+
+    def test_complete_local_smtp_overrides_console_and_incomplete_settings_fail(self):
+        configured = self.configure({'DJANGO_ENV': 'development',
+            'DJANGO_EMAIL_BACKEND': 'django.core.mail.backends.console.EmailBackend'})
+        self.assertEqual(configured['EMAIL_BACKEND'], 'django.core.mail.backends.smtp.EmailBackend')
+        self.assertEqual(configured['EMAIL_HOST_USER'], 'sender@example.test')
+        for missing in ('SMTP_HOST', 'SMTP_USER', 'SMTP_PASSWORD', 'DEFAULT_FROM_EMAIL'):
+            with self.subTest(missing=missing), self.assertRaises(ImproperlyConfigured):
+                self.configure({'DJANGO_ENV': 'development', missing: ''})
+
     def test_database_configuration_cannot_fall_back_to_development(self):
         for setting in ('DB_NAME', 'DB_USER', 'DB_PASSWORD', 'DB_HOST'):
             for value in (None, '', '   '):

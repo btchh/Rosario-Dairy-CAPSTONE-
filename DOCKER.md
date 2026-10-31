@@ -96,6 +96,63 @@ port 5173.
 If `API_PORT` is changed, update the frontend API environment and matching
 CSRF origins for that address. Keeping port 8000 preserves the existing URL.
 
+## Real OTP email from the local Docker stack
+
+The default local configuration uses console mail and does **not** deliver
+email. `compose.yaml` now explicitly forwards SMTP settings from `.env.docker`;
+Docker does not automatically inherit a previous native Python process's
+configuration. To use Gmail, fill these values in the ignored private file:
+
+```dotenv
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-sender@gmail.com
+SMTP_PASSWORD=your-google-app-password
+SMTP_USE_TLS=true
+SMTP_USE_SSL=false
+DEFAULT_FROM_EMAIL="Rosario Dairy <your-sender@gmail.com>"
+```
+
+Use the account's Google App Password, not its normal sign-in password. If the
+same Gmail address only changes its display name, the SMTP login stays the
+email address. `DEFAULT_FROM_EMAIL` controls the name/address in application
+mail. A changed Google account password revokes App Passwords; replace the
+App Password in the private file in that case. Never commit this file or put
+actual credentials in a handoff, build argument, frontend environment or image.
+
+After the credentials are complete, recreate the application services using
+the currently deployed image (no rebuild or migration is needed solely to
+change SMTP settings on images already supporting `SMTP_*`):
+
+```bash
+docker compose --env-file .env.docker -f compose.yaml \
+  -f docker/compose.frontend.example.yaml \
+  up -d --no-deps --no-build --wait api events forecast-worker
+docker compose --env-file .env.docker -f compose.yaml \
+  -f docker/compose.frontend.example.yaml exec gateway nginx -s reload
+```
+
+Changing the file followed by `docker compose restart` does not replace a
+container's environment. If the frontend is not in Docker, omit its `-f` file.
+Use the same Compose files/project as the existing deployment. SMTP values
+must be complete; partial credentials fail Django configuration rather than
+silently claiming email delivery. Leave host/user/password blank together to
+keep intentional console-only development.
+
+The new source also includes `python manage.py check_smtp`. On an image built
+with that command, use `docker compose --env-file .env.docker exec api python
+manage.py check_smtp` to validate connection, TLS and authentication without
+issuing an OTP or sending a message. It fails for console/test backends and
+prints safe errors without credentials. A successful check is authentication
+evidence, not inbox-delivery evidence. To explicitly send a diagnostic email,
+append `--send-to your-approved-test-inbox@example.com` and verify receipt.
+This does not issue a password-reset challenge or change business data.
+
+Build/deploy newer backend code only with its release prerequisites, including
+the pending idle-session frontend integration and migration. SMTP environment
+updates to the existing image need not activate that unrelated source change.
+Do not call the deployment email-ready until real inbox delivery is confirmed.
+
 ## Live updates on OVHcloud or another VPS
 
 The internal `events` service runs `uvicorn config.asgi:application` on port

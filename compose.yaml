@@ -13,6 +13,14 @@ x-backend: &backend
     AUTH_IDLE_TIMEOUT_SECONDS: ${AUTH_IDLE_TIMEOUT_SECONDS:-900}
     AUTH_IDLE_WARNING_SECONDS: ${AUTH_IDLE_WARNING_SECONDS:-60}
     DJANGO_EMAIL_BACKEND: django.core.mail.backends.console.EmailBackend
+    # Django selects SMTP when the complete SMTP configuration is supplied.
+    SMTP_HOST: ${SMTP_HOST:-}
+    SMTP_PORT: ${SMTP_PORT:-587}
+    SMTP_USER: ${SMTP_USER:-}
+    SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+    SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
+    DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-}
     DJANGO_NUM_PROXIES: "1"
     DB_NAME: ${DB_NAME:-rosario_dairy}
     DB_USER: ${DB_USER:-rosario_local}

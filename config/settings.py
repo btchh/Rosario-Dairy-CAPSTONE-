@@ -358,11 +358,11 @@ EMAIL_USE_SSL = env_bool('SMTP_USE_SSL', False)
 if EMAIL_USE_TLS and EMAIL_USE_SSL:
     raise ImproperlyConfigured('Use either SMTP_USE_TLS or SMTP_USE_SSL, not both.')
 EMAIL_TIMEOUT = 10
-DEFAULT_FROM_EMAIL = os.getenv(
-    'DEFAULT_FROM_EMAIL', '' if IS_PRODUCTION or EMAIL_HOST else 'Rosario Dairy <noreply@localhost>'
-)
-if (IS_PRODUCTION or EMAIL_HOST) and not DEFAULT_FROM_EMAIL:
-    raise ImproperlyConfigured('DEFAULT_FROM_EMAIL is required when SMTP is configured.')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', '').strip()
+if not DEFAULT_FROM_EMAIL:
+    if IS_PRODUCTION or EMAIL_HOST:
+        raise ImproperlyConfigured('DEFAULT_FROM_EMAIL is required when SMTP is configured.')
+    DEFAULT_FROM_EMAIL = 'Rosario Dairy <noreply@localhost>'
 
 PASSWORD_RESET_OTP_TIMEOUT = 10 * 60
 PASSWORD_RESET_OTP_RESEND_COOLDOWN = 60

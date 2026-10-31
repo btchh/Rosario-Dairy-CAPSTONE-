@@ -10,6 +10,8 @@ x-backend: &backend
     DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env.docker}
     DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,[::1]}
     DJANGO_TIME_ZONE: Asia/Manila
+    AUTH_IDLE_TIMEOUT_SECONDS: ${AUTH_IDLE_TIMEOUT_SECONDS:-900}
+    AUTH_IDLE_WARNING_SECONDS: ${AUTH_IDLE_WARNING_SECONDS:-60}
     DJANGO_EMAIL_BACKEND: django.core.mail.backends.console.EmailBackend
     DJANGO_NUM_PROXIES: "1"
     DB_NAME: ${DB_NAME:-rosario_dairy}

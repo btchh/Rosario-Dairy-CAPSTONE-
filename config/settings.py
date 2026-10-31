@@ -237,6 +237,7 @@ REST_FRAMEWORK = {
         'password_reset_request': '5/minute',
         'password_reset_confirm': '10/minute',
         'token_refresh': '30/minute',
+        'session_activity': '30/minute',
         'email_change': '5/minute',
         'profile': '10/minute',
         'report_refresh': '1/minute',
@@ -257,6 +258,14 @@ if os.getenv('DJANGO_NUM_PROXIES'):
     except ValueError as exc:
         raise ImproperlyConfigured('DJANGO_NUM_PROXIES must be a nonnegative integer.') from exc
     REST_FRAMEWORK['NUM_PROXIES'] = proxy_count
+
+try:
+    AUTH_IDLE_TIMEOUT_SECONDS = int(os.getenv('AUTH_IDLE_TIMEOUT_SECONDS', '900'))
+    AUTH_IDLE_WARNING_SECONDS = int(os.getenv('AUTH_IDLE_WARNING_SECONDS', '60'))
+except ValueError as exc:
+    raise ImproperlyConfigured('Idle timeout and warning must be integer seconds.') from exc
+if not 0 <= AUTH_IDLE_WARNING_SECONDS < AUTH_IDLE_TIMEOUT_SECONDS:
+    raise ImproperlyConfigured('Idle timeout must be positive and exceed the nonnegative warning.')
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),

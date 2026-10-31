@@ -238,6 +238,16 @@ encoded invoices return null because their original cashier is unknown;
 `handled_by` still preserves the importer/encoder. Live checkout/order sales
 return their recorded handler. Existing response fields remain compatible.
 
+Idle sessions expire after 15 minutes without a frontend-reported user
+interaction (`AUTH_IDLE_TIMEOUT_SECONDS=900`, warning lead time
+`AUTH_IDLE_WARNING_SECONDS=60`). Login/refresh responses include session
+deadlines; `GET /accounts/session/` checks the deadline and
+`POST /accounts/session/activity/` with `{}` extends a valid session. Polling,
+live events and token refresh do not count as activity, and expired sessions
+cannot be revived. Migration `accounts.0005_loginsession` and the matching
+frontend activity/warning integration must ship together; pre-upgrade JWTs
+require a fresh sign-in. See `FRONTEND_HANDOFF.md` for the complete contract.
+
 Deactivation revokes existing access and refresh tokens permanently, including
 after reactivation. Reactivated accounts must log in again.
 

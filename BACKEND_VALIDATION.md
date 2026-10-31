@@ -1,5 +1,50 @@
 # Backend validation
 
+## Idle-session enforcement and frontend request — 2026-10-31
+
+Added database-backed `LoginSession` and migration `accounts.0005_loginsession`.
+Login issues a per-sign-in `sid`, copied into access JWTs and retained through
+refresh rotation. Protected authentication and refresh check the saved idle
+deadline. Default policy is 900 seconds, with a 60-second frontend warning;
+validated environment settings are exposed in both Compose definitions and
+templates. Missing/malformed/unknown/foreign sessions require a new sign-in.
+Existing JWTs will require one-time reauthentication at release.
+
+`GET /accounts/session/` reports the deadline without extending it.
+Authenticated `POST /accounts/session/activity/` with an object body extends
+only a valid session, under a row lock and with server-owned timestamps. The
+activity route is limited to 30 requests/account/minute. Protected reads/writes,
+background polling, live connections and refresh never register activity.
+Exact expiry and a second check after initial authentication prevent revival.
+Database failures retain the sanitized 503 behavior. Separate sign-ins have
+separate idle deadlines; existing explicit account-wide logout and
+password/deactivation revocation remain unchanged. Live streams use their
+existing authentication recheck cycle to close expired sessions.
+
+Regression: **727 discovered, 726 passed, one Windows-only ACL skip**, in
+119.186 seconds. Ran accounts/config/sales/inventory/reporting/systemsetting
+coverage against disposable PostgreSQL 18 and Redis, including live ASGI HTTP
+delivery and open-stream idle expiry. Tests cover both roles, background reads
+and rotated refresh not extending expiry, the exact deadline, nonresurrection,
+server-time enforcement, session isolation, legacy/invalid/foreign sessions,
+fresh login after expiry, rejected business writes, activity's second deadline
+check, explicit logout, malformed/unauthenticated activity and safe database
+failures. Existing real-JWT fixtures now issue tracked sessions. A stale
+live-publication test was corrected from disallowed paid-to-pending to valid
+pending-to-paid; production payment behavior was unchanged.
+
+Django checks, migration-drift checks, both Compose configuration checks and
+`git diff --check` passed. Test log:
+`/tmp/backend-idle-regression-20261031.log`.
+
+**Source implementation only; running application images/database unchanged.**
+Frontend source was not edited. `FRONTEND_HANDOFF.md` requests trusted input
+reporting, warning/continuation UI, multi-tab coordination, resume/offline
+expiry and terminal 401 cleanup. Ship the migration, backend and frontend
+integration together; the existing frontend would otherwise expire even an
+actively used session because it does not send activity reports. This work
+does not claim completed browser acceptance or a deployed idle-logout feature.
+
 ## Plain encoder names and visible payment updater — 2026-10-31
 
 The user clarified Sales Encoding should keep its Entered by header and show

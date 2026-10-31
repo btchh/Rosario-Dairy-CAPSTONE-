@@ -41,6 +41,22 @@ class ProductionSettingsTests(SimpleTestCase):
         self.assertEqual(configured['CACHES']['default']['BACKEND'],
                          'django.core.cache.backends.redis.RedisCache')
 
+    def test_idle_policy_defaults_overrides_and_invalid_values(self):
+        configured = self.configure()
+        self.assertEqual(configured['AUTH_IDLE_TIMEOUT_SECONDS'], 900)
+        self.assertEqual(configured['AUTH_IDLE_WARNING_SECONDS'], 60)
+        configured = self.configure({'AUTH_IDLE_TIMEOUT_SECONDS': '1800', 'AUTH_IDLE_WARNING_SECONDS': '120'})
+        self.assertEqual(configured['AUTH_IDLE_TIMEOUT_SECONDS'], 1800)
+        self.assertEqual(configured['AUTH_IDLE_WARNING_SECONDS'], 120)
+        for changes in (
+            {'AUTH_IDLE_TIMEOUT_SECONDS': 'zero'}, {'AUTH_IDLE_TIMEOUT_SECONDS': '0'},
+            {'AUTH_IDLE_TIMEOUT_SECONDS': '-1'}, {'AUTH_IDLE_WARNING_SECONDS': '-1'},
+            {'AUTH_IDLE_WARNING_SECONDS': '900'}, {'AUTH_IDLE_WARNING_SECONDS': '901'},
+            {'AUTH_IDLE_WARNING_SECONDS': '1.5'},
+        ):
+            with self.subTest(changes=changes), self.assertRaises(ImproperlyConfigured):
+                self.configure(changes)
+
     def test_database_configuration_cannot_fall_back_to_development(self):
         for setting in ('DB_NAME', 'DB_USER', 'DB_PASSWORD', 'DB_HOST'):
             for value in (None, '', '   '):

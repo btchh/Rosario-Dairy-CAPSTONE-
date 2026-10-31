@@ -55,6 +55,10 @@ class EmailChangeRateThrottle(AccountRateThrottle):
     scope = 'email_change'
 
 
+class SessionActivityRateThrottle(AccountRateThrottle):
+    scope = 'session_activity'
+
+
 class ProfileRateThrottle(AccountRateThrottle):
     scope = 'profile'
 

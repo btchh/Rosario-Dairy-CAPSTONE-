@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from django.db import models
 from django.contrib.auth.models import AbstractUser, UserManager
 from django.conf import settings
@@ -66,6 +68,16 @@ class PasswordResetChallenge(models.Model):
 
     def __str__(self):
         return f'Password reset challenge for {self.user}'
+
+
+class LoginSession(models.Model):
+    """One sign-in shared by its access/rotated refresh tokens and browser tabs."""
+
+    id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_activity_at = models.DateTimeField()
+    idle_expires_at = models.DateTimeField(db_index=True)
 
 
 class EmailChangeChallenge(models.Model):

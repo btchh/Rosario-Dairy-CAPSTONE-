@@ -24,7 +24,7 @@ from django.db import OperationalError, connection, transaction
 from django.test import Client, RequestFactory, SimpleTestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import AccessToken
+from accounts.services.session_service import create_session_token
 
 from config.data_cache import invalidate_data_cache
 from config.live_events import events, event_channel, publish_business_change
@@ -44,7 +44,7 @@ class EventFixture:
         users = get_user_model()
         self.admin = users.objects.create_user(username='live-admin', role='admin', email='live-admin@example.test')
         self.staff = users.objects.create_user(username='live-staff', role='staff', email='live-staff@example.test')
-        self.token = AccessToken.for_user(self.admin)
+        self.token = create_session_token(self.admin).access_token
         self.client = Client()
 
     def request(self, token=None):
@@ -121,9 +121,10 @@ class PublicationTests(EventFixture, TransactionTestCase):
         self.assertEqual(self.sale().status_code, 201)
         sale = Transaction.objects.get()
         sale.encoded_at = timezone.now()
-        sale.save(update_fields=['encoded_at'])
+        sale.payment_status = 'pending'
+        sale.save(update_fields=['encoded_at', 'payment_status'])
         with patch('config.live_events.publish_business_change') as publish:
-            update_encoding_payment(sale.pk, self.admin, payment_status='pending')
+            update_encoding_payment(sale.pk, self.admin, payment_status='paid')
             self.assertTrue(publish.called)
             publish.reset_mock()
             void_transaction(sale.pk, voided_by=self.admin, reason='test')
@@ -143,17 +144,17 @@ class EventAuthenticationTests(EventFixture, TransactionTestCase):
         self.assertEqual(response.status_code, 401)
 
     def test_expired_revoked_inactive_and_password_changed_sessions_return_401(self):
-        expired = AccessToken.for_user(self.admin)
+        expired = create_session_token(self.admin).access_token
         expired.set_exp(lifetime=timedelta(seconds=-60))
         self.assertEqual(self.client.get('/events/', HTTP_AUTHORIZATION=f'Bearer {expired}').status_code, 401)
         self.admin.token_version += 1
         self.admin.save(update_fields=['token_version'])
         self.assertEqual(self.client.get('/events/', HTTP_AUTHORIZATION=f'Bearer {self.token}').status_code, 401)
-        current = AccessToken.for_user(self.admin)
+        current = create_session_token(self.admin).access_token
         self.admin.set_password('Changed-test-password!91')
         self.admin.save(update_fields=['password'])
         self.assertEqual(self.client.get('/events/', HTTP_AUTHORIZATION=f'Bearer {current}').status_code, 401)
-        current = AccessToken.for_user(self.admin)
+        current = create_session_token(self.admin).access_token
         self.admin.is_active = False
         self.admin.save(update_fields=['is_active'])
         self.assertEqual(self.client.get('/events/', HTTP_AUTHORIZATION=f'Bearer {current}').status_code, 401)
@@ -200,7 +201,8 @@ class RedisStreamTests(EventFixture, TransactionTestCase):
             try:
                 first, _ = await self.connect()
                 streams.append(first)
-                second, ready = await self.connect(AccessToken.for_user(self.staff))
+                staff_token = await sync_to_async(create_session_token)(self.staff)
+                second, ready = await self.connect(staff_token.access_token)
                 streams.append(second)
                 self.assertNotIn(b'"users"', ready)
                 response = await sync_to_async(self.sale)()
@@ -235,8 +237,9 @@ class RedisStreamTests(EventFixture, TransactionTestCase):
 
     def test_open_connection_stops_after_revocation_role_change_and_expiry(self):
         async def scenario():
-            for kind in ('revoke', 'role', 'expiry'):
-                token = AccessToken.for_user(self.admin)
+            for kind in ('revoke', 'role', 'expiry', 'idle'):
+                refresh = await sync_to_async(create_session_token)(self.admin)
+                token = refresh.access_token
                 stream, _ = await self.connect(token)
                 try:
                     if kind == 'expiry':
@@ -244,8 +247,13 @@ class RedisStreamTests(EventFixture, TransactionTestCase):
                             result = await anext(stream)
                         self.assertIn(b'event: reconnect', result)
                     else:
-                        changes = {'token_version': 1} if kind == 'revoke' else {'role': 'staff'}
-                        await sync_to_async(get_user_model().objects.filter(pk=self.admin.pk).update)(**changes)
+                        if kind == 'idle':
+                            from accounts.models import LoginSession
+                            await sync_to_async(LoginSession.objects.filter(pk=token['sid']).update)(
+                                idle_expires_at=timezone.now() - timedelta(seconds=1))
+                        else:
+                            changes = {'token_version': 1} if kind == 'revoke' else {'role': 'staff'}
+                            await sync_to_async(get_user_model().objects.filter(pk=self.admin.pk).update)(**changes)
                         with patch('config.live_events.HEARTBEAT_SECONDS', 0.05):
                             result = await asyncio.wait_for(anext(stream), 2)
                         self.assertIn(b'event: auth_required', result)

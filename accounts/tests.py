@@ -650,10 +650,10 @@ class ForgotPasswordViewTests(TestCase):
 
 class LogoutViewTests(TestCase):
     def test_inactive_user_with_valid_access_token_can_blacklist_refresh_token(self):
-        from rest_framework_simplejwt.tokens import RefreshToken
+        from accounts.services.session_service import create_session_token
 
         user = make_user('logoutuser')
-        refresh = RefreshToken.for_user(user)
+        refresh = create_session_token(user)
         access = str(refresh.access_token)
         refresh_value = str(refresh)
         user.is_active = False
@@ -673,12 +673,12 @@ class LogoutViewTests(TestCase):
         self.assertEqual(refresh_response.status_code, 401)
 
     def test_cannot_blacklist_another_users_refresh_token(self):
-        from rest_framework_simplejwt.tokens import RefreshToken
+        from accounts.services.session_service import create_session_token
 
         attacker = make_user('logoutattacker')
         victim = make_user('logoutvictim')
-        attacker_refresh = RefreshToken.for_user(attacker)
-        victim_refresh = RefreshToken.for_user(victim)
+        attacker_refresh = create_session_token(attacker)
+        victim_refresh = create_session_token(victim)
 
         response = self.client.post(
             '/accounts/logout/',
@@ -695,10 +695,10 @@ class LogoutViewTests(TestCase):
 
 class PasswordResetSessionRevocationTests(TestCase):
     def test_current_refresh_token_still_works(self):
-        from rest_framework_simplejwt.tokens import RefreshToken
+        from accounts.services.session_service import create_session_token
 
         user = make_user('currenttokenuser')
-        refresh = RefreshToken.for_user(user)
+        refresh = create_session_token(user)
         response = self.client.post(
             '/accounts/refresh/', {'refresh': str(refresh)}, format='json'
         )
@@ -706,11 +706,11 @@ class PasswordResetSessionRevocationTests(TestCase):
         self.assertIn('access', response.data)
 
     def test_password_reset_invalidates_existing_access_and_refresh_tokens(self):
-        from rest_framework_simplejwt.tokens import RefreshToken
+        from accounts.services.session_service import create_session_token
         from accounts.services import user_service
 
         user = make_user('tokenresetuser')
-        refresh = RefreshToken.for_user(user)
+        refresh = create_session_token(user)
         access_value = str(refresh.access_token)
         refresh_value = str(refresh)
 

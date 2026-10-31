@@ -24,6 +24,8 @@ x-runtime: &runtime
     DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set a unique production secret}
     DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?Set the production domain}
     DJANGO_TIME_ZONE: ${DJANGO_TIME_ZONE:-Asia/Manila}
+    AUTH_IDLE_TIMEOUT_SECONDS: ${AUTH_IDLE_TIMEOUT_SECONDS:-900}
+    AUTH_IDLE_WARNING_SECONDS: ${AUTH_IDLE_WARNING_SECONDS:-60}
     DJANGO_HEALTHCHECK_HOST: ${DJANGO_HEALTHCHECK_HOST:?Set an allowed production health-check host}
     DJANGO_BEHIND_HTTPS_PROXY: "true"
     # The trusted edge supplies one canonical client IP, preserved by inner hops.

@@ -8,7 +8,8 @@ consume it. The local backend was rebuilt and deployed on 2026-10-31 with the
 cashier correction, paid-payment lock, payment-updater identity and summary/filter
 endpoints; the frontend image still predates the latest pull. Earlier dated reviews below
 describe their original checkouts and are not the status of the latest source.
-These displays do not imply production forecast approval.
+These displays do not imply production forecast approval. The idle-session backend
+below is a newer source change and has not been deployed to the running stack.
 
 **Work boundary:** make backend changes in this repository. Communicate frontend
 implementation requests through this document; do not edit the sibling frontend
@@ -36,6 +37,122 @@ The earlier detailed review inspected frontend `origin/main` at
 on 2026-10-30, after pulling three upstream commits with a clean working tree.
 This review did not modify frontend application code, tests, dependencies or
 configuration.
+
+## Idle logout: backend ready, frontend implementation requested — 2026-10-31
+
+**User request:** automatically sign out users who stop interacting. Backend
+source now enforces a **15-minute idle limit** for both admins and staff. Request
+a **one-minute warning** before expiry. These defaults are configurable with
+`AUTH_IDLE_TIMEOUT_SECONDS=900` and `AUTH_IDLE_WARNING_SECONDS=60`; both Compose
+definitions pass them through. The timeout must be positive and greater than
+the nonnegative warning. Read the effective values from the API, rather than
+hardcoding a separate frontend policy.
+
+**Release coordination:** this change adds migration `accounts.0005_loginsession`.
+Apply it before starting the new backend. Existing JWTs lack a session ID and
+will require a fresh sign-in once the backend is deployed. Deploy the frontend
+integration with this backend: the current frontend sends no activity reports,
+so even an actively used browser would expire 15 minutes after sign-in. The
+running local backend/frontend images have deliberately not been replaced by
+this change. Previous sections' deployment statements describe earlier changes.
+
+Each successful sign-in creates a database-backed session. Its signed `sid`
+claim is copied into access tokens and retained by refresh-token rotation.
+Expiry affects that sign-in, including all tabs sharing its credentials;
+another independently signed-in device has a separate idle deadline. Ordinary
+API requests, status checks, polling, live-event heartbeats/reconnects and token
+refreshes **never** extend the deadline. The API rejects protected reads/writes
+and refreshes at or after expiry; activity cannot revive an expired session.
+Live streams recheck authentication on their existing heartbeat/change cycle
+and close with `auth_required` (normally within 15 seconds of expiry). Existing
+password/deactivation revocation remains in force. Explicit manual logout
+retains its existing account-wide revocation behavior.
+
+**API contract** (paths relative to the configured API base; with the local
+proxy, prefix `/backend`):
+
+- `POST /accounts/login/` and `POST /accounts/refresh/` retain `access`/`refresh`
+  and add a nested `session` object with the shape below. Save both rotated
+  tokens as before. Refresh does not renew the idle deadline.
+- `GET /accounts/session/` returns that object directly, with
+  `Cache-Control: no-store`. Use to restore/check session state without
+  registering human activity.
+- `POST /accounts/session/activity/` with JSON `{}` returns the same object
+  directly and extends a still-valid session from the server's current time.
+  Bearer access authentication is required. The server ignores submitted
+  session IDs/timestamps/deadlines; clients cannot update another session.
+  The activity endpoint has an account limit of 30 requests/minute. Coalesce
+  events across tabs; do not send a request for every mouse move/keystroke.
+
+```json
+{
+  "id": "7bd62574-cd6e-4644-aedd-6c04415095bd",
+  "idle_timeout_seconds": 900,
+  "warning_seconds": 60,
+  "server_time": "2026-10-31T08:00:00+00:00",
+  "last_activity_at": "2026-10-31T08:00:00+00:00",
+  "idle_expires_at": "2026-10-31T08:15:00+00:00"
+}
+```
+
+Idle rejection is **401** with a stable top-level code:
+
+```json
+{"detail": "You were signed out due to inactivity. Please sign in again.", "code": "session_idle_timeout"}
+```
+
+Missing/malformed/deleted/foreign sessions return **401** with
+`{"detail": "Please sign in again.", "code": "session_required"}`.
+An ordinarily expired access JWT still follows the existing refresh flow,
+provided its idle session and refresh token remain valid. Database failures
+fail closed with the existing sanitized **503**, not an authentication failure.
+
+**Frontend implementation requested; do not mark complete until accepted:**
+
+1. Extend login/refresh types with `session` and add status/activity service
+   methods. On restored credentials, read session status. Keep the current
+   session-generation guards on every asynchronous result; discard responses
+   from a prior sign-in/account. Use the server deadline and server-time offset
+   for countdowns, including delayed responses; do not rely only on a fresh
+   local 15-minute timer. Accept only confirmed deadlines for the same session;
+   do not overwrite a later confirmed deadline with an older in-flight response.
+2. Track trusted pointer/touch, keyboard and scroll interactions while the app
+   is visible. Post activity promptly for interaction and coalesce continuing
+   activity (roughly once per 30 seconds, with a final debounced report after
+   interaction stops). A timer may flush observed activity, but must never post
+   simply because it fired. Loading a page, token refresh, cache/live updates,
+   tab focus/visibility changes and network reconnect alone are not activity.
+   Coordinate reports across same-session tabs to stay below the server limit.
+   The backend cannot distinguish real input from a falsely reported heartbeat;
+   this frontend event discipline is required for actual human inactivity.
+3. Show a countdown dialog when `warning_seconds` remain. Provide **Stay signed
+   in** and **Sign out**. Stay signed in sends activity immediately and dismisses
+   the warning only after success; it cannot recover an expired session. Keep
+   drafts intact while warning. A 503/network failure must not invent a new
+   deadline; retry only while the last confirmed session is still valid. A 429
+   must respect Retry-After and retain the confirmed deadline.
+4. At the confirmed deadline, clear credentials, current user, private caches,
+   drafts and live subscriptions, then show the login page with **You were
+   signed out due to inactivity. Please sign in again.** Recheck absolute time
+   after sleep/resume or a suspended tab; delayed browser timers must not allow
+   access or a business submission after expiry. Synchronize confirmed activity
+   deadlines and expiry across tabs by session ID, without extending deadlines
+   solely from local messages or signing out a newer/different session.
+5. In `src/lib/api.ts`, treat `session_idle_timeout` and `session_required` as
+   terminal 401s: clear the session and notify auth listeners without attempting
+   refresh or retrying a business write. Apply this to failed refresh responses
+   too. Use the same centralized cleanup for `auth_required` from live events.
+   Keep ordinary access-expiry refresh and temporary-outage behavior. Automatic
+   idle cleanup should clear local state without calling the existing global
+   logout endpoint, which would also revoke independently active devices.
+   An explicit user Sign out action may use the existing logout endpoint.
+6. Verify both roles: no input plus continuous polling still expires; real
+   activity extends only the matching sign-in; warning/Stay signed in works;
+   expiry during an open editor rejects submission; refreshed JWTs cannot
+   bypass idle expiry; active/idle tabs share one deadline; a separate device
+   stays signed in; sleep/resume, offline expiry, reconnect, account switching,
+   stale in-flight responses and the one-time rollout re-login behave correctly.
+   Rebuild the frontend image after implementing and testing these changes.
 
 ## Entered by wording and payment updater identity — 2026-10-31
 

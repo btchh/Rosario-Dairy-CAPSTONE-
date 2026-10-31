@@ -10,6 +10,9 @@ def check_token_version(user, token):
 
 class RevocableJWTAuthentication(JWTAuthentication):
     def get_user(self, validated_token):
+        from accounts.services.session_service import check_session
+
         user = super().get_user(validated_token)
         check_token_version(user, validated_token)
+        check_session(user, validated_token)
         return user

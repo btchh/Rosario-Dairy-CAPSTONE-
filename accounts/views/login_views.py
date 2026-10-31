@@ -6,6 +6,7 @@ from django.db import transaction
 from accounts.models import Users
 from accounts.throttles import LoginRateThrottle, TokenRefreshRateThrottle
 from accounts.authentication import check_token_version
+from accounts.services.session_service import create_session_token, check_session, session_payload
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import (
     TokenObtainPairSerializer,
@@ -47,9 +48,7 @@ class CooldownTokenObtainPairSerializer(TokenObtainPairSerializer):
 
     @classmethod
     def get_token(cls, user):
-        token = super().get_token(user)
-        token['token_version'] = user.token_version
-        return token
+        return create_session_token(user)
 
     def validate(self, attrs):
         username = attrs.get(self.username_field)
@@ -77,6 +76,9 @@ class CooldownTokenObtainPairSerializer(TokenObtainPairSerializer):
         authenticated_user.failed_login_attempts = 0
         authenticated_user.locked_until = None
         authenticated_user.save(update_fields=['failed_login_attempts', 'locked_until'])
+        data['session'] = session_payload(check_session(
+            authenticated_user, self.token_class(data['refresh'])
+        ))
         return data
 
 
@@ -98,6 +100,7 @@ class PasswordAwareTokenRefreshSerializer(TokenRefreshSerializer):
         if user is None or not api_settings.USER_AUTHENTICATION_RULE(user):
             raise AuthenticationFailed(self.error_messages['no_active_account'])
         check_token_version(user, refresh)
+        session = check_session(user, refresh)
         if refresh.get(api_settings.REVOKE_TOKEN_CLAIM) != get_md5_hash_password(
             user.password
         ):
@@ -105,7 +108,9 @@ class PasswordAwareTokenRefreshSerializer(TokenRefreshSerializer):
                 'The user password has been changed.', code='password_changed'
             )
         # Reparse under the user lock, so two concurrent uses cannot both rotate.
-        return super().validate(attrs)
+        data = super().validate(attrs)
+        data['session'] = session_payload(session)
+        return data
 
 
 class PasswordAwareTokenRefreshView(TokenRefreshView):

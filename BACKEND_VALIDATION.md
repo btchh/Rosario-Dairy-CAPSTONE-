@@ -1,5 +1,52 @@
 # Backend validation
 
+## Frontend pull before Docker update — 2026-10-31
+
+Fast-forwarded the clean frontend checkout from `f6e4546a` to `b479b67f`.
+The change adds cross-tab refresh coordination, Customer History recorded-money
+formatting and durable outflow pending storage. All **636 frontend tests**, the
+TypeScript check and production Vite build passed. Stock-out UUIDs remain local
+to the browser; API request-ID integration and the separate expired-disposal
+caller remain in the handoff. No Docker service/image or application database
+changes were made. Logs: `/tmp/frontend-b479b67f-tests-20261031.log`,
+`/tmp/frontend-b479b67f-types-20261031.log`, and
+`/tmp/frontend-b479b67f-build-20261031.log`.
+
+## Inventory stock-out idempotency — 2026-10-31
+
+Implemented optional per-account UUIDs for `POST /inventory/stock-adjustments/`,
+accepted as JSON `request_id` or `Idempotency-Key` (including browser CORS).
+Matching retries return the original saved JSON with 200; first success returns
+201 and changed effective payload returns 409. PostgreSQL transaction-scoped
+request locks precede stock locks. Stock deduction, adjustment, and the durable
+request/response record commit or roll back together. Replay still requires
+current authentication and product/category visibility. Unkeyed legacy callers
+remain compatible and are not protected against duplicate submissions.
+
+The additive migration is `inventory.0013_stock_adjustment_submission`. Also
+corrected adjustment serialization to use the locked, updated batch instance,
+so the initial response reflects stock after deduction. Replayed nested values
+are deliberately the original snapshot; clients must refetch current stock.
+
+All **19 new tests passed**, including simultaneous last-stock retries,
+conflicting requests on different batches, distinct-request oversell prevention,
+saved-response stability, disposal, UUID/header validation, permissions, account
+scoping, numeric normalization, legacy behavior, and rollback after persistence
+failure. The six-app regression (`accounts config sales inventory reporting
+systemsetting`) ran **756 tests: 755 passed, one Windows-only ACL skip**, in
+120.476 seconds, against disposable PostgreSQL 18 and Redis. Django system and
+migration-drift checks passed. Applied, reversed and reapplied the new migration
+successfully in the isolated database; no pending migrations remained there.
+
+The running Docker stack and application database were unchanged. Backend
+rebuild/migration and frontend durable request-ID integration remain rollout
+work. The contract, including uncertain legacy-request handling and the separate
+expired-disposal caller, is in [FRONTEND_HANDOFF.md](FRONTEND_HANDOFF.md).
+Test services were removed after verification. Logs:
+`/tmp/stock-idempotency-focused-20261031.log`,
+`/tmp/stock-idempotency-regression-20261031.log`, and
+`/tmp/stock-idempotency-migration-20261031.log`.
+
 ## Coordinated idle-session Docker rollout — 2026-10-31
 
 Built and deployed frontend `f6e4546a` with the backend source at `0d6954ed`.

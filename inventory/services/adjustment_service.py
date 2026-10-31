@@ -45,7 +45,7 @@ def create_stock_adjustment(adjustment_type, quantity, unit_cost, adjusted_by, r
         batch.save()
 
         adjustment = StockAdjustment(
-            product_batch=product_batch,
+            product_batch=batch,
             adjustment_type=adjustment_type,
             quantity=quantity,
             unit_cost=unit_cost,

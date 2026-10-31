@@ -17,6 +17,7 @@ from datetime import timedelta
 from urllib.parse import urlsplit
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
+from corsheaders.defaults import default_headers
 
 
 def env_bool(name, default=False):
@@ -280,6 +281,8 @@ REST_FRAMEWORK['DEFAULT_AUTHENTICATION_CLASSES'] = ('accounts.authentication.Rev
 MAX_CART_ITEMS = 100
 
 AUTH_USER_MODEL = 'accounts.Users'
+
+CORS_ALLOW_HEADERS = (*default_headers, 'idempotency-key')
 
 CORS_ALLOWED_ORIGINS = env_list(
     'CORS_ALLOWED_ORIGINS',

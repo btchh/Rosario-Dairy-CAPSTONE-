@@ -12,7 +12,10 @@ independent-session preservation. Frontend 614 tests/TypeScript and backend
 736 tests (one platform skip) passed. Gmail authentication, service health and
 migration checks passed. The full pre-migration backup restored in isolated
 PostgreSQL, and all 19 existing business-table contents were unchanged.
-Server pagination remains the only open frontend implementation request.
+Stock-out idempotency is now implemented in backend source, pending its Docker
+rollout and additive `inventory.0013_stock_adjustment_submission` migration.
+The frontend handoff covers durable stock-out request IDs and the remaining
+server pagination work. Existing unkeyed requests do not gain replay protection.
 Public OVHcloud/domain/TLS/operations verification below remains outstanding;
 local deployment does not establish public production readiness.
 

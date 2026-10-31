@@ -4,7 +4,7 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from ..models import StockAdjustment, ProductBatch
 from ..serializers import StockAdjustmentSerializer
-from ..services import batch_service
+from ..services.adjustment_submission_service import adjustment_request_id, submit_stock_adjustment
 from accounts.permissions import IsAdmin, IsStaff
 from decimal import Decimal
 from config.api_inputs import parse_decimal, parse_optional_text, parse_positive_id
@@ -46,6 +46,7 @@ class StockAdjustmentViewSet(CachedListMixin, viewsets.ModelViewSet):
 
     @object_body
     def create(self, request, *args, **kwargs):
+        key = adjustment_request_id(request)
         product_batch_id = request.data.get('product_batch_id')
         if request.data.get('ingredient_batch_id') is not None:
             return Response({'error': 'Ingredient inventory has been removed. Use product_batch_id.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -89,7 +90,8 @@ class StockAdjustmentViewSet(CachedListMixin, viewsets.ModelViewSet):
             return Response({'error': 'product_batch_id does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            adjustment = batch_service.BatchService.create_stock_adjustment(
+            response_data, created = submit_stock_adjustment(
+                key=key,
                 adjustment_type=adjustment_type,
                 quantity=quantity,
                 unit_cost=unit_cost,
@@ -97,6 +99,6 @@ class StockAdjustmentViewSet(CachedListMixin, viewsets.ModelViewSet):
                 reason=reason,
                 product_batch=product_batch,
             )
-            return Response(StockAdjustmentSerializer(adjustment).data, status=status.HTTP_201_CREATED)
+            return Response(response_data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
         except ValueError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

@@ -2,6 +2,20 @@
 
 **Decision: not ready for public production deployment as currently configured.**
 
+## Current local release — 2026-10-31
+
+Frontend `f6e4546a`, the session-enforcing backend image, and migration
+`accounts.0005_loginsession` are now deployed together locally. The 15-minute
+idle policy/one-minute warning passed authenticated admin/staff browser checks,
+including continuation, activity/background-read distinction, expiry and
+independent-session preservation. Frontend 614 tests/TypeScript and backend
+736 tests (one platform skip) passed. Gmail authentication, service health and
+migration checks passed. The full pre-migration backup restored in isolated
+PostgreSQL, and all 19 existing business-table contents were unchanged.
+Server pagination remains the only open frontend implementation request.
+Public OVHcloud/domain/TLS/operations verification below remains outstanding;
+local deployment does not establish public production readiness.
+
 ## SMTP follow-up — 2026-10-31
 
 The running local image was confirmed to use console email, with no SMTP
@@ -15,10 +29,10 @@ authentication passed both before activation and from the running API. API/
 events health, Django/migration checks and frontend/gateway HTTP checks passed.
 No email or reset challenge was sent by the agent during verification. The user
 subsequently requested an OTP and confirmed successful delivery. API health
-alone does not cover mail. Frontend `7295f413` is now built/deployed locally and
+alone does not cover mail. Frontend `7295f413` was built/deployed locally and
 passed 580 tests, TypeScript and authenticated browser smoke checks. Idle-session
-frontend integration and some full-list history paths remain pending; the newer
-session-enforcing backend image/migration has not been activated. The OVHcloud operational
+frontend integration was still pending at that stage; the coordinated release
+above subsequently activated it. Some full-list history paths remain. The OVHcloud operational
 requirements below remain release requirements. Local SMTP authentication
 does not establish public deployment readiness.
 

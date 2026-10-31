@@ -246,7 +246,7 @@ deadlines; `GET /accounts/session/` checks the deadline and
 live events and token refresh do not count as activity, and expired sessions
 cannot be revived. Migration `accounts.0005_loginsession` and the matching
 frontend activity/warning integration must ship together; pre-upgrade JWTs
-require a fresh sign-in. See `FRONTEND_HANDOFF.md` for the complete contract.
+require a fresh sign-in. See the [versioned idle-session API contract](https://github.com/btchh/Rosario-Dairy-CAPSTONE-/blob/0d6954ed/FRONTEND_HANDOFF.md#1-integrate-idle-logout).
 
 Deactivation revokes existing access and refresh tokens permanently, including
 after reactivation. Reactivated accounts must log in again.

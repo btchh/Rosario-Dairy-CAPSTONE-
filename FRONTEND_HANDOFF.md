@@ -1,90 +1,20 @@
 # Frontend handoff — open requests only
 
-Updated 2026-10-31 (Asia/Manila), reviewed against frontend `7295f413`.
+Updated 2026-10-31 (Asia/Manila), reviewed against frontend `f6e4546a`.
 
-Two requests remain. The current frontend is deployed locally; its 580 tests,
-TypeScript checks and admin/staff browser smoke checks passed. Completed work
-and verification are recorded in [BACKEND_VALIDATION.md](BACKEND_VALIDATION.md).
-The [previous handoff](https://github.com/btchh/Rosario-Dairy-CAPSTONE-/blob/7a75a0ab/FRONTEND_HANDOFF.md)
-retains historical API contracts and completed requests.
+**One request remains: complete server pagination.** Idle logout is now
+implemented and deployed with the matching backend and session migration.
+The current frontend passed 614 tests, TypeScript and authenticated admin/staff
+browser checks, including activity reporting, warning/continuation and expiry.
+Completed work and verification are in [BACKEND_VALIDATION.md](BACKEND_VALIDATION.md).
+The [previous handoff](https://github.com/btchh/Rosario-Dairy-CAPSTONE-/blob/0d6954ed/FRONTEND_HANDOFF.md)
+retains the completed idle-session API contract.
 
 **Work boundary:** implement backend changes here; send frontend changes through
 this handoff. Do not edit the sibling frontend source during backend maintenance.
 All API paths below are relative to the configured base (`/backend` locally).
 
-## 1. Integrate idle logout
-
-**Backend source ready; frontend missing.** Use a 15-minute idle timeout and
-one-minute warning, reading the effective policy from the server.
-
-**Deploy together:** frontend integration, backend migration
-`accounts.0005_loginsession`, and the session-enforcing backend image. Existing
-JWTs require a fresh sign-in. The running backend is deliberately unchanged:
-activating the new backend alone would expire even actively used browsers,
-because the current frontend sends no activity reports.
-
-### API
-
-| Endpoint | Behavior |
-| --- | --- |
-| `POST /accounts/login/` | Existing tokens plus nested `session`. |
-| `POST /accounts/refresh/` | Rotated tokens plus nested `session`; does not extend idle expiry. |
-| `GET /accounts/session/` | Returns session directly; does not extend expiry. |
-| `POST /accounts/session/activity/` with `{}` | Returns session directly; extends only a still-valid session using server time. |
-
-Session shape:
-
-```json
-{
-  "id": "7bd62574-cd6e-4644-aedd-6c04415095bd",
-  "idle_timeout_seconds": 900,
-  "warning_seconds": 60,
-  "server_time": "2026-10-31T08:00:00+00:00",
-  "last_activity_at": "2026-10-31T08:00:00+00:00",
-  "idle_expires_at": "2026-10-31T08:15:00+00:00"
-}
-```
-
-Session GET/activity require bearer authentication and return `no-store`.
-Activity is limited to 30 requests/account/minute. Client timestamps and session
-IDs cannot choose or revive a session. Idle expiry returns **401** with
-`code: "session_idle_timeout"`; legacy/missing/invalid sessions return **401**
-with `code: "session_required"`. Both include a `detail` message. Database
-outages retain the existing **503** behavior.
-
-### Frontend changes
-
-1. Add session types/service methods and restore status on an existing sign-in.
-   Keep session-generation guards; discard responses from a prior account or
-   sign-in. Use server time/deadlines and retain the latest confirmed deadline
-   for the same session when responses arrive out of order.
-2. Report trusted pointer/touch, keyboard and scroll input while visible.
-   Coalesce ongoing activity roughly every 30 seconds with a final debounced
-   report. Coordinate same-session tabs. Never send an unconditional keepalive:
-   polling, token refresh, live events, focus, page loading and reconnect alone
-   must not extend the deadline. Respect activity 429/Retry-After responses.
-3. Show a countdown with **Stay signed in** and **Sign out** when the warning
-   begins. Stay signed in posts activity and dismisses only after success.
-   Keep drafts during the warning. Network errors must not invent a deadline.
-4. On expiry, clear credentials, private caches, drafts and live subscriptions,
-   then return to login with **You were signed out due to inactivity. Please
-   sign in again.** Handle suspended tabs, sleep/resume and offline expiry;
-   block business submissions after the confirmed deadline.
-5. Treat `session_idle_timeout`/`session_required` as terminal 401s in
-   `src/lib/api.ts`, including refresh failures: do not refresh or retry writes.
-   Preserve ordinary access-expiry refresh and temporary-outage behavior.
-   Live `auth_required` must use the same session cleanup.
-6. Synchronize deadlines/expiry across tabs by session ID without affecting a
-   newer or independent sign-in. Automatic idle cleanup must not call the
-   existing account-wide logout endpoint. An explicit Sign out may still do so.
-
-**Acceptance:** both roles stay signed in with real activity and expire without
-input despite background polling. Verify warning/continuation, multiple tabs,
-an independent active device, open editors, stale responses, account switching,
-refresh, sleep/resume, offline expiry and rollout re-login. Expired sessions
-cannot be revived. Rebuild and verify the coordinated images before release.
-
-## 2. Complete server pagination
+## Complete server pagination
 
 **Backend APIs available in the running image; frontend only partly integrated.**
 

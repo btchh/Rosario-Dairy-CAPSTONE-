@@ -1,7 +1,7 @@
 # Frontend handoff review — 30 October 2026
 
-**Historical review, not an active request list.** Frontend `7295f413` is now
-deployed locally and passed 580 tests, TypeScript and admin/staff browser smoke
+**Historical review, not an active request list.** Frontend `f6e4546a` is now
+deployed locally and passed 614 tests, TypeScript and admin/staff browser smoke
 checks. Its current open requests and API details are in
 [FRONTEND_HANDOFF.md](FRONTEND_HANDOFF.md). The older missing-feature claims and
 dependency counts below are not a fresh audit. Removed handoff sections remain

@@ -148,9 +148,10 @@ evidence, not inbox-delivery evidence. To explicitly send a diagnostic email,
 append `--send-to your-approved-test-inbox@example.com` and verify receipt.
 This does not issue a password-reset challenge or change business data.
 
-Build/deploy newer backend code only with its release prerequisites, including
-the pending idle-session frontend integration and migration. SMTP environment
-updates to the existing image need not activate that unrelated source change.
+Build/deploy newer backend code with its matching frontend and migrations.
+The idle-session frontend/backend release is now deployed locally; fresh sign-in
+is required for JWTs issued before that migration. SMTP environment updates
+alone do not require rebuilding the application image.
 Do not call the deployment email-ready until real inbox delivery is confirmed.
 
 ## Live updates on OVHcloud or another VPS

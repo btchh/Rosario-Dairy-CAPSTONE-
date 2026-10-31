@@ -1,5 +1,63 @@
 # Backend validation
 
+## Coordinated idle-session Docker rollout — 2026-10-31
+
+Built and deployed frontend `f6e4546a` with the backend source at `0d6954ed`.
+Frontend **614/614 tests** and `tsc --noEmit` passed. Backend regression against
+disposable PostgreSQL 18 and Redis passed **736 tests, one Windows-only ACL
+skip** (737 discovered), in 114.978 seconds. Both Docker builds passed.
+
+Before applying the migration, saved a private full PostgreSQL backup and
+successfully restored it into isolated PostgreSQL with `--no-owner --no-acl`.
+The original-owner role is absent from that isolated server; omitting those
+restore options was rejected, then the corrected restore passed. Backup,
+checksum and restoration evidence are outside Git in
+`../private-database-backups/idle-release-f6e4546a-20261031/`.
+
+The migration plan contained only `accounts.0005_loginsession` (new login-session
+table). Applied it successfully, recreated API/events/worker/frontend, and
+reloaded the gateway. Existing pre-session JWTs require a new sign-in. The
+runtime policy remains **900 seconds idle, 60 seconds warning**.
+
+Current images, also tagged `:idle-f6e4546a-20261031` and `:local`:
+
+- Backend: `sha256:f67dc73bcfe16bb4692c0c55895b47c53b4ade1d6b938a0d82f8f72c8c2adf06`.
+- Frontend: `sha256:6c5730791ff212cc8c9bc7b75808dfec8726b054125ab96bfff021291af1875f`.
+
+Both previous images are retained as `:before-idle-f6e4546a-20261031`. Their
+rollback leaves the additive session table in place; it does not require
+deleting business records or restoring a database over newer transactions.
+
+Authenticated Chromium checks passed for both admin and staff against the
+actual Docker frontend/backend. Trusted keyboard input caused an activity POST
+and a confirmed extension; background status reads left the deadline unchanged.
+The warning appeared, Continue Session extended the deadline and dismissed it,
+and idle expiry cleared credentials and returned to login. The server rejected
+expired access, refresh and activity with `401/session_idle_timeout`; another
+independent sign-in remained valid. The browser made no global logout/refresh
+request during idle cleanup. Paid-payment locks, plain encoder names and
+payment-updater display also passed smoke checks, with no runtime exceptions.
+
+Expiry/warning browser checks shortened only four temporary test-session rows;
+the runtime timeout/warning settings stayed 900/60. Removed all four test login
+sessions and their four refresh records afterward, along with private browser
+tokens/profiles. No sale/payment/stock writes or real-user global logout ran.
+All **19 existing account/inventory/sales tables** retained identical row counts
+and content hashes before and after migration/deployment/browser verification.
+Disposed of the test database/Redis containers and restored test database.
+
+API, events and frontend health passed; worker is running. Django system and
+pending-migration checks passed. The now-deployed `check_smtp` command passed
+Gmail connection/authentication without sending email. OTP delivery had already
+been confirmed by the user. Server pagination remains the only open frontend
+implementation request; OVHcloud deployment/operations checks remain separate.
+
+Logs: `/tmp/frontend-idle-release-tests-20261031.log`,
+`/tmp/frontend-idle-release-types-20261031.log`,
+`/tmp/backend-idle-release-tests-20261031.log`, `/tmp/idle-release-build-20261031.log`,
+`/tmp/idle-release-migrate-20261031.log`, `/tmp/idle-release-deploy-20261031.log`,
+and `/tmp/frontend-idle-release-browser-20261031.log`.
+
 ## Frontend pull, Docker update and confirmed OTP delivery — 2026-10-31
 
 The user confirmed that requesting an OTP now delivers email after Gmail SMTP

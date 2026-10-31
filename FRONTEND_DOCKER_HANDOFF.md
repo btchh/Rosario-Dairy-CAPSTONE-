@@ -2,20 +2,25 @@
 
 ## Current local release — 2026-10-31
 
-Frontend `7295f413` has been built and deployed at `http://localhost:5174` as
-`rosario-dairy-frontend:frontend-7295f413-20261031` (also `:local`), image
-`sha256:7f7018565b65d122c8272e73eafc7a7c7c459315875b3b816842b89d5db3c243`.
-The previous image is retained as `:before-frontend-7295f413-20261031`.
-All 580 frontend tests, TypeScript checks and authenticated admin/staff browser
-smoke checks passed. Payment locks, plain encoder names and payment updater
-details are included. Pagination remains partial; see `FRONTEND_HANDOFF.md`.
+Frontend `f6e4546a` and the matching backend are deployed at
+`http://localhost:5174`. Migration `accounts.0005_loginsession` is applied;
+existing users must sign in again. Idle logout is active at 15 minutes without
+interaction, with a one-minute warning and confirmed continuation. Gmail SMTP
+remains configured and its authentication check passes.
 
-The current backend image is retained with Gmail SMTP configured and OTP receipt
-confirmed by the user. The frontend still lacks the requested idle-session
-client. Coordinate that implementation with migration `accounts.0005_loginsession`
-before building/promoting the latest backend source to runtime. The newer
-SMTP diagnostic management command is also source-only until that image update.
-No new image export/archive was created by this frontend-only deployment.
+Both images are tagged `:idle-f6e4546a-20261031` and `:local`:
+
+- `rosario-dairy-frontend`: `sha256:6c5730791ff212cc8c9bc7b75808dfec8726b054125ab96bfff021291af1875f`.
+- `rosario-dairy-backend`: `sha256:f67dc73bcfe16bb4692c0c55895b47c53b4ade1d6b938a0d82f8f72c8c2adf06`.
+
+Previous images are retained as `:before-idle-f6e4546a-20261031`. All 614 frontend
+tests, TypeScript, 736 backend tests (one platform skip), health and authenticated
+admin/staff browser checks passed. The private full database backup was restored
+successfully in isolated PostgreSQL. All 19 existing business-table contents
+were unchanged. See `BACKEND_VALIDATION.md` for scope/evidence.
+
+Pagination remains partial; it is the only open frontend request in
+`FRONTEND_HANDOFF.md`. No new image export/archive was created by this rollout.
 
 ## Sharing an image
 

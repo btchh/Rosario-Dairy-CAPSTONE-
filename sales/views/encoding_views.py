@@ -8,7 +8,7 @@ from sales.serializers.encoding_serializer import EncodingInputSerializer, Encod
 from sales.serializers.sale_input_serializer import encoded_sale_items
 from sales.services.encoding_service import EncodingConflict, encode_transaction
 from sales.services.item_pricing import reject_discount_fields
-from sales.services.payment_service import update_encoding_payment
+from sales.services.payment_service import PaymentLockedError, update_encoding_payment
 from .transaction_views import TransactionViewSet
 
 
@@ -30,6 +30,8 @@ class EncodingViewSet(TransactionViewSet):
         values.is_valid(raise_exception=True)
         try:
             sale = update_encoding_payment(sale.pk, request.user, **values.validated_data)
+        except PaymentLockedError as exc:
+            return Response({'error': str(exc), 'code': 'payment_locked'}, status=status.HTTP_409_CONFLICT)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(sale).data)

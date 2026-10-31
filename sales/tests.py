@@ -1432,6 +1432,8 @@ class StaffEncodingTests(TestCase):
         self.assertEqual(response.data['transaction_number'], 'SI0608')
         self.assertEqual(response.data['transaction_date'], self.day.isoformat())
         self.assertTrue(response.data['is_manually_encoded'])
+        self.assertEqual(response.data['recorded_cashier'], {
+            'id': self.staff.pk, 'username': self.staff.username, 'role': self.staff.role})
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.remaining_quantity, Decimal('98'))
         order = Order.objects.get(transaction=sale)
@@ -1616,6 +1618,39 @@ class ConcurrentEncodingTests(TransactionTestCase):
 # Encoded transaction payment updates
 # ----------------------------------------------------------------------------
 
+@skipUnless(connection.vendor == 'postgresql', 'Payment serialization uses PostgreSQL row locks.')
+class ConcurrentPaymentUpdateTests(TransactionTestCase):
+    def test_only_one_different_payment_can_finalize_a_pending_sale(self):
+        cache.clear()
+        users = [make_user('pay-race-staff'), make_user('pay-race-admin', role='admin')]
+        sale = Transaction.objects.create(handled_by=users[0], encoded_at=timezone.now(),
+            subtotal=100, total_amount=100, payment_method='cash', payment_status='pending')
+        barrier = Barrier(2)
+
+        def finalize(index):
+            close_old_connections()
+            try:
+                client = APIClient()
+                client.force_authenticate(users[index])
+                barrier.wait(timeout=10)
+                response = client.patch(f'/sales/encoding/{sale.pk}/payment/', {
+                    'payment_status': 'paid', 'amount_tendered': str(100 + index * 50)}, format='json')
+                return index, response.status_code, response.data
+            finally:
+                close_old_connections()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(finalize, range(2)))
+        self.assertEqual(sorted(code for _, code, _ in results), [200, 409], results)
+        winner = next(index for index, code, _ in results if code == 200)
+        sale.refresh_from_db()
+        self.assertEqual(sale.payment_status, 'paid')
+        self.assertEqual(sale.payment_updated_by_id, users[winner].pk)
+        self.assertEqual(sale.amount_tendered, Decimal(100 + winner * 50))
+        self.assertEqual(sale.change_due, Decimal(winner * 50))
+        self.assertEqual(Transaction.objects.count(), 1)
+
+
 class EncodingPaymentTests(TestCase):
     def setUp(self):
         cache.clear()
@@ -1646,6 +1681,7 @@ class EncodingPaymentTests(TestCase):
     def test_new_encoding_defaults_pending_without_tender_and_still_deducts_stock(self):
         response = self.create()
         self.assertEqual(response.data['payment_status'], 'pending')
+        self.assertTrue(response.data['can_update_payment'])
         self.assertIsNone(response.data['amount_tendered'])
         self.assertIsNone(response.data['change_due'])
         self.assertEqual(response.data['payment_updated_by'], self.staff.pk)
@@ -1679,8 +1715,11 @@ class EncodingPaymentTests(TestCase):
             paid = self.patch(sale_id, payment_status='paid', amount_tendered='350')
         self.assertEqual(paid.status_code, 200, paid.data)
         self.assertEqual(paid.data['payment_status'], 'paid')
+        self.assertFalse(paid.data['can_update_payment'])
         self.assertEqual(paid.data['change_due'], '50.00')
         self.assertEqual(paid.data['payment_updated_by'], self.other_staff.pk)
+        expected_updater = {'id': self.other_staff.pk, 'username': self.other_staff.username, 'role': self.other_staff.role}
+        self.assertEqual(paid.data['payment_updated_by_user'], expected_updater)
         self.assertIsNotNone(paid.data['payment_updated_at'])
         self.assertNotEqual(data_version(), version)
         sale.refresh_from_db()
@@ -1695,21 +1734,109 @@ class EncodingPaymentTests(TestCase):
         for url in ('/sales/transactions/', f'/sales/customers/{self.customer.pk}/transactions/', '/sales/encoding/'):
             row = self.client.get(url).data['results'][0]
             self.assertEqual(row['payment_status'], 'paid')
-        self.assertEqual(self.client.get('/sales/orders/').data['results'][0]['transaction']['payment_status'], 'paid')
+            self.assertEqual(row['payment_updated_by_user'], expected_updater)
+            self.assertEqual(row['handled_by']['id'], self.staff.pk)
+        order = self.client.get('/sales/orders/').data['results'][0]
+        self.assertEqual(order['transaction']['payment_status'], 'paid')
+        self.assertEqual(order['transaction']['payment_updated_by_user'], expected_updater)
+        for url, linked in ((f'/sales/transactions/{sale_id}/', False),
+                            (f'/sales/encoding/{sale_id}/', False),
+                            (f'/sales/orders/{order["id"]}/', True)):
+            row = self.client.get(url).data
+            self.assertEqual((row['transaction'] if linked else row)['payment_updated_by_user'], expected_updater)
 
-    def test_mark_unpaid_clears_cash_fields_and_repeated_payment_update_is_idempotent(self):
+    def test_missing_payment_updater_is_null_without_inferring_the_encoder_or_viewer(self):
+        sale = Transaction.objects.create(handled_by=self.staff, encoded_at=timezone.now(), total_amount=100)
+        for viewer in (self.staff, self.other_staff):
+            self.client.force_authenticate(viewer)
+            row = self.client.get(f'/sales/transactions/{sale.pk}/').data
+            self.assertIsNone(row['payment_updated_by'])
+            self.assertIsNone(row['payment_updated_by_user'])
+            self.assertEqual(row['handled_by']['username'], self.staff.username)
+
+    def test_payment_updater_is_read_only_and_paid_retry_retains_the_original_actor(self):
+        from sales.serializers import TransactionSerializer
+        from sales.serializers.order_serializer import OrderListTransactionSerializer
+        for serializer in (TransactionSerializer, OrderListTransactionSerializer):
+            self.assertTrue(serializer().fields['payment_updated_by_user'].read_only)
+        sale_id = self.create().data['id']
+        self.client.force_authenticate(self.other_staff)
+        spoofed = self.patch(sale_id, payment_status='paid', amount_tendered='300',
+                             payment_updated_by=self.staff.pk,
+                             payment_updated_by_user={'id': self.staff.pk, 'username': 'forged', 'role': 'admin'})
+        self.assertEqual(spoofed.status_code, 400, spoofed.data)
+        paid = self.patch(sale_id, payment_status='paid', amount_tendered='300')
+        self.assertEqual(paid.status_code, 200, paid.data)
+        self.client.force_authenticate(self.staff)
+        replay = self.patch(sale_id, payment_status='paid', amount_tendered='300')
+        self.assertEqual(replay.status_code, 200, replay.data)
+        self.assertEqual(replay.data['payment_updated_by_user'], paid.data['payment_updated_by_user'])
+        self.assertEqual(replay.data['payment_updated_by_user']['username'], self.other_staff.username)
+        self.assertEqual(replay.data['payment_updated_at'], paid.data['payment_updated_at'])
+
+    def test_paid_cannot_be_reopened_and_identical_retry_preserves_payment_audit(self):
         created = self.create(payment_status='paid', amount_tendered='400')
         sale_id = created.data['id']
         repeated = self.patch(sale_id, payment_status='paid')
         self.assertEqual(repeated.status_code, 200, repeated.data)
         self.assertEqual(repeated.data['payment_updated_at'], created.data['payment_updated_at'])
+        self.assertEqual(repeated.data['payment_updated_by'], created.data['payment_updated_by'])
+        self.assertFalse(repeated.data['can_update_payment'])
         pending = self.patch(sale_id, payment_status='pending')
-        self.assertEqual(pending.status_code, 200, pending.data)
-        self.assertEqual(pending.data['payment_status'], 'pending')
-        self.assertIsNone(pending.data['amount_tendered'])
-        self.assertIsNone(pending.data['change_due'])
+        self.assertEqual(pending.status_code, 409, pending.data)
+        self.assertEqual(pending.data['code'], 'payment_locked')
+        sale = Transaction.objects.get(pk=sale_id)
+        self.assertEqual(sale.payment_status, 'paid')
+        self.assertEqual(sale.amount_tendered, Decimal('400.00'))
+        self.assertEqual(sale.change_due, Decimal('100.00'))
         self.batch.refresh_from_db()
         self.assertEqual(self.batch.remaining_quantity, 98)
+
+    def test_paid_payment_details_are_locked_for_admin_and_staff_even_via_service_calls(self):
+        from sales.services.payment_service import PaymentLockedError, update_encoding_payment
+        admin = make_user('payment-lock-admin', role='admin')
+        for method, amount in (('cash', '400'), ('online', None)):
+            created = self.create(payment_status='paid', payment_method=method, amount_tendered=amount)
+            sale_id = created.data['id']
+            before = Transaction.objects.filter(pk=sale_id).values().get()
+            for actor in (admin, self.other_staff):
+                self.client.force_authenticate(actor)
+                for details in ({'payment_status': 'pending'},
+                                {'payment_status': 'paid', 'payment_method': 'online' if method == 'cash' else 'cash', 'amount_tendered': '400'},
+                                {'payment_status': 'paid', 'amount_tendered': '500'}):
+                    response = self.patch(sale_id, **details)
+                    self.assertEqual(response.status_code, 409, response.data)
+                    self.assertEqual(response.data['code'], 'payment_locked')
+                with self.assertRaises(PaymentLockedError):
+                    update_encoding_payment(sale_id, actor, payment_status='pending')
+                replay = self.patch(sale_id, payment_status='paid', payment_method=method, amount_tendered=amount)
+                self.assertEqual(replay.status_code, 200, replay.data)
+                self.assertEqual(Transaction.objects.filter(pk=sale_id).values().get(), before)
+
+    def test_pending_stays_editable_until_paid_then_all_history_reports_locked(self):
+        created = self.create()
+        sale_id = created.data['id']
+        changed = self.patch(sale_id, payment_status='pending', payment_method='online')
+        self.assertEqual(changed.status_code, 200, changed.data)
+        self.assertTrue(changed.data['can_update_payment'])
+        with self.captureOnCommitCallbacks(execute=True):
+            paid = self.patch(sale_id, payment_status='paid', payment_method='online')
+        self.assertEqual(paid.status_code, 200, paid.data)
+        self.assertFalse(paid.data['can_update_payment'])
+        for url in ('/sales/transactions/', '/sales/encoding/', f'/sales/customers/{self.customer.pk}/transactions/'):
+            row = self.client.get(url).data['results'][0]
+            self.assertFalse(row['can_update_payment'])
+        self.assertFalse(self.client.get('/sales/orders/').data['results'][0]['transaction']['can_update_payment'])
+        self.assertEqual(self.patch(sale_id, payment_status='pending').status_code, 409)
+
+    def test_payment_capability_is_read_only_and_unavailable_for_voided_or_nonmanual_sales(self):
+        from sales.serializers import TransactionSerializer
+        self.assertTrue(TransactionSerializer().fields['can_update_payment'].read_only)
+        normal = Transaction.objects.create(handled_by=self.staff)
+        self.assertFalse(self.client.get(f'/sales/transactions/{normal.pk}/').data['can_update_payment'])
+        sale_id = self.create().data['id']
+        Transaction.objects.filter(pk=sale_id).update(is_voided=True)
+        self.assertFalse(self.client.get(f'/sales/encoding/{sale_id}/').data['can_update_payment'])
 
     def test_online_payment_can_be_marked_paid_without_cash_tender(self):
         sale_id = self.create().data['id']

@@ -1,17 +1,28 @@
 # Frontend handoff and completion status
 
-Updated 2026-10-30 (Asia/Manila).
+Updated 2026-10-31 (Asia/Manila).
 
-**Overall status: partially satisfied.** The latest frontend implements most
-requested UI work. Remaining changes and verification evidence are detailed in
-[FRONTEND_HANDOFF_REVIEW.md](FRONTEND_HANDOFF_REVIEW.md). These displays do not
-imply production forecast approval.
+**Overall status: partially satisfied.** Frontend `305bdf49` is now checked out.
+Backend pagination support is implemented below; the frontend still needs to
+consume it. The local backend was rebuilt and deployed on 2026-10-31 with the
+cashier correction, paid-payment lock, payment-updater identity and summary/filter
+endpoints; the frontend image still predates the latest pull. Earlier dated reviews below
+describe their original checkouts and are not the status of the latest source.
+These displays do not imply production forecast approval.
 
 **Work boundary:** make backend changes in this repository. Communicate frontend
 implementation requests through this document; do not edit the sibling frontend
 repository during backend maintenance.
 
-Latest frontend pull: `63ecff33` on 2026-10-30. It implements the live-update
+Latest frontend pull: `305bdf49` on 2026-10-31. It removes discount presentation,
+preserves recorded decimal amounts, adds encoder/payment-status labels, cancels
+obsolete history reads, and loads staff KPI groups independently. Source review
+found these API expectations compatible with the backend. All **535 frontend
+tests** and strict TypeScript checks passed on this checkout. Full-list history
+and order downloads remain; use the new contract below to replace them. The
+local Docker frontend image still predates this pull.
+
+Previous deployed frontend: `63ecff33` on 2026-10-30. It implements the live-update
 client and product-only inventory cleanup requested below. The rebuilt local
 Docker frontend is running at `http://localhost:5174`, with the matching backend
 and ASGI events service. All 472 frontend tests and strict TypeScript checks
@@ -25,6 +36,297 @@ The earlier detailed review inspected frontend `origin/main` at
 on 2026-10-30, after pulling three upstream commits with a clean working tree.
 This review did not modify frontend application code, tests, dependencies or
 configuration.
+
+## Entered by wording and payment updater identity — 2026-10-31
+
+**Latest user clarification:** keep the **Entered by** column in Sales Encoding
+and show **only the encoder's account name** in its cells, for example `ADMIN`.
+Do not repeat `Encoded by`, `Entered by`, or the role prefix inside that column.
+Use `transaction.handled_by.username`, with `Not recorded` only when genuinely
+missing. Keep the exact account name; do not replace every administrator's name
+with the generic role Admin. This supersedes the earlier suggestion to rename
+the column Cashier. The Cashier display in sales history remains a separate
+column/context. Do not replace the encoder with the current viewer or the
+person who later changed the payment.
+
+**Backend implemented:** transaction/encoding responses and full/compact linked
+order transactions now include the read-only nullable field
+`payment_updated_by_user: {id, username, role} | null`. The existing
+`payment_updated_by` numeric ID/null and `payment_updated_at` timestamp are
+retained unchanged for compatibility. Example of distinct actors:
+
+```json
+{
+  "handled_by": {"id": 7, "username": "ADMIN", "role": "admin"},
+  "payment_updated_by": 12,
+  "payment_updated_by_user": {"id": 12, "username": "staffname", "role": "staff"},
+  "payment_updated_at": "2026-10-31T14:00:00+08:00"
+}
+```
+
+Here Entered by shows `ADMIN`; payment details show **Payment updated by:
+staffname** and the supplied timestamp in Asia/Manila. The payment updater is
+the last recorded payment-state writer, including the initial recorder when
+there has not been a later update. It is not a full event history. Preserve a
+null updater as `Not recorded`; do not guess from the encoder, cashier, viewer,
+payment method or Paid badge. Identical paid retries keep the original updater
+and timestamp. The new field is output-only; clients cannot choose the updater.
+No database migration or historical identity rewrite is required. API cache
+namespace v8 retires earlier response shapes; history queries eager-load the
+updater to avoid one extra database read per row.
+
+**Frontend implementation pending:**
+
+1. In `SalesEncoding.tsx`, retain header `Entered by` and replace the cell's
+   `encodedByLabel()` text/title with `sale.transaction.handled_by?.username`.
+   Plain names should fit the existing column. Other source labels can remain
+   in their appropriate details/history contexts.
+2. Add `payment_updated_by_user?: DjangoUserSummary | null` to
+   `DjangoTransaction` and its compact order Pick. In `receiptDetails.ts` and
+   transaction details, show **Payment updated by** from its username and the
+   existing **Payment updated** time. Render the available actor even when the
+   update occurred within the same second as creation; the existing timestamp
+   comparison must not suppress the identity. For initial payment recording,
+   neutral `Payment recorded by` wording is also accurate. Missing actor/time
+   stays `Not recorded`/`Not provided`, never an inferred account.
+3. Verify admin/staff encoders and a different payment updater: the Entered by
+   cell remains the encoder's plain username, while details show the actual
+   last updater/time. After Paid, the payment remains read-only. Live cache
+   updates should refresh details without replacing the original encoder.
+
+**Applied locally:** the backend image was rebuilt/deployed; API/events health,
+Django checks and pending-migration verification passed. Authenticated proxy
+GETs for SI1093 show **Entered by ADMIN** and **Payment updated by STAFF**, with
+the saved update time `2026-10-31T14:22:49.949357+08:00`, across transaction and
+encoding history/details and linked orders. It remains Paid and noneditable.
+All 19 business-table counts/content hashes were unchanged. The affected
+295-test regression passed 294 tests with one Windows-only skip. Frontend
+source/image were not changed, so the plain-name cell and visible payment audit
+still require the frontend implementation above.
+
+## Paid payments are final — 2026-10-31
+
+**Latest user requirement: once Paid, payment details are read-only for both
+admins and staff.** This supersedes earlier behavior/tests that allowed marking
+a paid encoding pending again. The backend locks the transaction row before
+checking the saved status. A pending/unknown manual payment may still be
+completed; after it becomes paid, status, payment method, tender, change and
+payment audit cannot be replaced through the payment endpoint. This applies
+equally to entries created paid and entries marked paid later.
+
+`PATCH /sales/encoding/{id}/payment/` returns **409** for a requested change to
+an already-paid payment:
+
+```json
+{"error": "Payment is already marked as paid and is read-only.", "code": "payment_locked"}
+```
+
+An identical paid retry returns **200** with the existing saved values and
+original updater/timestamp. That is a no-op for recovery after a lost response,
+not permission to edit a paid payment. No second payment is written and no stock
+or sale totals change. Existing validation, visibility and voided-sale checks
+remain. There is no admin bypass or unlock endpoint.
+
+Transaction/encoding responses and linked order transactions now include the
+read-only boolean **`can_update_payment`**. It is false for paid, voided and
+nonmanual records; otherwise true for a locally editable manual payment. It
+updates to false in the successful pending-to-paid PATCH response. The API cache
+namespace changed to v7 so older response shapes are not reused. No schema
+migration or historical payment rewrite is needed.
+
+**Frontend implementation pending; backend work does not hide the current UI
+button.** In `PaymentUpdateControl.tsx`, hide the Update payment action and
+editor whenever `can_update_payment === false` or `payment_status === "paid"`.
+Keep the manual/voided guards, and add the optional boolean to `DjangoTransaction`
+and the compact order type. For compatibility with an older backend that omits
+the flag, derive editability from manual, nonvoid and nonpaid status. Recheck
+before saving; when a live update or successful PATCH makes the record paid,
+close the editor immediately and show its saved payment details read-only.
+Handle `409`/`payment_locked` by retrieving fresh data and closing the editor;
+do not offer a retry that changes paid values. Preserve form/session guards.
+Verify a second user's already-open editor cannot overwrite the first user's
+payment, and that identical timeout recovery does not replace payment history.
+
+**Why "Entered by Admin" appears:** the Sales Encoding table hardcodes an
+`Entered by` header and renders `encodedByLabel()`, which describes the account
+that originally encoded the invoice. It is independent of `payment_updated_by`;
+recording payment later does not change who entered the sale. The latest user
+clarification keeps **Entered by** as the header and shows only
+`handled_by.username` in that cell, as detailed above. The source/encoder label can remain in
+receipt details and beneath SI numbers as already requested. No API identity
+change is required for the wording; do not substitute the payment updater or
+the current viewer as cashier.
+
+**Backend applied locally:** API/events health, Django checks and
+pending-migration verification passed after the image update. Read-only proxy
+GETs verified SI1093 is Paid with `can_update_payment: false` and cashier ADMIN
+across transaction/encoding history and linked orders. All 19 business-table
+counts/content hashes remained identical. The affected regression passed
+292 tests with one Windows-only skip; competing different finalizations were
+tested in disposable PostgreSQL and produced one 200 and one 409. No test
+payment writes ran against the working business database. See
+`BACKEND_VALIDATION.md`. Frontend source/image remain unchanged, so hiding the
+button, showing the plain Entered by name and displaying the payment updater
+are still frontend tasks.
+
+## Backend pagination and summaries ready — 2026-10-31
+
+**Backend implemented; frontend integration pending.** No schema migration or
+historical-data rewrite is required. The routes are relative to the configured
+API base: with the local proxy, `/sales/transactions/` becomes
+`/backend/sales/transactions/`. The local backend now serves the summary routes;
+other deployments must include this backend update before calling them.
+Existing list/detail/write response shapes remain compatible.
+
+### Paged rows and filters
+
+Use one GET per selected table page. The response remains
+`{count, next, previous, results}`; `count` is the complete filtered row count.
+
+| Route | Default page size | Maximum page size |
+| --- | --- | --- |
+| `GET /sales/transactions/` | 50 | 200 |
+| `GET /sales/orders/` | 50 | 500 |
+| `GET /sales/encoding/` | 50 | 200 |
+
+All three lists and their matching `/summary/` routes share these filters:
+
+| Parameter | Contract |
+| --- | --- |
+| `start_date`, `end_date` | Optional inclusive `YYYY-MM-DD` bounds in Asia/Manila; either can be supplied alone. Transactions/encoding use the receipt's effective `created_at`, including backdated encoding. Orders use the linked receipt's effective date, falling back to order creation when unlinked. |
+| `customer_id` | Positive customer ID. |
+| `handled_by` | Positive handler user ID. For transactions/encoding this is the recorded processor/encoder; for orders it is the order handler. It is not necessarily the original cashier. |
+| `payment_method` | `cash`, `online`, or `unknown`; orders filter their linked receipt. |
+| `payment_status` | `paid`, `pending`, or `unknown`; orders filter their linked receipt. |
+| `search` | One trimmed, case-insensitive substring, maximum 200 characters. Matches recorded invoice/SI number, linked customer name, or handler username. Orders also match an exact positive numeric order ID. It is a literal search, not a regular expression; no product/item search or fabricated display placeholders such as `Not recorded`. |
+
+Transaction/encoding lists and summaries additionally accept
+`include_voided=true` (default false). Order lists and summaries additionally
+accept `status=fulfilled|cancelled` (default all). `pending` is a **payment**
+status, not an order status. Orders retain cancelled/unlinked rows in the list;
+there is no order `include_voided` filter. Payment filters exclude unlinked
+orders because they have no recorded payment.
+
+Lists accept `page`, `page_size`, and `ordering`. Choose **one** ordering field:
+`id`, `created_at`, `transaction_date`, `transaction_number`, `total_amount`,
+`customer`, or `handled_by`; orders also accept `status`. Prefix with `-` for
+descending. Default is `-created_at`, with a stable ID tie-breaker in the same
+direction and nulls last. `created_at` orders by the row creation timestamp;
+`transaction_date` orders by the effective receipt date/fallback described
+above. `transaction_number` uses the saved SI string, not a numeric conversion.
+Use `ordering=-id` to preserve the current frontend's order-ID ordering.
+Invalid dates/ranges, IDs, filter choices, overlong search and unsupported
+ordering return HTTP 400. Other undocumented parameters are not supported
+filters and must not be assumed to affect results.
+
+Example: `GET /sales/orders/?page=1&page_size=25&status=fulfilled&payment_status=pending&ordering=-id`.
+
+### Transaction and encoding summaries
+
+`GET /sales/transactions/summary/` returns the complete filtered result:
+
+```json
+{
+  "transaction_count": 3,
+  "total_revenue": "125.65",
+  "paid_count": 1,
+  "paid_amount": "100.00",
+  "pending_count": 2,
+  "pending_amount": "25.65",
+  "unknown_count": 0,
+  "unknown_amount": "0.00"
+}
+```
+
+`GET /sales/encoding/summary/` returns the same shape restricted to manually
+encoded receipts. These are read-only GET endpoints for authenticated admins
+and staff. Page and ordering parameters do not affect summaries. All money
+fields are exact two-decimal **strings**, including zero and sums beyond the
+precision of one invoice. Preserve them through the frontend's recorded-money
+helpers; do not round-trip through `Number` for display or summation.
+
+`total_revenue` is the sum of recorded final invoice totals across **all**
+matching payment statuses, including pending and unknown. The state amounts
+partition that total. By default voided receipts are excluded; explicitly
+including them also includes their recorded amounts, so do not label that
+result as active revenue. No invoice totals are reconstructed from item prices.
+
+For admin Today's Sales/yesterday comparisons, request this summary once for
+each date with matching `start_date` and `end_date`. For staff My Sales Today,
+also send `handled_by=<current user ID>`. The API keeps shared staff history
+available; it does **not** implicitly restrict staff to their own records.
+
+### Order summary and dashboard counts
+
+`GET /sales/orders/summary/` returns:
+
+```json
+{
+  "order_count": 7,
+  "fulfilled_count": 5,
+  "cancelled_count": 2,
+  "pending_payment_count": 1,
+  "total_revenue": "60.60"
+}
+```
+
+Counts cover all matching orders, including legacy unlinked orders.
+`pending_payment_count` counts only **fulfilled orders with a linked, nonvoid
+transaction whose payment status is pending**. It does not count standalone
+checkout/encoding receipts, cancelled orders, paid/unknown payments, voided
+receipts or unlinked orders. `total_revenue` sums recorded linked transaction
+totals for fulfilled, nonvoid orders only; it excludes cancelled and unlinked
+orders. Counts are integers and money is a two-decimal string. Summary values
+reflect any supplied filters, independently of pagination or ordering.
+
+Use unfiltered `pending_payment_count` for the admin Pending Orders card; replace
+both the `KPICards` fallback scan and any parent-provided count derived from
+`ordersService.getAll()`. Use `handled_by=<current user ID>` and
+`fulfilled_count` for staff fulfilled-order counts. Retain independent loading
+states for the staff KPI groups; sales must not wait for order downloads.
+
+### Frontend implementation and verification remaining
+
+1. Replace `salesService.getAll()` / `ordersService.getAll()` page chains in
+   visible history/order tables with page-specific service methods. Pass
+   search, sorting and filters to the server; sorting/filtering only a local
+   page would produce incomplete results. Use the server `count` for paging.
+2. Load full-result cards from `/summary/`, never by summing the current page.
+   Send the same filters when a card describes the filtered table. If a card
+   intentionally shows lifetime totals (for example the current staff lifetime
+   card), issue a separate summary with only its identity/visibility scope and
+   keep the lifetime label. Do not accidentally redefine it as filtered totals.
+3. Include the user/session, complete filters, search, ordering, page and page
+   size in table cache keys; summary keys include identity and all their own
+   filters. Reset to page 1 when filters/search/order change. On live updates,
+   refresh the visible page and relevant summaries; if cancellation removes the
+   last page, return to a valid page. Preserve filters, selection and form drafts.
+   A selected detail outside the refreshed page can use the existing detail GET.
+4. Keep AbortSignal propagation, account/epoch guards, reconnect/resync and
+   coalesced fallback polling. Summary/list reads use the existing business-data
+   cache and write invalidation; no explicit report-refresh POST is needed.
+   Staff lists and summaries exclude entire hidden/inactive-category or mixed
+   receipts/orders before counting or summing. Never replace server totals with
+   client estimates for missing/failed summary responses.
+5. After integration, rebuild the frontend image and verify both
+   roles through the real proxy: filtered/unfiltered initial load, search/sort,
+   payment updates, cancellations, concurrent writes, reconnect and navigation.
+   Include this backend image in other deployments. Use the representative
+   4,800+ receipt dataset and record latency. Source/unit
+   verification does not establish end-to-end or deployment capacity.
+
+Backend regression coverage is in `sales/test_history_api.py`: summaries beyond
+one page and beyond one invoice's money precision, literal search, stable
+ordering, Manila day boundaries, order business-date fallback, invalid inputs,
+authentication, encoding scope, hidden/mixed category visibility, cache refresh,
+and a 4,801-row aggregate/page check. Tests run against disposable PostgreSQL
+with a private in-memory test cache; the working business database is not used.
+Final regression verification: **705 unique backend tests passed**, with one
+Windows-only ACL test unverified. The 706-test run had three skips; its two
+Docker CLI checks were subsequently run successfully on the host. Live events
+were tested with disposable Redis. Django system and migration-drift checks
+passed. Details are in `BACKEND_VALIDATION.md`. These are source/API tests;
+frontend integration and rebuilt-stack browser checks remain pending.
 
 ## Discount removal from the system — 2026-10-30
 
@@ -48,8 +350,11 @@ report previews and PDFs were verified through the existing frontend proxy;
 PDF text has no discount cards or rate. Frontend source and its container were
 not changed, so the UI removal below remains outstanding.
 
-Frontend `63ecff33` still enables admin checkout discounts and displays them in
-receipts/orders. Required changes:
+**2026-10-31 source update:** frontend `305bdf49` implements the removal and
+recorded-money display requested here, including guards for legacy pending
+submissions. Its 535 tests and TypeScript pass. Browser/PDF/print verification
+against rebuilt images remains pending. The following is the original request
+against `63ecff33`, retained as the acceptance checklist:
 
 1. Remove discount selectors, value inputs, permissions/prompts, calculations
    and summaries from every checkout, order and manual-encoding form. Remove
@@ -85,6 +390,36 @@ and payment-status labels below. No frontend application files were changed.
 
 ## History labels: encoder and payment status — 2026-10-30
 
+**2026-10-31 cashier correction requested by the user:** local manually encoded
+sales must show the encoding admin/staff member in the **Cashier** column.
+The backend now returns `recorded_cashier: {id, username, role}` from
+`handled_by` for those records, consistently across create/replay, history,
+detail, customer history and linked orders. This supersedes the earlier
+instruction below to leave manual encodings' cashier unknown. It is a display
+contract for the local processor, not a claim about an unrecorded paper-invoice
+cashier. Workbook imports with `source_reference` still return
+`recorded_cashier: null` because their import owner is not a known cashier.
+No historical rows or amounts are rewritten; the API cache namespace changes
+to retire cached null-cashier responses. The current frontend already prefers
+an explicit `recorded_cashier.username`, so this correction needs no frontend
+source edit. Keep the **Encoded by Admin/Staff — username** source label and
+payment badge. For example, SI1093 encoded by ADMIN displays **ADMIN** in Cashier
+and **Encoded by Admin — ADMIN** under the SI number.
+
+Applied locally: rebuilt the backend and recreated API/events/worker, retaining
+the prior image for rollback. Authenticated GETs through the existing frontend
+proxy verified SI1093 returns **ADMIN** in transaction list/detail, encoding and
+linked orders; summary endpoints also returned 200. API/events health, Django
+system and pending-migration checks passed. All 19 account/inventory/sales tables
+retained identical row counts and content hashes. The affected backend run
+passed 288 tests with one Windows-only skip (289 discovered). Frontend source
+and image were not changed; refresh the existing page to retrieve the corrected
+cashier field. No browser-render assertion was performed for this correction.
+
+**2026-10-31 source update:** frontend `305bdf49` now displays encoder labels and
+payment-status badges in history/mobile views using the existing backend fields.
+The following is the original request; verify it through the rebuilt frontend.
+
 **Frontend changes requested by the user. Backend fields already exist; no
 database migration or API change is required.** An administrator's manually
 encoded sale must be identified in history, and unpaid transactions must show
@@ -94,8 +429,8 @@ Frontend `63ecff33` currently shows payment method (Cash/Online) in admin/staff
 history rows and `MobileSaleCard`. Payment status is already available in
 `TransactionDetails`, the encoding list and customer history. Manual receipts
 are titled "Encoded Sales Record" in details, but the encoder is not shown in
-the history row; the Cashier field correctly remains "Not recorded" when the
-original cashier is unknown.
+the history row. That version left manual Cashier cells as "Not recorded";
+the 2026-10-31 correction above supersedes this behavior.
 
 Required display:
 
@@ -105,11 +440,11 @@ Required display:
   actual encoder's role, rather than the viewer's role. Staff encodings should
   likewise identify their encoder. `encoded_at` supplies the actual entry time;
   `transaction_date`/`created_at` remains the effective sale date.
-- Keep encoder identity separate from `recorded_cashier`. Manual encoding does
-  not establish who originally handled the sale. Do not replace a missing
-  original cashier with the encoding administrator, or infer manual encoding
-  from `handled_by.role` alone. Imported historical records must retain their
-  existing source classification.
+- For local manual encoding, display `recorded_cashier.username` in Cashier;
+  the backend supplies the encoder's identity as requested on 2026-10-31.
+  Identify manual encoding through `is_manually_encoded`, not
+  `handled_by.role` alone. Imported historical records retain their existing
+  source classification and unknown-cashier behavior.
 - Display **Pending**, **Paid**, or **Not recorded** from `payment_status`
   (`pending`, `paid`, or `unknown`/missing) alongside the payment method. Reuse
   `PaymentStatusBadge` in admin/staff sales history and mobile cards. A Cash or
@@ -137,6 +472,12 @@ the existing payload and shared badge component. No frontend source was edited
 in this backend task.
 
 ## QA follow-up: history and dashboard pagination — 2026-10-30
+
+**2026-10-31 update:** the backend filter/aggregate contract is now implemented
+in the section **Backend pagination and summaries ready** above. Frontend
+`305bdf49` implements obsolete-read cancellation and independent staff KPI loads,
+but retains full-history reads. The server pagination and summary integration
+requested here remains outstanding; use the explicit contract above.
 
 **Frontend changes requested after full QA of `63ecff33`.** The real-sale browser
 flow passed: a staff sale reached date-filtered admin history in 598 ms, another

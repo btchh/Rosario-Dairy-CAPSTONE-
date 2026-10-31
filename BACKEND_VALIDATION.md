@@ -1,5 +1,154 @@
 # Backend validation
 
+## Plain encoder names and visible payment updater — 2026-10-31
+
+The user clarified Sales Encoding should keep its Entered by header and show
+just the encoder's username, without the repeated Encoded by/role prefix. This
+supersedes the earlier suggestion to rename that column Cashier. The frontend
+cell currently calls `encodedByLabel()`; the latest handoff instructs it to use
+`handled_by.username` directly and show payment updater/time in details.
+
+Added output-only nullable `payment_updated_by_user: {id, username, role}` to
+transaction/encoding responses and full/compact linked order transactions.
+Existing `payment_updated_by` ID and `payment_updated_at` remain compatible.
+Missing updater data returns null and is not inferred from the encoder/viewer.
+The field reports the last recorded payment-state writer, including initial
+recording, not a full historical event log. Histories eager-load this user to
+avoid per-row queries; API cache namespace v8 retires the prior response shape.
+No model/data migration was added.
+
+Affected regression: **295 discovered, 294 passed, one Windows-only skip**, in
+45.570 seconds, using disposable PostgreSQL and an isolated cache/test hasher.
+Coverage verifies a different encoder/updater across history/detail/customer
+and linked-order APIs, nullable identity, read-only fields, spoof rejection,
+paid no-op replay preserving updater/time, and bounded history query counts.
+The earlier paid-finalization and cashier tests also pass.
+
+Built/deployed `rosario-dairy-backend:payment-updater-20261031` to local
+API/events/worker, retaining `before-payment-updater-20261031` for rollback.
+API/events health, Django checks and pending-migration verification passed.
+Read-only authenticated HTTP checks through the frontend proxy verified SI1093
+retains encoder/cashier ADMIN, reports payment updater STAFF and the stored
+`2026-10-31T14:22:49.949357+08:00` timestamp, and remains Paid/noneditable.
+Transaction/encoding list/detail and linked order payloads agree; summaries
+also return 200. All 19 working account/inventory/sales tables retained
+identical row counts/content hashes. No test payment writes ran against those
+tables. The disposable test service was removed afterward. Frontend
+source/image remain unchanged, so the visual wording/payment-audit display is
+still a frontend task documented in the handoff.
+
+## Paid payment finalization — 2026-10-31
+
+The user requested payment details become read-only once Paid. The payment
+service now checks the current status under the existing transaction row lock.
+For both admin and staff, a change to an already-paid status/method/tender is
+rejected with HTTP 409 and `code: payment_locked`. Identical paid retries return
+200 without rewriting values, recomputing recorded change or replacing the
+original payment updater/time. Paid-on-creation and later-finalized entries use
+the same rule; pending updates remain available. No unlock route was added.
+
+`can_update_payment` is a computed read-only boolean on transaction/encoding
+responses and full/compact linked order transactions. Paid, voided and
+nonmanual records return false. API cache namespace v7 retires older response
+shapes. No schema migration or stored payment rewrite was needed.
+
+Affected regression: **293 discovered, 292 passed, one Windows-only skip**, in
+47.220 seconds. Disposable PostgreSQL, isolated test cache and a fast test
+hasher were used. Coverage includes locked cash/online details for both roles,
+direct-service protection, pending-to-paid transitions, paid-on-creation,
+unchanged no-op replay audit, history/capability propagation, and two concurrent
+different finalizations producing one 200 and one 409 with the winning payment
+and updater preserved. The prior paid-to-pending expectation was replaced by
+the new finalization rule. The test service was removed after verification.
+
+Built/deployed `rosario-dairy-backend:payment-lock-20261031` to the local
+API/events/worker and retained `before-payment-lock-20261031` for rollback.
+API/events health, Django checks and pending-migration verification passed.
+Authenticated GETs through the frontend proxy verified SI1093 is Paid,
+`can_update_payment: false`, cashier ADMIN, consistently in transaction
+list/detail, encoding and linked orders. Summary reads also passed. Production
+payment PATCHes were not used for testing; all rejection/concurrency writes ran
+in the disposable database. All 19 working account/inventory/sales tables kept
+identical before/after row counts and content hashes.
+
+Frontend source/image remain unchanged. Its existing payment action is still
+rendered for paid rows; the backend now rejects edits. The latest
+`FRONTEND_HANDOFF.md` section instructs the owner to hide/close the editor for
+paid/noneditable records and handle stale 409s. Its earlier suggestion to rename
+Entered by to Cashier is superseded by the latest plain-name clarification above. The current label
+identifies the original invoice encoder, not the later payment updater. UI
+acceptance remains pending frontend implementation.
+
+## Manual encoder shown as cashier — 2026-10-31
+
+The user corrected the earlier display rule: a locally encoded sale should show
+its encoding admin/staff member in Cashier. `TransactionNumberMixin` now returns
+that user in `recorded_cashier`; the original encoded-by label remains.
+Workbook imports still return null, because their import owner does not
+identify a cashier. No saved identity, amount, date or historical row is changed.
+API cache namespace v6 retires cached null-cashier payloads. Existing frontend
+mapping already supports the nonnull user; frontend source/image were unchanged.
+
+Affected sales/cache/backend-fix regression: **289 tests, 288 passed, one
+Windows-only skip**, 49.801 seconds, using disposable PostgreSQL and an isolated
+test cache/fast test password hasher. Coverage verifies admin/staff encoders for
+both viewer roles across transaction/encoding list/detail, customer history,
+full/compact linked orders and encoding creation, plus imported-cashier
+preservation. The earlier missing-cashier expectation was updated to the user's
+new rule. The separate test database service was removed after verification.
+
+Built `rosario-dairy-backend:cashier-20261031` and applied it to local
+API/events/worker, with the prior image retained as
+`rosario-dairy-backend:before-cashier-correction-20261031`. This release includes
+the pagination summary/filter implementation below. API/events health, Django
+system and pending-migration checks passed; no migrations were applied.
+Authenticated read-only HTTP requests through the existing frontend proxy
+verified SI1093 returns cashier ADMIN in transaction list/detail, encoding and
+linked orders. Transaction/order summary routes also returned 200. Before/after
+row counts and content hashes were identical for all 19 account/inventory/sales
+tables. The frontend image was not rebuilt; a fresh read receives the corrected
+field. Browser rendering was not separately asserted for this correction.
+
+## History pagination filters and summaries — 2026-10-31
+
+Added authenticated read-only `/sales/transactions/summary/`,
+`/sales/orders/summary/` and `/sales/encoding/summary/` endpoints. Lists and
+summaries share date, customer, handler, payment and literal search filters;
+orders also filter fulfilled/cancelled status. Lists support stable server
+sorting and retain their existing pagination/response shapes. Summary amounts
+are exact decimal strings from recorded invoice totals, independent of paging.
+Pending-payment order counts include only fulfilled, nonvoid linked receipts
+awaiting payment. Existing role/category visibility and commit-based cache
+invalidation remain in force. The API cache namespace changed to prevent older
+responses that ignored the new filters from being reused.
+
+`sales/test_history_api.py` adds 18 tests, including a 4,801-receipt/order fixture
+whose summaries execute one aggregate query without serializing receipts.
+Coverage includes equal-value and large totals, paid/pending/unknown amounts,
+voided/cancelled/unlinked orders, inherited encoding scope, search, stable sort,
+Manila day boundaries/backdated receipts, malformed inputs, existing error-field
+compatibility, authorization, hidden/mixed category access and cache refresh.
+
+Final regression: **706 discovered; 705 unique tests passed; one Windows ACL
+test remains skipped.** The six-app run (`sales`, `config`, `reporting`,
+`inventory`, `accounts`, `systemsetting`) took 106.023 seconds: 703 passed,
+three skipped. The two Compose checks skipped inside the container then passed
+on the host with the Docker CLI (0.527 seconds). Live-event integration tests
+ran with an explicitly supplied disposable Redis broker. Database tests used
+a separate ephemeral PostgreSQL container, isolated test cache and a test-only
+fast password hasher. No working business data or running application services
+were modified. Django system checks passed; `makemigrations --check --dry-run`
+reported no changes. The temporary test services were removed afterward.
+
+Frontend checkout `305bdf49` passed all 535 tests and TypeScript during the
+alignment review. Frontend source was not edited. Integration steps and API
+examples are in the 2026-10-31 section of `FRONTEND_HANDOFF.md`; the older
+review is explicitly marked historical. At this initial source verification,
+the running backend/frontend images had not been rebuilt. The subsequent local
+backend deployment is recorded above. Frontend adoption and end-to-end latency
+verification on representative data remain pending; the query test is not a
+deployment-capacity claim.
+
 ## Discount feature removal; historical data retained — 2026-10-30
 
 New checkout, orders and manual encoding reject active discounts for both

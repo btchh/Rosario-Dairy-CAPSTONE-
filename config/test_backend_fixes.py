@@ -175,14 +175,15 @@ class BackendFixTests(BusinessFixture, APITestCase):
         self.assertIsNone(persisted.voided_at)
         self.assertFalse(StockReturn.objects.exists())
 
-    def test_imported_cashier_is_unknown_without_losing_import_owner(self):
+    def test_imported_cashier_stays_unknown_and_manual_cashier_identifies_encoder(self):
         sale = Transaction.objects.create(handled_by=self.admin, source_reference='2025:OWNER')
         response = self.client.get(f'/sales/transactions/{sale.pk}/')
         self.assertIsNone(response.data['recorded_cashier'])
         self.assertEqual(response.data['handled_by']['id'], self.admin.pk)
         encoded = Transaction.objects.create(handled_by=self.admin, encoded_at=timezone.now())
         response = self.client.get(f'/sales/transactions/{encoded.pk}/')
-        self.assertIsNone(response.data['recorded_cashier'])
+        self.assertEqual(response.data['recorded_cashier'], {
+            'id': self.admin.pk, 'username': self.admin.username, 'role': self.admin.role})
         self.assertEqual(response.data['handled_by']['id'], self.admin.pk)
 
     def test_deactivation_revokes_old_access_and_refresh_after_reactivation(self):

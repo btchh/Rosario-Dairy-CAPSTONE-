@@ -1,8 +1,8 @@
-from config.data_cache import CachedListMixin
+from config.data_cache import CachedListMixin, cache_api_response
 from config.renderers import CachedJSONRenderer
 from typing import cast
 from decimal import Decimal
-from django.db.models import Prefetch
+from django.db.models import Count, Prefetch, Q, Sum
 from django.conf import settings
 from django.utils import timezone
 from rest_framework import viewsets
@@ -23,6 +23,7 @@ from ..services.item_pricing import reject_discount_fields
 from accounts.throttles import SaleWriteRateThrottle
 from .transaction_views import CancellationInput
 from ..services.submission_service import request_id, submit_sale
+from sales.history import HistoryFilterError, filter_history, order_history
 
 
 class OrderPagination(PageNumberPagination):
@@ -47,9 +48,11 @@ class OrderViewSet(CachedListMixin, viewsets.ModelViewSet):
         return OrderListSerializer if self.action == 'list' else OrderSerializer
 
     def get_queryset(self):
-        if self.action == 'list':
+        if self.action == 'summary':
+            queryset = super().get_queryset()
+        elif self.action == 'list':
             queryset = super().get_queryset().select_related(
-                'customer', 'handled_by', 'transaction__handled_by'
+                'customer', 'handled_by', 'transaction__handled_by', 'transaction__payment_updated_by'
             ).prefetch_related(Prefetch(
                 'items', queryset=OrderItem.objects.prefetch_related(Prefetch(
                     'product', queryset=Product.objects.only('id', 'name')
@@ -75,7 +78,7 @@ class OrderViewSet(CachedListMixin, viewsets.ModelViewSet):
             ))
             queryset = super().get_queryset().select_related(
                 'customer', 'handled_by', 'transaction__handled_by',
-                'transaction__customer',
+                'transaction__customer', 'transaction__payment_updated_by',
             ).prefetch_related(
                 Prefetch('items', queryset=order_items),
                 Prefetch('transaction__items', queryset=transaction_items),
@@ -90,6 +93,12 @@ class OrderViewSet(CachedListMixin, viewsets.ModelViewSet):
             ).exclude(
                 transaction__items__product_batch__product__category__is_active=False
             )
+        if self.action in ('list', 'summary'):
+            try:
+                queryset = filter_history(queryset, self.request.query_params, orders=True)
+                return order_history(queryset, self.request.query_params, orders=True) if self.action == 'list' else queryset
+            except HistoryFilterError as exc:
+                raise ValidationError({exc.field: str(exc)}) from exc
         customer_id = self.request.query_params.get('customer_id')
         if customer_id:
             try:
@@ -100,6 +109,20 @@ class OrderViewSet(CachedListMixin, viewsets.ModelViewSet):
                 }) from exc
             queryset = queryset.filter(customer_id=customer_id)
         return queryset
+
+    @action(detail=False, methods=['get'])
+    @cache_api_response
+    def summary(self, request):
+        active = Q(status='fulfilled', transaction__is_voided=False)
+        values = self.get_queryset().aggregate(
+            order_count=Count('pk'),
+            fulfilled_count=Count('pk', filter=Q(status='fulfilled')),
+            cancelled_count=Count('pk', filter=Q(status='cancelled')),
+            pending_payment_count=Count('pk', filter=active & Q(transaction__payment_status='pending')),
+            total_revenue=Sum('transaction__total_amount', filter=active),
+        )
+        values['total_revenue'] = format(values['total_revenue'], '.2f') if values['total_revenue'] is not None else '0.00'
+        return Response(values)
 
     def create(self, request, *args, **kwargs):
         if not isinstance(request.data, dict):

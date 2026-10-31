@@ -7,6 +7,10 @@ from sales.models import Transaction
 from .item_pricing import ZERO
 
 
+class PaymentLockedError(ValueError):
+    pass
+
+
 def payment_values(total, method, status, amount_tendered):
     if method not in ('cash', 'online'):
         raise ValueError(f"Invalid payment_method '{method}'. Must be cash or online.")
@@ -35,7 +39,17 @@ def update_encoding_payment(sale_id, user, *, payment_status, **details):
     if sale.is_voided:
         raise ValueError('Payment cannot be updated on a voided transaction.')
     method = details.get('payment_method', sale.payment_method)
-    tendered = details.get('amount_tendered', sale.amount_tendered if sale.payment_status == 'paid' and payment_status == 'paid' else None)
+    if sale.payment_status == 'paid':
+        tendered = details.get('amount_tendered', sale.amount_tendered)
+        if tendered is not None:
+            tendered = parse_decimal(tendered, 'amount_tendered', min_value=ZERO, max_digits=20)
+        # A lost response may cause an identical retry. Return the saved values
+        # without recomputing change or replacing the original payment audit.
+        if (payment_status == 'paid' and method == sale.payment_method
+                and tendered == sale.amount_tendered):
+            return sale
+        raise PaymentLockedError('Payment is already marked as paid and is read-only.')
+    tendered = details.get('amount_tendered')
     tendered, change = payment_values(sale.total_amount, method, payment_status, tendered)
     if (sale.payment_status, sale.payment_method, sale.amount_tendered, sale.change_due) == (payment_status, method, tendered, change):
         return sale

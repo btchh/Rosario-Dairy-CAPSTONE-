@@ -1,10 +1,9 @@
 from config.data_cache import cache_api_response
 from config.renderers import CachedJSONRenderer
-from datetime import datetime, time
 from django.conf import settings
-from django.db.models import Prefetch
+from django.db.models import Count, Prefetch, Q, Sum
 from django.utils import timezone
-from rest_framework import viewsets, status
+from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework import serializers
 from rest_framework.pagination import PageNumberPagination
@@ -18,7 +17,7 @@ from ..serializers import TransactionSerializer
 from ..visibility import visible_transactions
 from ..services.order_service import void_transaction
 from accounts.throttles import SaleWriteRateThrottle
-from config.api_inputs import parse_positive_id
+from sales.history import filter_history, order_history
 
 
 class CancellationInput(serializers.Serializer):
@@ -40,7 +39,7 @@ def transaction_history_queryset(user):
         'product_batch', queryset=batches,
     ))
     queryset = Transaction.objects.select_related(
-        'handled_by', 'customer'
+        'handled_by', 'customer', 'payment_updated_by'
     ).prefetch_related(Prefetch('items', queryset=items)).order_by('-created_at', '-id')
     return visible_transactions(user.role == 'staff', queryset)
 
@@ -51,7 +50,7 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
     created through checkout, orders or manual encoding; arbitrary updates and
     deletion remain unavailable.
 
-    Query params (all optional, list endpoint only):
+    Query params (all optional, shared by list and summary):
       start_date=YYYY-MM-DD
       end_date=YYYY-MM-DD
       payment_method=cash|online
@@ -59,6 +58,8 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
       handled_by=<user id>
       customer_id=<customer id>
       include_voided=true   (defaults to false — voided sales hidden by default)
+      search=<invoice number, customer name or handler username>
+    Lists also accept ordering (see sales.history.order_history).
     """
     queryset = Transaction.objects.all()
     serializer_class = TransactionSerializer
@@ -84,82 +85,36 @@ class TransactionViewSet(viewsets.ReadOnlyModelViewSet):
         # compute its product's current stock in the same query.
         return transaction_history_queryset(self.request.user)
 
-    @staticmethod
-    def _parse_date_param(value, field_name):
+    def filtered_history(self):
+        return filter_history(self.get_queryset(), self.request.query_params)
+
+    @action(detail=False, methods=['get'])
+    @cache_api_response
+    def summary(self, request):
+        """Full filtered totals, independent of pagination and receipt details."""
         try:
-            return datetime.strptime(value, '%Y-%m-%d').date()
-        except (ValueError, TypeError):
-            raise ValueError(f"{field_name} must be in YYYY-MM-DD format.")
+            queryset = self.filtered_history()
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=400)
+        aggregates = {'transaction_count': Count('pk'), 'total_revenue': Sum('total_amount')}
+        for state in ('paid', 'pending', 'unknown'):
+            condition = Q(payment_status=state)
+            aggregates[state + '_count'] = Count('pk', filter=condition)
+            aggregates[state + '_amount'] = Sum('total_amount', filter=condition)
+        values = queryset.aggregate(**aggregates)
+        # Explicit strings preserve cents and totals larger than one invoice.
+        for field in ('total_revenue', 'paid_amount', 'pending_amount', 'unknown_amount'):
+            values[field] = format(values[field], '.2f') if values[field] is not None else '0.00'
+        return Response(values)
 
     @cache_api_response
     def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
-        params = request.query_params
-
-        start_date_raw = params.get('start_date')
-        end_date_raw = params.get('end_date')
-
         try:
-            start_date = self._parse_date_param(start_date_raw, 'start_date') if start_date_raw else None
-            end_date = self._parse_date_param(end_date_raw, 'end_date') if end_date_raw else None
-        except ValueError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-        if start_date and end_date and start_date > end_date:
-            return Response({'error': 'start_date cannot be after end_date.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if start_date:
-            queryset = queryset.filter(created_at__gte=timezone.make_aware(
-                datetime.combine(start_date, time.min)
-            ))
-        if end_date:
-            queryset = queryset.filter(created_at__lte=timezone.make_aware(
-                datetime.combine(end_date, time.max)
-            ))
-
-        payment_method = params.get('payment_method')
-        if payment_method:
-            valid_methods = [choice[0] for choice in Transaction.PAYMENT_CHOICES]
-            if payment_method not in valid_methods:
-                return Response(
-                    {'error': f"Invalid payment_method. Must be one of {valid_methods}."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            queryset = queryset.filter(payment_method=payment_method)
-
-        payment_status = params.get('payment_status')
-        if payment_status:
-            if payment_status not in ('pending', 'paid', 'unknown'):
-                return Response({'error': 'payment_status must be pending, paid, or unknown.'}, status=400)
-            queryset = queryset.filter(payment_status=payment_status)
-
-        handled_by = params.get('handled_by')
-        if handled_by:
-            try:
-                handled_by = parse_positive_id(handled_by, 'handled_by')
-            except ValueError:
-                return Response({'error': 'handled_by must be a valid user id.'}, status=status.HTTP_400_BAD_REQUEST)
-            queryset = queryset.filter(handled_by_id=handled_by)
-
-        customer_id = params.get('customer_id')
-        if customer_id:
-            try:
-                customer_id = parse_positive_id(customer_id, 'customer_id')
-            except ValueError:
-                return Response(
-                    {'error': 'customer_id must be a valid customer id.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            queryset = queryset.filter(customer_id=customer_id)
-
-        include_voided = params.get('include_voided', 'false').lower() == 'true'
-        if not include_voided:
-            queryset = queryset.filter(is_voided=False)
-
+            queryset = order_history(self.filtered_history(), request.query_params)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=400)
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
             return self.get_paginated_response(serializer.data)
-
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
+        return Response(self.get_serializer(queryset, many=True).data)

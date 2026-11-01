@@ -1,64 +1,19 @@
 # Frontend handoff — open requests only
 
-Updated 2026-10-31 (Asia/Manila), reviewed against frontend `b479b67f`.
-**Two open requests: stock-out request IDs and server pagination.**
-Verification and completed work are recorded in [BACKEND_VALIDATION.md](BACKEND_VALIDATION.md).
+Updated 2026-11-01 (Asia/Manila), reviewed against frontend `840f08ea`.
+**One open request: complete server pagination.**
+
+Frontend `840f08ea`, backend `df6f732a` and the stock-out migration are deployed
+locally. Completed stock-out/idle-session integration and verification are in
+[BACKEND_VALIDATION.md](BACKEND_VALIDATION.md). The completed stock-out API
+contract is retained in the
+[versioned handoff](https://github.com/btchh/Rosario-Dairy-CAPSTONE-/blob/df6f732a/FRONTEND_HANDOFF.md).
 
 **Work boundary:** backend changes belong here; frontend changes go through this
 handoff. Do not edit the sibling frontend source during backend maintenance.
 API paths below are relative to the configured base (`/backend` locally).
 
-## 1. Send saved request IDs with stock outflows
-
-Durable pending storage is already implemented in `b479b67f`. The remaining
-work is sending/reusing its UUID and supporting confirmed replay. Cover both
-`outflowsService.create` and `inventoryService.disposeExpiredBatch`; both
-currently POST without a request ID.
-
-**Deployment dependency:** rebuild the backend and apply
-`inventory.0013_stock_adjustment_submission` before enabling keyed retries.
-The running Docker backend still ignores these IDs.
-
-### API contract
-
-`POST /inventory/stock-adjustments/` accepts UUID `request_id` in the existing
-JSON body (recommended), or an `Idempotency-Key` header. If both are supplied
-they must identify the same UUID. Invalid/empty/null IDs or disagreement return
-400. The header is allowed by CORS for configured frontend origins.
-
-| Result | HTTP status | Behavior |
-| --- | --- | --- |
-| First success | 201 | Standard stock-adjustment JSON; stock deducted once. |
-| Same account, ID and effective payload | 200 | Original saved JSON; no additional deduction or adjustment. |
-| Same account and ID, changed details | 409 | `detail`: `This request ID was already used for a different stock adjustment.` |
-
-Compared fields are batch ID, adjustment type, quantity, unit cost and reason.
-Equivalent numeric representations match; omitted/null/empty reasons match.
-Replay works across restarts, simultaneous retries and full-batch disposal.
-Failed transactions roll back stock, adjustment and request record together.
-IDs are scoped to the authenticated account and endpoint, without automatic
-expiry. Current authentication/visibility rules still apply. Unkeyed requests
-remain compatible but have no duplicate-request protection.
-
-### Frontend changes and acceptance
-
-1. Send the durably saved UUID as `request_id` with its exact saved payload.
-   Preserve the storage-failure guard and prevent overlapping independent
-   submissions. Keep recovery scoped to the originating account.
-2. Recover uncertain keyed requests with the same UUID, payload and account;
-   accept both 200 and 201. On 409 retain recovery state and reconcile History.
-   Never generate a new ID to retry an uncertain write. A failed recovery call
-   does not prove the earlier attempt failed. Legacy uncertain requests sent
-   without an ID still require History reconciliation; do not assign one later
-   and replay them.
-3. Refetch inventory and outflow History after confirmed success. Replayed
-   nested batch/product values are original snapshots and must not overwrite
-   newer stock totals as if they were current reads.
-4. Verify lost response/reload, replay, changed-payload conflict, full disposal,
-   account switching, concurrent tabs and blocked storage. Do not enable retries
-   against the older backend, which silently ignores request IDs.
-
-## 2. Complete server pagination
+## Complete server pagination
 
 Backend APIs are available in the running image. Remaining full-history downloads:
 

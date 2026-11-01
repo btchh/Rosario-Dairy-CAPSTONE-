@@ -1,26 +1,36 @@
 # Backend image and frontend integration
 
-## Current local release — 2026-10-31
+## Current local release — 2026-11-01
 
-Frontend `f6e4546a` and the matching backend are deployed at
-`http://localhost:5174`. Migration `accounts.0005_loginsession` is applied;
-existing users must sign in again. Idle logout is active at 15 minutes without
-interaction, with a one-minute warning and confirmed continuation. Gmail SMTP
-remains configured and its authentication check passes.
+Frontend `840f08ea` and backend `df6f732a` are deployed at
+`http://localhost:5174`. Migration `inventory.0013_stock_adjustment_submission`
+is applied. Stock outflows and expired-batch disposal now send saved UUIDs;
+matching retries return the original result without another deduction.
 
-Both images are tagged `:idle-f6e4546a-20261031` and `:local`:
+Both images are tagged `:stock-840f08ea-20261101` and `:local`:
 
-- `rosario-dairy-frontend`: `sha256:6c5730791ff212cc8c9bc7b75808dfec8726b054125ab96bfff021291af1875f`.
-- `rosario-dairy-backend`: `sha256:f67dc73bcfe16bb4692c0c55895b47c53b4ade1d6b938a0d82f8f72c8c2adf06`.
+- `rosario-dairy-frontend`: `sha256:80b680d460276e66fd0e5fea232c4f209ec491a9456607b223deb6d4723f3f51`.
+- `rosario-dairy-backend`: `sha256:ce31672a1ccfd3678c2bbc7161e993bb4ccd5d81b08b2e41f4bdf2831c21854e`.
 
-Previous images are retained as `:before-idle-f6e4546a-20261031`. All 614 frontend
-tests, TypeScript, 736 backend tests (one platform skip), health and authenticated
-admin/staff browser checks passed. The private full database backup was restored
-successfully in isolated PostgreSQL. All 19 existing business-table contents
-were unchanged. See `BACKEND_VALIDATION.md` for scope/evidence.
+Previous images are retained as `:before-stock-840f08ea-20261101`. Rollback can
+leave the additive request table in place; do not restore an older database over
+new transactions. The frontend checks backend support before allowing recovery.
 
-Pagination remains partial; it is the only open frontend request in
-`FRONTEND_HANDOFF.md`. No new image export/archive was created by this rollout.
+Frontend 657 tests, TypeScript and production build passed. The backend source
+previously passed 755 tests with one platform skip. This rollout additionally
+passed real frontend/backend HTTP checks in an isolated restored database:
+lost-response/reload recovery, full disposal, conflicting/concurrent requests,
+and two-instance token refresh. Authenticated admin/staff browser checks against
+the deployed stack passed, including payment locks and idle-session behavior.
+
+Both pre-deployment database backups restored in isolated PostgreSQL. All 19
+existing business tables were unchanged through migration and smoke checks.
+The 15-minute idle timeout/one-minute warning remains active; Gmail connection
+and authentication passed without sending email. Service health and migration
+checks passed. See `BACKEND_VALIDATION.md` for evidence and verification scope.
+
+Only server pagination remains in `FRONTEND_HANDOFF.md`. No new image
+export/archive was created by this rollout.
 
 ## Sharing an image
 

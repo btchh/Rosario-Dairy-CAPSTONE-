@@ -2,22 +2,28 @@
 
 **Decision: not ready for public production deployment as currently configured.**
 
-## Current local release — 2026-10-31
+## Current local release — 2026-11-01
 
-Frontend `f6e4546a`, the session-enforcing backend image, and migration
-`accounts.0005_loginsession` are now deployed together locally. The 15-minute
-idle policy/one-minute warning passed authenticated admin/staff browser checks,
-including continuation, activity/background-read distinction, expiry and
-independent-session preservation. Frontend 614 tests/TypeScript and backend
-736 tests (one platform skip) passed. Gmail authentication, service health and
-migration checks passed. The full pre-migration backup restored in isolated
-PostgreSQL, and all 19 existing business-table contents were unchanged.
-Stock-out idempotency is now implemented in backend source, pending its Docker
-rollout and additive `inventory.0013_stock_adjustment_submission` migration.
-The frontend handoff covers durable stock-out request IDs and the remaining
-server pagination work. Existing unkeyed requests do not gain replay protection.
-Public OVHcloud/domain/TLS/operations verification below remains outstanding;
-local deployment does not establish public production readiness.
+Frontend `840f08ea` and backend `df6f732a` are deployed locally, with
+`inventory.0013_stock_adjustment_submission` applied. Stock-out request IDs and
+recovery now work for outflows and expired-batch disposal. Frontend 657 tests,
+TypeScript and production build passed; backend source previously passed 755
+tests (one platform skip). Real frontend/backend HTTP integration passed in an
+isolated restored database, including lost-response recovery, concurrent last-
+stock requests and two-instance rotating refresh without extending idle expiry.
+
+Authenticated admin/staff browser checks passed against the deployed stack:
+plain encoder/updater display, paid-payment locks, trusted activity, background
+reads, warning/continuation and expiry. The runtime remains 900 seconds idle
+with a 60-second warning. Gmail authentication, service health and migration
+checks passed. No email was sent by these checks. Private full pre-deployment
+backups restored in isolated PostgreSQL, and all 19 existing business-table
+contents were unchanged through migration and smoke checks.
+
+Only server pagination remains in the frontend handoff. Public OVHcloud/domain/
+TLS/operations verification below remains outstanding; this local rollout does
+not establish public production readiness. See `BACKEND_VALIDATION.md` for
+image identities, backup evidence and the scope of the checks.
 
 ## SMTP follow-up — 2026-10-31
 

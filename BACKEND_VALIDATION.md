@@ -1,5 +1,84 @@
 # Backend validation
 
+## Coordinated stock-out Docker rollout — 2026-11-01
+
+Built/deployed frontend `840f08ea` and backend source `df6f732a`, with server
+pagination still open. Preserved the previous images as
+`:before-stock-840f08ea-20261101`. Current images are tagged `:local` and
+`:stock-840f08ea-20261101`:
+
+- Backend: `sha256:ce31672a1ccfd3678c2bbc7161e993bb4ccd5d81b08b2e41f4bdf2831c21854e`.
+- Frontend: `sha256:80b680d460276e66fd0e5fea232c4f209ec491a9456607b223deb6d4723f3f51`.
+
+Saved full private PostgreSQL backups both before validation and after stopping
+application writers. Both restored successfully in isolated PostgreSQL with
+`--no-owner --no-acl`. The first restore matched all 19 existing business-table
+fingerprints. The quiesced restore provided the pre-migration comparison;
+existing tables matched the deployed database afterward. Backups, SHA-256 files,
+restore logs and fingerprints are in
+`../private-database-backups/stock-release-840f08ea-20261101/`. The quiesced dump
+SHA-256 is `6b066c577c9f124a4d80993dcabfebbf439654d6ef2fcc202eeb72b888a0fffb`.
+
+The migration plan contained only
+`inventory.0013_stock_adjustment_submission`; startup applied it successfully.
+The new request table was empty after rollout. All 19 existing business tables
+were unchanged. API/events/frontend are healthy, the worker is running, and the
+migration job exited zero. Gateway reload, Django system/pending-migration
+checks and Gmail connection/authentication passed. No email was sent.
+
+Frontend 657 tests, TypeScript and production build had passed. Backend source
+was unchanged from its 755-pass/one-platform-skip regression. Before live
+migration, the new image ran against the isolated restored database with
+fixture-only stock. The actual frontend service bundle over real HTTP passed:
+lost-response/reload recovery with one deduction; changed-payload 409; full
+expired-disposal recovery after stock exhaustion; concurrent last-stock requests
+returning identical 201/200 results; and two frontend instances sharing one real
+rotating refresh without extending idle expiry. No live stock writes were used.
+
+Authenticated Chromium checks against the deployed frontend passed for admin
+and staff: plain encoder names, payment-updater display, paid read-only controls,
+server-paged encoding reads, trusted activity extending the server deadline,
+background reads leaving it unchanged, warning/Continue Session, automatic idle
+cleanup, expired access/refresh/activity rejection and an independent sign-in
+remaining valid. Runtime remains 900 seconds idle/60 seconds warning. Only four
+temporary test-session deadlines were shortened; all four test sessions and four
+refresh records were removed afterward, together with private token files and
+browser profiles. No runtime exceptions, business writes or real-user global
+logout occurred during these browser checks.
+
+Removed the completed stock-out request from the handoff; only server pagination
+remains. No new image archive was exported. This updates the local Docker stack;
+OVHcloud production configuration/operations checks remain separate. The new
+table can remain during an image rollback; do not overwrite newer business data
+with an old backup to roll back application code. Removed the isolated test
+API/database/Redis containers, their volumes/network, and temporary credentials.
+
+Logs: `/tmp/stock-release-build-20261101.log`,
+`/tmp/stock-release-migration-plan-20261101.log`,
+`/tmp/stock-release-isolated-migrate-20261101.log`,
+`/tmp/stock-release-integration-20261101.log`,
+`/tmp/stock-release-deploy-20261101.log`,
+`/tmp/stock-release-migrate-20261101.log`, and
+`/tmp/stock-release-browser-20261101.log`.
+
+## Frontend stock-out integration and remaining handoff — 2026-11-01
+
+Fast-forwarded the frontend from `b479b67f` to `840f08ea`. Both stock outflows
+and expired-batch disposal now use saved request IDs with account-scoped durable
+recovery, concurrent-tab guards, original response handling and backend support
+checks. Legacy/unverified requests remain History-only. All **657 frontend
+tests**, TypeScript and the production build passed. These are source/component
+checks; coordinated Docker/backend integration verification remains pending.
+
+Source review confirms server pagination is still incomplete: staff sales
+history, admin/staff Orders, history search/sort and staff dashboard order counts
+retain full-history downloads. Removed the completed stock-out implementation
+request from `FRONTEND_HANDOFF.md`; only pagination remains. Docker and the
+application database were unchanged at this source-review stage; the subsequent
+rollout is recorded above. Logs: `/tmp/frontend-840f08ea-tests-20261101.log`,
+`/tmp/frontend-840f08ea-types-20261101.log`, and
+`/tmp/frontend-840f08ea-build-20261101.log`.
+
 ## Frontend pull before Docker update — 2026-10-31
 
 Fast-forwarded the clean frontend checkout from `f6e4546a` to `b479b67f`.

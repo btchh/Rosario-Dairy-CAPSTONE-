@@ -1,5 +1,30 @@
 # Backend validation
 
+## Frontend/backend source parity — 2026-11-01
+
+Reviewed backend `0b7f9aee` (application source `df6f732a`) against frontend
+`5e390189`. Enumerated 79 non-admin route patterns and 122 declared method
+bindings; traced frontend HTTP calls, runtime imports and value references to
+service members. Seventy-three bindings have frontend call sites; four have
+only unreferenced service wrappers. Remaining bindings were classified as
+unexposed business flows, diagnostics, alternatives, maintenance or explicitly
+retired/rejected/metadata interfaces. All explicit frontend paths resolved.
+
+The review found backend-only stock counts, direct receipt voiding and product
+reactivation; four additional adjustment types and several field/role controls
+are also absent from the UI. Two notification flags are persisted but have no
+current alert generator or UI controls. Backend implementation/test coverage
+does not establish complete UI parity. No browser tests, business writes,
+emails, runtime changes or Docker rollout were performed for this source audit.
+
+Server pagination, summaries, filters, detail endpoints and the deferred
+frontend request are preserved. See
+[BACKEND_FRONTEND_PARITY.md](BACKEND_FRONTEND_PARITY.md) and its full route/
+reference inventory in
+[validation/frontend-parity-20261101.json](validation/frontend-parity-20261101.json).
+All classification totals, unique route/method keys and referenced source paths
+were checked; the existing regression suites were not rerun for documentation.
+
 ## OVHcloud VPS preparation — 2026-11-01
 
 Prepared a supplement for frozen `release-2026.11.01`; no application image or

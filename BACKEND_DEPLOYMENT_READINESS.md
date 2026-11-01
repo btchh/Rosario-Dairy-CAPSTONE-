@@ -7,6 +7,10 @@ user and forecast limitations remain. See [RELEASE.md](RELEASE.md) for the packa
 See [DEPLOYMENT_FEATURE_AUDIT.md](DEPLOYMENT_FEATURE_AUDIT.md) for the feature
 matrix, actual HTTP/browser coverage and untested acceptance paths.
 
+The subsequent [source parity review](BACKEND_FRONTEND_PARITY.md) identifies
+backend-only flows and partial UI controls. Those capabilities must not be
+treated as completed frontend features; the review preserves server pagination.
+
 ## Current release and verified behavior
 
 Frontend `5e390189` and backend application source `df6f732a` are deployed

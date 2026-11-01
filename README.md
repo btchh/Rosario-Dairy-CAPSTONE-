@@ -33,6 +33,11 @@ acceptance work are in [DEPLOYMENT_FEATURE_AUDIT.md](DEPLOYMENT_FEATURE_AUDIT.md
 For the selected OVHcloud VPS 1 and free DuckDNS hostname, start with
 [VPS_PREPARATION.md](VPS_PREPARATION.md).
 
+Backend capabilities without current UI flows, partial field/role coverage and
+intentionally server-only code are recorded in
+[BACKEND_FRONTEND_PARITY.md](BACKEND_FRONTEND_PARITY.md). Server pagination is
+retained; an implemented API is not evidence of a completed frontend feature.
+
 Always apply migrations before starting, including after pulling backend code:
 
 ```bash

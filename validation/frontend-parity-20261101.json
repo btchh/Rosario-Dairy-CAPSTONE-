@@ -1,0 +1,2301 @@
+{
+  "review_date": "2026-11-01",
+  "backend_commit": "0b7f9aee39c23f97d27152e38055ca61f8154bdc",
+  "backend_application_commit": "df6f732a",
+  "frontend_commit": "5e39018993a55461e48b30dedc4ff24132be8c38",
+  "scope": "Static route, payload and UI call tracing; no business writes or parity execution claims",
+  "route_pattern_count": 79,
+  "declared_method_binding_count": 122,
+  "runtime_import_reachable_source_files": 137,
+  "http_call_expression_count": 94,
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/accounts/admin-reset-password/",
+      "backend_source": "accounts/views/passwordmanagement_views.py",
+      "view": "accounts.views.passwordmanagement_views.AdminResetPasswordView",
+      "handler": "post",
+      "frontend_calls": [
+        {
+          "file": "src/features/users/api/user.service.ts",
+          "line": 125,
+          "owner": "resetPassword",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/accounts/admin-reset-password/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/change-password/",
+      "backend_source": "accounts/views/passwordmanagement_views.py",
+      "view": "accounts.views.passwordmanagement_views.ChangePasswordView",
+      "handler": "post",
+      "frontend_calls": [
+        {
+          "file": "src/features/auth/api/auth.service.ts",
+          "line": 79,
+          "owner": "changePassword",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/accounts/change-password/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/email-change/",
+      "backend_source": "accounts/views/email_change_views.py",
+      "view": "accounts.views.email_change_views.EmailChangeView",
+      "handler": "post",
+      "frontend_calls": [
+        {
+          "file": "src/features/auth/api/auth.service.ts",
+          "line": 39,
+          "owner": "requestEmailChange",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/accounts/email-change/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/accounts/email-change/",
+      "backend_source": "accounts/views/email_change_views.py",
+      "view": "accounts.views.email_change_views.EmailChangeView",
+      "handler": "patch",
+      "frontend_calls": [
+        {
+          "file": "src/features/auth/api/auth.service.ts",
+          "line": 43,
+          "owner": "confirmEmailChange",
+          "expression": "http.patch",
+          "service_only": false,
+          "method": "PATCH",
+          "path": "/accounts/email-change/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/forgot-password/",
+      "backend_source": "accounts/views/forgotpassword_views.py",
+      "view": "accounts.views.forgotpassword_views.ForgotPasswordView",
+      "handler": "post",
+      "frontend_calls": [
+        {
+          "file": "src/features/auth/api/auth.service.ts",
+          "line": 70,
+          "owner": "requestPasswordOTP",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/accounts/forgot-password/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/login/",
+      "backend_source": "accounts/views/login_views.py",
+      "view": "accounts.views.login_views.CooldownTokenObtainPairView",
+      "handler": "post",
+      "frontend_calls": [
+        {
+          "file": "src/features/auth/api/auth.service.ts",
+          "line": 83,
+          "owner": "login",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/accounts/login/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/logout/",
+      "backend_source": "accounts/views/logout_views.py",
+      "view": "accounts.views.logout_views.LogoutView",
+      "handler": "post",
+      "frontend_calls": [
+        {
+          "file": "src/features/auth/api/auth.service.ts",
+          "line": 55,
+          "owner": "logout",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/accounts/logout/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/refresh/",
+      "backend_source": "accounts/views/login_views.py",
+      "view": "accounts.views.login_views.PasswordAwareTokenRefreshView",
+      "handler": "post",
+      "frontend_calls": [
+        {
+          "file": "src/lib/api.ts",
+          "line": 190,
+          "owner": "refreshLogoutCredentials",
+          "expression": "axiosInstance.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/accounts/refresh/"
+        },
+        {
+          "file": "src/lib/api.ts",
+          "line": 218,
+          "owner": "refreshAccessToken",
+          "expression": "axiosInstance.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/accounts/refresh/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/register/",
+      "backend_source": "accounts/views/register_views.py",
+      "view": "accounts.views.register_views.RegisterView",
+      "handler": "post",
+      "frontend_calls": [
+        {
+          "file": "src/features/users/api/user.service.ts",
+          "line": 73,
+          "owner": "createUser",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/accounts/register/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/reset-password/",
+      "backend_source": "accounts/views/forgotpassword_views.py",
+      "view": "accounts.views.forgotpassword_views.PasswordResetConfirmView",
+      "handler": "post",
+      "frontend_calls": [
+        {
+          "file": "src/features/auth/api/auth.service.ts",
+          "line": 75,
+          "owner": "resetPassword",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/accounts/reset-password/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/session/",
+      "backend_source": "accounts/views/session_views.py",
+      "view": "accounts.views.session_views.SessionView",
+      "handler": "get",
+      "frontend_calls": [
+        {
+          "file": "src/features/auth/api/auth.service.ts",
+          "line": 31,
+          "owner": "getSession",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/accounts/session/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/session/activity/",
+      "backend_source": "accounts/views/session_views.py",
+      "view": "accounts.views.session_views.SessionActivityView",
+      "handler": "post",
+      "frontend_calls": [
+        {
+          "file": "src/features/auth/api/auth.service.ts",
+          "line": 35,
+          "owner": "reportActivity",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/accounts/session/activity/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/user/",
+      "backend_source": "accounts/views/getuser_views.py",
+      "view": "accounts.views.getuser_views.GetUserView",
+      "handler": "get",
+      "frontend_calls": [
+        {
+          "file": "src/features/auth/api/auth.service.ts",
+          "line": 88,
+          "owner": "getCurrentUser",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/accounts/user/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "PATCH",
+      "path": "/accounts/user/",
+      "backend_source": "accounts/views/getuser_views.py",
+      "view": "accounts.views.getuser_views.GetUserView",
+      "handler": "patch",
+      "frontend_calls": [
+        {
+          "file": "src/features/users/api/user.service.ts",
+          "line": 25,
+          "owner": "updateCurrentUser",
+          "expression": "http.patch",
+          "service_only": false,
+          "method": "PATCH",
+          "path": "/accounts/user/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/users/",
+      "backend_source": "accounts/views/userlist_views.py",
+      "view": "accounts.views.userlist_views.UserListView",
+      "handler": "get",
+      "frontend_calls": [
+        {
+          "file": "src/features/users/api/user.service.ts",
+          "line": 30,
+          "owner": "getAll",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/accounts/users/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/accounts/users/{pk}/",
+      "backend_source": "accounts/views/userdetail_views.py",
+      "view": "accounts.views.userdetail_views.UserDetailView",
+      "handler": "get",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "PATCH",
+      "path": "/accounts/users/{pk}/",
+      "backend_source": "accounts/views/userdetail_views.py",
+      "view": "accounts.views.userdetail_views.UserDetailView",
+      "handler": "patch",
+      "frontend_calls": [
+        {
+          "file": "src/features/users/api/user.service.ts",
+          "line": 110,
+          "owner": "updateUser",
+          "expression": "http.patch",
+          "service_only": false,
+          "method": "PATCH",
+          "path": "/accounts/users/{id}/"
+        },
+        {
+          "file": "src/features/users/api/user.service.ts",
+          "line": 120,
+          "owner": "reactivateUser",
+          "expression": "http.patch",
+          "service_only": false,
+          "method": "PATCH",
+          "path": "/accounts/users/{id}/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/accounts/users/{pk}/",
+      "backend_source": "accounts/views/userdetail_views.py",
+      "view": "accounts.views.userdetail_views.UserDetailView",
+      "handler": "delete",
+      "frontend_calls": [
+        {
+          "file": "src/features/users/api/user.service.ts",
+          "line": 115,
+          "owner": "deactivateUser",
+          "expression": "http.delete",
+          "service_only": false,
+          "method": "DELETE",
+          "path": "/accounts/users/{id}/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forecasting/chart/",
+      "backend_source": "forecasting/views.py",
+      "view": "forecasting.views.ForecastChartView",
+      "handler": "get",
+      "frontend_calls": [
+        {
+          "file": "src/features/dashboard/api/forecasting.service.ts",
+          "line": 252,
+          "owner": "getChart",
+          "expression": "http.get",
+          "service_only": true,
+          "method": "GET",
+          "path": "/api/forecasting/chart/"
+        }
+      ],
+      "classification": "service_only"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forecasting/demo-2026/",
+      "backend_source": "forecasting/views.py",
+      "view": "forecasting.views.DemoForecastView",
+      "handler": "get",
+      "frontend_calls": [],
+      "classification": "retired_410",
+      "behavior": "Always returns HTTP 410; not a functioning synthetic-forecast feature."
+    },
+    {
+      "method": "GET",
+      "path": "/api/forecasting/evidence/",
+      "backend_source": "forecasting/views.py",
+      "view": "forecasting.views.ProjectionEvidenceView",
+      "handler": "get",
+      "frontend_calls": [],
+      "classification": "diagnostic_without_ui",
+      "finding": "P10"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forecasting/feeding/",
+      "backend_source": "forecasting/views.py",
+      "view": "forecasting.views.FeedingStudyView",
+      "handler": "get",
+      "frontend_calls": [],
+      "classification": "diagnostic_without_ui",
+      "finding": "P10"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forecasting/forecast/",
+      "backend_source": "forecasting/views.py",
+      "view": "forecasting.views.ForecastView",
+      "handler": "get",
+      "frontend_calls": [
+        {
+          "file": "src/features/dashboard/api/forecasting.service.ts",
+          "line": 254,
+          "owner": "getRegularStatus",
+          "expression": "http.get",
+          "service_only": true,
+          "method": "GET",
+          "path": "/api/forecasting/forecast/"
+        }
+      ],
+      "classification": "service_only"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forecasting/graph/",
+      "backend_source": "forecasting/views.py",
+      "view": "forecasting.views.BetaGraphView",
+      "handler": "get",
+      "frontend_calls": [
+        {
+          "file": "src/features/dashboard/api/forecasting.service.ts",
+          "line": 244,
+          "owner": "getGraph",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/api/forecasting/graph/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forecasting/models/",
+      "backend_source": "forecasting/views.py",
+      "view": "forecasting.views.ModelStatusView",
+      "handler": "get",
+      "frontend_calls": [],
+      "classification": "diagnostic_without_ui",
+      "finding": "P10"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forecasting/patterns/",
+      "backend_source": "forecasting/views.py",
+      "view": "forecasting.views.PatternStudyView",
+      "handler": "get",
+      "frontend_calls": [],
+      "classification": "diagnostic_without_ui",
+      "finding": "P10"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forecasting/refresh/",
+      "backend_source": "forecasting/views.py",
+      "view": "forecasting.views.ForecastRefreshView",
+      "handler": "get",
+      "frontend_calls": [
+        {
+          "file": "src/features/dashboard/api/forecasting.service.ts",
+          "line": 258,
+          "owner": "getRefresh",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/api/forecasting/refresh/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/api/forecasting/refresh/",
+      "backend_source": "forecasting/views.py",
+      "view": "forecasting.views.ForecastRefreshView",
+      "handler": "post",
+      "frontend_calls": [
+        {
+          "file": "src/features/dashboard/api/forecasting.service.ts",
+          "line": 261,
+          "owner": "startRefresh",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/api/forecasting/refresh/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forecasting/refresh/{job_id}/",
+      "backend_source": "forecasting/views.py",
+      "view": "forecasting.views.ForecastRefreshView",
+      "handler": "get",
+      "frontend_calls": [
+        {
+          "file": "src/features/dashboard/api/forecasting.service.ts",
+          "line": 258,
+          "owner": "getRefresh",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/api/forecasting/refresh/{job_id}/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/api/forecasting/refresh/{job_id}/",
+      "backend_source": "forecasting/views.py",
+      "view": "forecasting.views.ForecastRefreshView",
+      "handler": "post",
+      "frontend_calls": [],
+      "classification": "rejected_405",
+      "behavior": "Handler rejects POST with a job ID; start jobs only on the collection route."
+    },
+    {
+      "method": "GET",
+      "path": "/api/forecasting/weekly/",
+      "backend_source": "forecasting/views.py",
+      "view": "forecasting.views.WeeklyModelView",
+      "handler": "get",
+      "frontend_calls": [],
+      "classification": "diagnostic_without_ui",
+      "finding": "P10"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/export-pdf/",
+      "backend_source": "reporting/views.py",
+      "view": "reporting.views.ReportPDFExportView",
+      "handler": "get",
+      "frontend_calls": [
+        {
+          "file": "src/features/reports/api/reports.service.ts",
+          "line": 85,
+          "owner": "downloadReportPDF",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/api/reports/export-pdf/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports/preview/",
+      "backend_source": "reporting/views.py",
+      "view": "reporting.views.ReportPreviewView",
+      "handler": "get",
+      "frontend_calls": [
+        {
+          "file": "src/features/reports/api/reports.service.ts",
+          "line": 77,
+          "owner": "fetchReportPreview",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/api/reports/preview/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/api/reports/refresh/",
+      "backend_source": "reporting/views.py",
+      "view": "reporting.views.ReportRefreshView",
+      "handler": "post",
+      "frontend_calls": [
+        {
+          "file": "src/features/reports/api/reports.service.ts",
+          "line": 114,
+          "owner": "refreshReportCache",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/api/reports/refresh/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/events/",
+      "backend_source": "config/live_events.py",
+      "view": "config.live_events.events",
+      "handler": "events",
+      "frontend_calls": [
+        {
+          "file": "src/lib/liveEvents.ts",
+          "line": 113,
+          "owner": "startLiveUpdates",
+          "expression": "fetch",
+          "service_only": false,
+          "method": "GET",
+          "path": "/events/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/",
+      "backend_source": "venv/lib/python3.14/site-packages/rest_framework/routers.py",
+      "view": "rest_framework.routers.APIRootView",
+      "handler": "get",
+      "frontend_calls": [],
+      "classification": "api_root_metadata"
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/(?:ingredients|ingredient-batches|suppliers|low-stock/ingredients|expiring/ingredients)/{legacy_detail}",
+      "backend_source": "inventory/views/retired_inventory_views.py",
+      "view": "inventory.views.retired_inventory_views.RetiredInventoryView",
+      "handler": "get",
+      "frontend_calls": [],
+      "classification": "retired_compatibility",
+      "behavior": "Empty legacy collection GET; detail reads and writes return HTTP 410."
+    },
+    {
+      "method": "POST",
+      "path": "/inventory/(?:ingredients|ingredient-batches|suppliers|low-stock/ingredients|expiring/ingredients)/{legacy_detail}",
+      "backend_source": "inventory/views/retired_inventory_views.py",
+      "view": "inventory.views.retired_inventory_views.RetiredInventoryView",
+      "handler": "post",
+      "frontend_calls": [],
+      "classification": "retired_compatibility",
+      "behavior": "Empty legacy collection GET; detail reads and writes return HTTP 410."
+    },
+    {
+      "method": "PUT",
+      "path": "/inventory/(?:ingredients|ingredient-batches|suppliers|low-stock/ingredients|expiring/ingredients)/{legacy_detail}",
+      "backend_source": "inventory/views/retired_inventory_views.py",
+      "view": "inventory.views.retired_inventory_views.RetiredInventoryView",
+      "handler": "put",
+      "frontend_calls": [],
+      "classification": "retired_compatibility",
+      "behavior": "Empty legacy collection GET; detail reads and writes return HTTP 410."
+    },
+    {
+      "method": "PATCH",
+      "path": "/inventory/(?:ingredients|ingredient-batches|suppliers|low-stock/ingredients|expiring/ingredients)/{legacy_detail}",
+      "backend_source": "inventory/views/retired_inventory_views.py",
+      "view": "inventory.views.retired_inventory_views.RetiredInventoryView",
+      "handler": "patch",
+      "frontend_calls": [],
+      "classification": "retired_compatibility",
+      "behavior": "Empty legacy collection GET; detail reads and writes return HTTP 410."
+    },
+    {
+      "method": "DELETE",
+      "path": "/inventory/(?:ingredients|ingredient-batches|suppliers|low-stock/ingredients|expiring/ingredients)/{legacy_detail}",
+      "backend_source": "inventory/views/retired_inventory_views.py",
+      "view": "inventory.views.retired_inventory_views.RetiredInventoryView",
+      "handler": "delete",
+      "frontend_calls": [],
+      "classification": "retired_compatibility",
+      "behavior": "Empty legacy collection GET; detail reads and writes return HTTP 410."
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/categories/",
+      "backend_source": "inventory/views/category_views.py",
+      "view": "inventory.views.category_views.CategoryViewSet",
+      "handler": "list",
+      "frontend_calls": [
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 197,
+          "owner": "getCategoriesRaw",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/inventory/categories/"
+        },
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 205,
+          "owner": "getCategories",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/inventory/categories/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/inventory/categories/",
+      "backend_source": "inventory/views/category_views.py",
+      "view": "inventory.views.category_views.CategoryViewSet",
+      "handler": "create",
+      "frontend_calls": [
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 297,
+          "owner": "createCategory",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/inventory/categories/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/categories/icon-options/",
+      "backend_source": "inventory/views/category_views.py",
+      "view": "inventory.views.category_views.CategoryViewSet",
+      "handler": "icon_options",
+      "frontend_calls": [
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 221,
+          "owner": "getCategoryIconOptions",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/inventory/categories/icon-options/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/categories/{pk}/",
+      "backend_source": "inventory/views/category_views.py",
+      "view": "inventory.views.category_views.CategoryViewSet",
+      "handler": "retrieve",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "PUT",
+      "path": "/inventory/categories/{pk}/",
+      "backend_source": "inventory/views/category_views.py",
+      "view": "inventory.views.category_views.CategoryViewSet",
+      "handler": "update",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "PATCH",
+      "path": "/inventory/categories/{pk}/",
+      "backend_source": "inventory/views/category_views.py",
+      "view": "inventory.views.category_views.CategoryViewSet",
+      "handler": "partial_update",
+      "frontend_calls": [
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 308,
+          "owner": "updateCategory",
+          "expression": "http.patch",
+          "service_only": false,
+          "method": "PATCH",
+          "path": "/inventory/categories/{id}/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/inventory/categories/{pk}/",
+      "backend_source": "inventory/views/category_views.py",
+      "view": "inventory.views.category_views.CategoryViewSet",
+      "handler": "destroy",
+      "frontend_calls": [
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 312,
+          "owner": "deleteCategory",
+          "expression": "http.delete",
+          "service_only": false,
+          "method": "DELETE",
+          "path": "/inventory/categories/{id}/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/inventory/categories/{pk}/deactivate/",
+      "backend_source": "inventory/views/category_views.py",
+      "view": "inventory.views.category_views.CategoryViewSet",
+      "handler": "deactivate",
+      "frontend_calls": [
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 317,
+          "owner": "deactivateCategory",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/inventory/categories/{id}/deactivate/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/inventory/categories/{pk}/reactivate/",
+      "backend_source": "inventory/views/category_views.py",
+      "view": "inventory.views.category_views.CategoryViewSet",
+      "handler": "reactivate",
+      "frontend_calls": [
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 321,
+          "owner": "reactivateCategory",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/inventory/categories/{id}/reactivate/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/expiring/products/",
+      "backend_source": "inventory/views/productstock_views.py",
+      "view": "inventory.views.productstock_views.ExpiringProductView",
+      "handler": "get",
+      "frontend_calls": [
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 232,
+          "owner": "getExpiringProducts",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/inventory/expiring/products/"
+        },
+        {
+          "file": "src/lib/notifications.service.ts",
+          "line": 88,
+          "owner": "getAllWithExpiry",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/inventory/expiring/products/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/fefo-config/",
+      "backend_source": "inventory/views/fefoconf_views.py",
+      "view": "inventory.views.fefoconf_views.FEFOConfViewSet",
+      "handler": "list",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/fefo-config/{pk}/",
+      "backend_source": "inventory/views/fefoconf_views.py",
+      "view": "inventory.views.fefoconf_views.FEFOConfViewSet",
+      "handler": "retrieve",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "PUT",
+      "path": "/inventory/fefo-config/{pk}/",
+      "backend_source": "inventory/views/fefoconf_views.py",
+      "view": "inventory.views.fefoconf_views.FEFOConfViewSet",
+      "handler": "update",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "PATCH",
+      "path": "/inventory/fefo-config/{pk}/",
+      "backend_source": "inventory/views/fefoconf_views.py",
+      "view": "inventory.views.fefoconf_views.FEFOConfViewSet",
+      "handler": "partial_update",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/low-stock/products/",
+      "backend_source": "inventory/views/productstock_views.py",
+      "view": "inventory.views.productstock_views.LowStockProductView",
+      "handler": "get",
+      "frontend_calls": [
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 226,
+          "owner": "getLowStockProducts",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/inventory/low-stock/products/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/product-batches/",
+      "backend_source": "inventory/views/productbatch_views.py",
+      "view": "inventory.views.productbatch_views.ProductBatchViewSet",
+      "handler": "list",
+      "frontend_calls": [
+        {
+          "file": "src/features/inventory/api/outflows.service.ts",
+          "line": 126,
+          "owner": "batches",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/inventory/product-batches/"
+        },
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 55,
+          "owner": "getExpiredBatches",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/inventory/product-batches/"
+        },
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 67,
+          "owner": "getCatalogOverview",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/inventory/product-batches/"
+        },
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 119,
+          "owner": "getAll",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/inventory/product-batches/"
+        },
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 173,
+          "owner": "getFEFO",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/inventory/product-batches/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/inventory/product-batches/",
+      "backend_source": "inventory/views/productbatch_views.py",
+      "view": "inventory.views.productbatch_views.ProductBatchViewSet",
+      "handler": "create",
+      "frontend_calls": [
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 282,
+          "owner": "createProduct",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/inventory/product-batches/"
+        },
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 350,
+          "owner": "restockProduct",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/inventory/product-batches/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/product-batches/{pk}/",
+      "backend_source": "inventory/views/productbatch_views.py",
+      "view": "inventory.views.productbatch_views.ProductBatchViewSet",
+      "handler": "retrieve",
+      "frontend_calls": [
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 94,
+          "owner": "disposeExpiredBatch",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/inventory/product-batches/{id}/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "PUT",
+      "path": "/inventory/product-batches/{pk}/",
+      "backend_source": "inventory/views/productbatch_views.py",
+      "view": "inventory.views.productbatch_views.ProductBatchViewSet",
+      "handler": "update",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "PATCH",
+      "path": "/inventory/product-batches/{pk}/",
+      "backend_source": "inventory/views/productbatch_views.py",
+      "view": "inventory.views.productbatch_views.ProductBatchViewSet",
+      "handler": "partial_update",
+      "frontend_calls": [
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 344,
+          "owner": "updateProductBatch",
+          "expression": "http.patch",
+          "service_only": false,
+          "method": "PATCH",
+          "path": "/inventory/product-batches/{id}/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/inventory/product-batches/{pk}/",
+      "backend_source": "inventory/views/productbatch_views.py",
+      "view": "inventory.views.productbatch_views.ProductBatchViewSet",
+      "handler": "destroy",
+      "frontend_calls": [],
+      "classification": "restricted_maintenance_without_ui",
+      "behavior": "Only unused zero-quantity batches without protected relations can be deleted; received stock is retained."
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/products/",
+      "backend_source": "inventory/views/product_views.py",
+      "view": "inventory.views.product_views.ProductViewSet",
+      "handler": "list",
+      "frontend_calls": [
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 118,
+          "owner": "getAll",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/inventory/products/"
+        },
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 206,
+          "owner": "getCategories",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/inventory/products/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/inventory/products/",
+      "backend_source": "inventory/views/product_views.py",
+      "view": "inventory.views.product_views.ProductViewSet",
+      "handler": "create",
+      "frontend_calls": [
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 272,
+          "owner": "createProduct",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/inventory/products/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/products/{pk}/",
+      "backend_source": "inventory/views/product_views.py",
+      "view": "inventory.views.product_views.ProductViewSet",
+      "handler": "retrieve",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "PUT",
+      "path": "/inventory/products/{pk}/",
+      "backend_source": "inventory/views/product_views.py",
+      "view": "inventory.views.product_views.ProductViewSet",
+      "handler": "update",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "PATCH",
+      "path": "/inventory/products/{pk}/",
+      "backend_source": "inventory/views/product_views.py",
+      "view": "inventory.views.product_views.ProductViewSet",
+      "handler": "partial_update",
+      "frontend_calls": [
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 335,
+          "owner": "updateProduct",
+          "expression": "http.patch",
+          "service_only": false,
+          "method": "PATCH",
+          "path": "/inventory/products/{id}/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/inventory/products/{pk}/",
+      "backend_source": "inventory/views/product_views.py",
+      "view": "inventory.views.product_views.ProductViewSet",
+      "handler": "destroy",
+      "frontend_calls": [
+        {
+          "file": "src/features/inventory/api/inventory.service.ts",
+          "line": 339,
+          "owner": "deleteProduct",
+          "expression": "http.delete",
+          "service_only": false,
+          "method": "DELETE",
+          "path": "/inventory/products/{id}/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/inventory/products/{pk}/deactivate/",
+      "backend_source": "inventory/views/product_views.py",
+      "view": "inventory.views.product_views.ProductViewSet",
+      "handler": "deactivate",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "POST",
+      "path": "/inventory/products/{pk}/reactivate/",
+      "backend_source": "inventory/views/product_views.py",
+      "view": "inventory.views.product_views.ProductViewSet",
+      "handler": "reactivate",
+      "frontend_calls": [],
+      "classification": "feature_without_ui",
+      "finding": "P04"
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/stock-adjustments/",
+      "backend_source": "inventory/views/stockadjustment_views.py",
+      "view": "inventory.views.stockadjustment_views.StockAdjustmentViewSet",
+      "handler": "list",
+      "frontend_calls": [
+        {
+          "file": "src/features/inventory/api/outflows.service.ts",
+          "line": 130,
+          "owner": "list",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/inventory/stock-adjustments/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/inventory/stock-adjustments/",
+      "backend_source": "inventory/views/stockadjustment_views.py",
+      "view": "inventory.views.stockadjustment_views.StockAdjustmentViewSet",
+      "handler": "create",
+      "frontend_calls": [
+        {
+          "file": "src/features/inventory/api/outflows.service.ts",
+          "line": 29,
+          "owner": "supportsKeyedAdjustments",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/inventory/stock-adjustments/"
+        },
+        {
+          "file": "src/features/inventory/api/outflows.service.ts",
+          "line": 64,
+          "owner": "send",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/inventory/stock-adjustments/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/stock-adjustments/{pk}/",
+      "backend_source": "inventory/views/stockadjustment_views.py",
+      "view": "inventory.views.stockadjustment_views.StockAdjustmentViewSet",
+      "handler": "retrieve",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/stock-counts/",
+      "backend_source": "inventory/views/stockcount_views.py",
+      "view": "inventory.views.stockcount_views.StockCountViewSet",
+      "handler": "list",
+      "frontend_calls": [],
+      "classification": "feature_without_ui",
+      "finding": "P01"
+    },
+    {
+      "method": "POST",
+      "path": "/inventory/stock-counts/",
+      "backend_source": "inventory/views/stockcount_views.py",
+      "view": "inventory.views.stockcount_views.StockCountViewSet",
+      "handler": "create",
+      "frontend_calls": [],
+      "classification": "feature_without_ui",
+      "finding": "P01"
+    },
+    {
+      "method": "GET",
+      "path": "/inventory/stock-counts/{pk}/",
+      "backend_source": "inventory/views/stockcount_views.py",
+      "view": "inventory.views.stockcount_views.StockCountViewSet",
+      "handler": "retrieve",
+      "frontend_calls": [],
+      "classification": "feature_without_ui",
+      "finding": "P01"
+    },
+    {
+      "method": "GET",
+      "path": "/sales/",
+      "backend_source": "venv/lib/python3.14/site-packages/rest_framework/routers.py",
+      "view": "rest_framework.routers.APIRootView",
+      "handler": "get",
+      "frontend_calls": [],
+      "classification": "api_root_metadata"
+    },
+    {
+      "method": "POST",
+      "path": "/sales/checkout/",
+      "backend_source": "sales/views/checkout_views.py",
+      "view": "sales.views.checkout_views.CheckoutView",
+      "handler": "create",
+      "frontend_calls": [
+        {
+          "file": "src/features/pos/api/checkout.service.ts",
+          "line": 7,
+          "owner": "sendCheckout",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/sales/checkout/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/sales/customers/",
+      "backend_source": "sales/views/customer_views.py",
+      "view": "sales.views.customer_views.CustomerViewSet",
+      "handler": "list",
+      "frontend_calls": [
+        {
+          "file": "src/features/customers/api/customers.service.ts",
+          "line": 19,
+          "owner": "getAll",
+          "expression": "getAllPages",
+          "service_only": false,
+          "method": "GET",
+          "path": "/sales/customers/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/sales/customers/",
+      "backend_source": "sales/views/customer_views.py",
+      "view": "sales.views.customer_views.CustomerViewSet",
+      "handler": "create",
+      "frontend_calls": [
+        {
+          "file": "src/features/customers/api/customers.service.ts",
+          "line": 41,
+          "owner": "createCustomer",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/sales/customers/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/sales/customers/{pk}/",
+      "backend_source": "sales/views/customer_views.py",
+      "view": "sales.views.customer_views.CustomerViewSet",
+      "handler": "retrieve",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "PUT",
+      "path": "/sales/customers/{pk}/",
+      "backend_source": "sales/views/customer_views.py",
+      "view": "sales.views.customer_views.CustomerViewSet",
+      "handler": "update",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "PATCH",
+      "path": "/sales/customers/{pk}/",
+      "backend_source": "sales/views/customer_views.py",
+      "view": "sales.views.customer_views.CustomerViewSet",
+      "handler": "partial_update",
+      "frontend_calls": [
+        {
+          "file": "src/features/customers/api/customers.service.ts",
+          "line": 66,
+          "owner": "updateCustomer",
+          "expression": "http.patch",
+          "service_only": false,
+          "method": "PATCH",
+          "path": "/sales/customers/{id}/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "DELETE",
+      "path": "/sales/customers/{pk}/",
+      "backend_source": "sales/views/customer_views.py",
+      "view": "sales.views.customer_views.CustomerViewSet",
+      "handler": "destroy",
+      "frontend_calls": [
+        {
+          "file": "src/features/customers/api/customers.service.ts",
+          "line": 70,
+          "owner": "deleteCustomer",
+          "expression": "http.delete",
+          "service_only": false,
+          "method": "DELETE",
+          "path": "/sales/customers/{id}/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/sales/customers/{pk}/reactivate/",
+      "backend_source": "sales/views/customer_views.py",
+      "view": "sales.views.customer_views.CustomerViewSet",
+      "handler": "reactivate",
+      "frontend_calls": [
+        {
+          "file": "src/features/customers/api/customers.service.ts",
+          "line": 75,
+          "owner": "reactivateCustomer",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/sales/customers/{id}/reactivate/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/sales/customers/{pk}/transactions/",
+      "backend_source": "sales/views/customer_views.py",
+      "view": "sales.views.customer_views.CustomerViewSet",
+      "handler": "transactions",
+      "frontend_calls": [
+        {
+          "file": "src/features/customers/api/customers.service.ts",
+          "line": 17,
+          "owner": "getTransactions",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/sales/customers/{id}/transactions/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/sales/encoding/",
+      "backend_source": "sales/views/encoding_views.py",
+      "view": "sales.views.encoding_views.EncodingViewSet",
+      "handler": "list",
+      "frontend_calls": [
+        {
+          "file": "src/features/sales/api/encoding.service.ts",
+          "line": 22,
+          "owner": "getPage",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/sales/encoding/"
+        },
+        {
+          "file": "src/features/sales/api/encoding.service.ts",
+          "line": 41,
+          "owner": "list",
+          "expression": "getAllPages",
+          "service_only": false,
+          "method": "GET",
+          "path": "/sales/encoding/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/sales/encoding/",
+      "backend_source": "sales/views/encoding_views.py",
+      "view": "sales.views.encoding_views.EncodingViewSet",
+      "handler": "create",
+      "frontend_calls": [
+        {
+          "file": "src/features/sales/api/encoding.service.ts",
+          "line": 57,
+          "owner": "create",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/sales/encoding/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/sales/encoding/summary/",
+      "backend_source": "sales/views/encoding_views.py",
+      "view": "sales.views.encoding_views.EncodingViewSet",
+      "handler": "summary",
+      "frontend_calls": [
+        {
+          "file": "src/features/sales/api/encoding.service.ts",
+          "line": 26,
+          "owner": "getSummary",
+          "expression": "http.get",
+          "service_only": true,
+          "method": "GET",
+          "path": "/sales/encoding/summary/"
+        }
+      ],
+      "classification": "service_only"
+    },
+    {
+      "method": "GET",
+      "path": "/sales/encoding/{pk}/",
+      "backend_source": "sales/views/encoding_views.py",
+      "view": "sales.views.encoding_views.EncodingViewSet",
+      "handler": "retrieve",
+      "frontend_calls": [
+        {
+          "file": "src/features/sales/api/encoding.service.ts",
+          "line": 28,
+          "owner": "get",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/sales/encoding/{id}/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/sales/encoding/{pk}/cancel/",
+      "backend_source": "sales/views/encoding_views.py",
+      "view": "sales.views.encoding_views.EncodingViewSet",
+      "handler": "cancel",
+      "frontend_calls": [],
+      "classification": "feature_without_ui",
+      "finding": "P03"
+    },
+    {
+      "method": "PATCH",
+      "path": "/sales/encoding/{pk}/payment/",
+      "backend_source": "sales/views/encoding_views.py",
+      "view": "sales.views.encoding_views.EncodingViewSet",
+      "handler": "payment",
+      "frontend_calls": [
+        {
+          "file": "src/features/sales/api/encoding.service.ts",
+          "line": 65,
+          "owner": "updatePayment",
+          "expression": "http.patch",
+          "service_only": false,
+          "method": "PATCH",
+          "path": "/sales/encoding/{id}/payment/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/sales/orders/",
+      "backend_source": "sales/views/order_views.py",
+      "view": "sales.views.order_views.OrderViewSet",
+      "handler": "list",
+      "frontend_calls": [
+        {
+          "file": "src/features/orders/api/orders.service.ts",
+          "line": 28,
+          "owner": "getPage",
+          "expression": "http.get",
+          "service_only": true,
+          "method": "GET",
+          "path": "/sales/orders/"
+        },
+        {
+          "file": "src/features/orders/api/orders.service.ts",
+          "line": 38,
+          "owner": "getAll",
+          "expression": "getAllPages",
+          "service_only": false,
+          "method": "GET",
+          "path": "/sales/orders/"
+        },
+        {
+          "file": "src/features/orders/api/orders.service.ts",
+          "line": 66,
+          "owner": "getRecent",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/sales/orders/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/sales/orders/",
+      "backend_source": "sales/views/order_views.py",
+      "view": "sales.views.order_views.OrderViewSet",
+      "handler": "create",
+      "frontend_calls": [
+        {
+          "file": "src/features/orders/api/orders.service.ts",
+          "line": 20,
+          "owner": "sendOrder",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/sales/orders/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/sales/orders/summary/",
+      "backend_source": "sales/views/order_views.py",
+      "view": "sales.views.order_views.OrderViewSet",
+      "handler": "summary",
+      "frontend_calls": [
+        {
+          "file": "src/features/orders/api/orders.service.ts",
+          "line": 34,
+          "owner": "getSummary",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/sales/orders/summary/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/sales/orders/{pk}/",
+      "backend_source": "sales/views/order_views.py",
+      "view": "sales.views.order_views.OrderViewSet",
+      "handler": "retrieve",
+      "frontend_calls": [
+        {
+          "file": "src/features/orders/api/orders.service.ts",
+          "line": 36,
+          "owner": "getById",
+          "expression": "http.get",
+          "service_only": true,
+          "method": "GET",
+          "path": "/sales/orders/{id}/"
+        }
+      ],
+      "classification": "service_only"
+    },
+    {
+      "method": "POST",
+      "path": "/sales/orders/{pk}/cancel/",
+      "backend_source": "sales/views/order_views.py",
+      "view": "sales.views.order_views.OrderViewSet",
+      "handler": "cancel",
+      "frontend_calls": [
+        {
+          "file": "src/features/orders/api/orders.service.ts",
+          "line": 61,
+          "owner": "cancelOrder",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/sales/orders/{id}/cancel/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/sales/reports/best-sellers/",
+      "backend_source": "sales/views/report_views.py",
+      "view": "sales.views.report_views.BestSellersReportView",
+      "handler": "get",
+      "frontend_calls": [
+        {
+          "file": "src/features/reports/api/reports.service.ts",
+          "line": 127,
+          "owner": "getBestSellers",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/sales/reports/best-sellers/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/sales/reports/revenue/",
+      "backend_source": "sales/views/report_views.py",
+      "view": "sales.views.report_views.RevenueReportView",
+      "handler": "get",
+      "frontend_calls": [
+        {
+          "file": "src/features/reports/api/reports.service.ts",
+          "line": 70,
+          "owner": "getRevenue",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/sales/reports/revenue/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/sales/reports/sales-by-category/",
+      "backend_source": "sales/views/report_views.py",
+      "view": "sales.views.report_views.SalesByCategoryReportView",
+      "handler": "get",
+      "frontend_calls": [
+        {
+          "file": "src/features/reports/api/reports.service.ts",
+          "line": 134,
+          "owner": "getSalesByCategory",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/sales/reports/sales-by-category/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/sales/transactions/",
+      "backend_source": "sales/views/transaction_views.py",
+      "view": "sales.views.transaction_views.TransactionViewSet",
+      "handler": "list",
+      "frontend_calls": [
+        {
+          "file": "src/features/sales/api/sales.service.ts",
+          "line": 63,
+          "owner": "getPage",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/sales/transactions/"
+        },
+        {
+          "file": "src/features/sales/api/sales.service.ts",
+          "line": 78,
+          "owner": "getAll",
+          "expression": "getAllPages",
+          "service_only": false,
+          "method": "GET",
+          "path": "/sales/transactions/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/sales/transactions/summary/",
+      "backend_source": "sales/views/transaction_views.py",
+      "view": "sales.views.transaction_views.TransactionViewSet",
+      "handler": "summary",
+      "frontend_calls": [
+        {
+          "file": "src/features/sales/api/sales.service.ts",
+          "line": 69,
+          "owner": "getSummary",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/sales/transactions/summary/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/sales/transactions/{pk}/",
+      "backend_source": "sales/views/transaction_views.py",
+      "view": "sales.views.transaction_views.TransactionViewSet",
+      "handler": "retrieve",
+      "frontend_calls": [
+        {
+          "file": "src/features/sales/api/sales.service.ts",
+          "line": 71,
+          "owner": "getById",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/sales/transactions/{id}/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/sales/transactions/{pk}/cancel/",
+      "backend_source": "sales/views/transaction_views.py",
+      "view": "sales.views.transaction_views.TransactionViewSet",
+      "handler": "cancel",
+      "frontend_calls": [],
+      "classification": "feature_without_ui",
+      "finding": "P03"
+    },
+    {
+      "method": "GET",
+      "path": "/settings/",
+      "backend_source": "systemsetting/views/overview_views.py",
+      "view": "systemsetting.views.overview_views.SettingsOverviewView",
+      "handler": "get",
+      "frontend_calls": [
+        {
+          "file": "src/features/settings/api/settings.service.ts",
+          "line": 46,
+          "owner": "get",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/settings/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/settings/inbox/",
+      "backend_source": "systemsetting/views/inbox_views.py",
+      "view": "systemsetting.views.inbox_views.NotificationInboxView",
+      "handler": "get",
+      "frontend_calls": [
+        {
+          "file": "src/lib/notifications.service.ts",
+          "line": 53,
+          "owner": "getAll",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/settings/inbox/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "POST",
+      "path": "/settings/inbox/",
+      "backend_source": "systemsetting/views/inbox_views.py",
+      "view": "systemsetting.views.inbox_views.NotificationInboxView",
+      "handler": "post",
+      "frontend_calls": [
+        {
+          "file": "src/lib/notifications.service.ts",
+          "line": 110,
+          "owner": "update",
+          "expression": "http.post",
+          "service_only": false,
+          "method": "POST",
+          "path": "/settings/inbox/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/settings/inventory/",
+      "backend_source": "systemsetting/views/inventory_views.py",
+      "view": "systemsetting.views.inventory_views.InventorySettingsView",
+      "handler": "get",
+      "frontend_calls": [
+        {
+          "file": "src/features/settings/api/settings.service.ts",
+          "line": 48,
+          "owner": "getInventory",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/settings/inventory/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "PUT",
+      "path": "/settings/inventory/",
+      "backend_source": "systemsetting/views/inventory_views.py",
+      "view": "systemsetting.views.inventory_views.InventorySettingsView",
+      "handler": "put",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "PATCH",
+      "path": "/settings/inventory/",
+      "backend_source": "systemsetting/views/inventory_views.py",
+      "view": "systemsetting.views.inventory_views.InventorySettingsView",
+      "handler": "patch",
+      "frontend_calls": [
+        {
+          "file": "src/features/settings/api/settings.service.ts",
+          "line": 50,
+          "owner": "updateInventory",
+          "expression": "http.patch",
+          "service_only": false,
+          "method": "PATCH",
+          "path": "/settings/inventory/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/settings/notifications/",
+      "backend_source": "systemsetting/views/notification_views.py",
+      "view": "systemsetting.views.notification_views.NotificationSettingsView",
+      "handler": "get",
+      "frontend_calls": [
+        {
+          "file": "src/features/settings/api/settings.service.ts",
+          "line": 47,
+          "owner": "getNotifications",
+          "expression": "http.get",
+          "service_only": false,
+          "method": "GET",
+          "path": "/settings/notifications/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "PUT",
+      "path": "/settings/notifications/",
+      "backend_source": "systemsetting/views/notification_views.py",
+      "view": "systemsetting.views.notification_views.NotificationSettingsView",
+      "handler": "put",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "PATCH",
+      "path": "/settings/notifications/",
+      "backend_source": "systemsetting/views/notification_views.py",
+      "view": "systemsetting.views.notification_views.NotificationSettingsView",
+      "handler": "patch",
+      "frontend_calls": [
+        {
+          "file": "src/features/settings/api/settings.service.ts",
+          "line": 55,
+          "owner": "updateNotifications",
+          "expression": "http.patch",
+          "service_only": false,
+          "method": "PATCH",
+          "path": "/settings/notifications/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/settings/notifications/{pk}/",
+      "backend_source": "systemsetting/views/notification_views.py",
+      "view": "systemsetting.views.notification_views.NotificationSettingsView",
+      "handler": "get",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "PUT",
+      "path": "/settings/notifications/{pk}/",
+      "backend_source": "systemsetting/views/notification_views.py",
+      "view": "systemsetting.views.notification_views.NotificationSettingsView",
+      "handler": "put",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "PATCH",
+      "path": "/settings/notifications/{pk}/",
+      "backend_source": "systemsetting/views/notification_views.py",
+      "view": "systemsetting.views.notification_views.NotificationSettingsView",
+      "handler": "patch",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "GET",
+      "path": "/settings/system/",
+      "backend_source": "systemsetting/views/settings_views.py",
+      "view": "systemsetting.views.settings_views.SystemSettingsView",
+      "handler": "get",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "PUT",
+      "path": "/settings/system/",
+      "backend_source": "systemsetting/views/settings_views.py",
+      "view": "systemsetting.views.settings_views.SystemSettingsView",
+      "handler": "put",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "PATCH",
+      "path": "/settings/system/",
+      "backend_source": "systemsetting/views/settings_views.py",
+      "view": "systemsetting.views.settings_views.SystemSettingsView",
+      "handler": "patch",
+      "frontend_calls": [
+        {
+          "file": "src/features/settings/api/settings.service.ts",
+          "line": 52,
+          "owner": "updateSystem",
+          "expression": "http.patch",
+          "service_only": false,
+          "method": "PATCH",
+          "path": "/settings/system/"
+        }
+      ],
+      "classification": "wired"
+    },
+    {
+      "method": "GET",
+      "path": "/settings/system/{pk}/",
+      "backend_source": "systemsetting/views/settings_views.py",
+      "view": "systemsetting.views.settings_views.SystemSettingsView",
+      "handler": "get",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "PUT",
+      "path": "/settings/system/{pk}/",
+      "backend_source": "systemsetting/views/settings_views.py",
+      "view": "systemsetting.views.settings_views.SystemSettingsView",
+      "handler": "put",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    },
+    {
+      "method": "PATCH",
+      "path": "/settings/system/{pk}/",
+      "backend_source": "systemsetting/views/settings_views.py",
+      "view": "systemsetting.views.settings_views.SystemSettingsView",
+      "handler": "patch",
+      "frontend_calls": [],
+      "classification": "alternative_or_equivalent_route"
+    }
+  ],
+  "unreferenced_service_members": [
+    {
+      "file": "src/features/auth/api/auth.service.ts",
+      "line": 45,
+      "object": "authService",
+      "name": "refresh",
+      "refs": 0
+    },
+    {
+      "file": "src/features/sales/api/encoding.service.ts",
+      "line": 25,
+      "object": "encodingService",
+      "name": "getSummary",
+      "refs": 0
+    },
+    {
+      "file": "src/features/inventory/api/inventory.service.ts",
+      "line": 236,
+      "object": "inventoryService",
+      "name": "getLowStock",
+      "refs": 0
+    },
+    {
+      "file": "src/features/inventory/api/inventory.service.ts",
+      "line": 245,
+      "object": "inventoryService",
+      "name": "getNearExpiry",
+      "refs": 0
+    },
+    {
+      "file": "src/features/orders/api/orders.service.ts",
+      "line": 27,
+      "object": "ordersService",
+      "name": "getPage",
+      "refs": 0
+    },
+    {
+      "file": "src/features/orders/api/orders.service.ts",
+      "line": 35,
+      "object": "ordersService",
+      "name": "getById",
+      "refs": 0
+    },
+    {
+      "file": "src/features/dashboard/api/forecasting.service.ts",
+      "line": 251,
+      "object": "forecastingService",
+      "name": "getChart",
+      "refs": 0
+    },
+    {
+      "file": "src/features/dashboard/api/forecasting.service.ts",
+      "line": 253,
+      "object": "forecastingService",
+      "name": "getRegularStatus",
+      "refs": 0
+    }
+  ],
+  "generic_transport_calls": [
+    {
+      "file": "src/lib/api.ts",
+      "line": 248,
+      "owner": "getAllPages",
+      "expression": "axiosInstance.get",
+      "service_only": false,
+      "argument": "url"
+    },
+    {
+      "file": "src/lib/api.ts",
+      "line": 367,
+      "owner": null,
+      "expression": "axiosInstance.request",
+      "service_only": false,
+      "argument": "config"
+    },
+    {
+      "file": "src/lib/api.ts",
+      "line": 372,
+      "owner": null,
+      "expression": "axiosInstance.request",
+      "service_only": false,
+      "argument": "config"
+    }
+  ],
+  "unmatched_frontend_requests": [],
+  "method_binding_classification_counts": {
+    "wired": 73,
+    "alternative_or_equivalent_route": 24,
+    "service_only": 4,
+    "retired_410": 1,
+    "diagnostic_without_ui": 5,
+    "rejected_405": 1,
+    "api_root_metadata": 2,
+    "retired_compatibility": 5,
+    "restricted_maintenance_without_ui": 1,
+    "feature_without_ui": 6
+  },
+  "preserve_server_pagination": true,
+  "runtime_code_removed": false,
+  "methods_excluded_from_inventory": [
+    "HEAD",
+    "OPTIONS",
+    "Django admin route tree",
+    "DRF format-suffix duplicates"
+  ],
+  "binding_count_note": "Counts include two API roots and one legacy regex family (five path alternatives); the declared POST on refresh/{job_id} always returns 405. Wired means source call-site presence, not complete UI coverage or executed acceptance.",
+  "management_commands": [
+    {
+      "command": "check_smtp",
+      "source": "accounts/management/commands/check_smtp.py",
+      "help": "Check SMTP connection/authentication. Send a test email only with --send-to.",
+      "direct_frontend_route": false,
+      "classification": "operator_or_background_command"
+    },
+    {
+      "command": "consolidate_products",
+      "source": "inventory/management/commands/consolidate_products.py",
+      "help": "Preview formatting duplicates; --apply backs up the database and merges them atomically.",
+      "direct_frontend_route": false,
+      "classification": "operator_or_background_command"
+    },
+    {
+      "command": "backup_sales_history",
+      "source": "sales/management/commands/backup_sales_history.py",
+      "help": "Export complete historical sales years to SQL and verify restoration in a temporary database.",
+      "direct_frontend_route": false,
+      "classification": "operator_or_background_command"
+    },
+    {
+      "command": "consolidate_customers",
+      "source": "sales/management/commands/consolidate_customers.py",
+      "help": "Preview clear customer aliases; --apply backs up and consolidates them atomically.",
+      "direct_frontend_route": false,
+      "classification": "operator_or_background_command"
+    },
+    {
+      "command": "import_annual_sales",
+      "source": "sales/management/commands/import_annual_sales.py",
+      "help": "Audit or atomically import the three annual sales workbooks.",
+      "direct_frontend_route": false,
+      "classification": "operator_or_background_command"
+    },
+    {
+      "command": "refresh_annual_sales",
+      "source": "sales/management/commands/refresh_annual_sales.py",
+      "help": "Audit all three annual workbooks; --apply backs up and refreshes only their imported dairy history.",
+      "direct_frontend_route": false,
+      "classification": "operator_or_background_command"
+    },
+    {
+      "command": "remove_dummy_data",
+      "source": "sales/management/commands/remove_dummy_data.py",
+      "help": "Preview dummy data removal; --apply makes a full private backup and removes only generated data.",
+      "direct_frontend_route": false,
+      "classification": "operator_or_background_command"
+    },
+    {
+      "command": "activate_forecast_model",
+      "source": "forecasting/management/commands/activate_forecast_model.py",
+      "help": "Activate or roll back to a saved current-source model only if the same publication gates pass.",
+      "direct_frontend_route": false,
+      "classification": "operator_or_background_command"
+    },
+    {
+      "command": "audit_forecast_accuracy",
+      "source": "forecasting/management/commands/audit_forecast_accuracy.py",
+      "help": "Read current real-sales SARIMA accuracy, baseline skill, error dispersion and evidence gaps. Never fits.",
+      "direct_frontend_route": false,
+      "classification": "operator_or_background_command"
+    },
+    {
+      "command": "evaluate_demo_forecasts",
+      "source": "forecasting/management/commands/evaluate_demo_forecasts.py",
+      "help": "Disabled: forecasting uses recorded actual invoices only.",
+      "direct_frontend_route": false,
+      "classification": "retired_command"
+    },
+    {
+      "command": "investigate_feeding_sales",
+      "source": "forecasting/management/commands/investigate_feeding_sales.py",
+      "help": "Export recorded actual feeding history and gaps; no model fitting.",
+      "direct_frontend_route": false,
+      "classification": "operator_or_background_command"
+    },
+    {
+      "command": "refresh_beta_graphs",
+      "source": "forecasting/management/commands/refresh_beta_graphs.py",
+      "help": "Refresh saved three-line real-sales graphs. Demo evaluation requires an explicit development-only scope.",
+      "direct_frontend_route": false,
+      "classification": "operator_or_background_command"
+    },
+    {
+      "command": "refresh_forecast_models",
+      "source": "forecasting/management/commands/refresh_forecast_models.py",
+      "help": "Fit/reuse monthly dairy models, score immutable issues, and apply quality-gated promotion offline.",
+      "direct_frontend_route": false,
+      "classification": "operator_or_background_command"
+    },
+    {
+      "command": "refresh_forecast_patterns",
+      "source": "forecasting/management/commands/refresh_forecast_patterns.py",
+      "help": "Refresh versioned regular-sales pattern studies; never fit or publish a prediction.",
+      "direct_frontend_route": false,
+      "classification": "operator_or_background_command"
+    },
+    {
+      "command": "refresh_projection_evidence",
+      "source": "forecasting/management/commands/refresh_projection_evidence.py",
+      "help": "Save prospective rough chart predictions and score reviewed closed outcomes; no fitting or approval.",
+      "direct_frontend_route": false,
+      "classification": "operator_or_background_command"
+    },
+    {
+      "command": "refresh_provisional_forecasts",
+      "source": "forecasting/management/commands/refresh_provisional_forecasts.py",
+      "help": "Refresh rough actual-data SARIMA projections for all three views and horizons offline.",
+      "direct_frontend_route": false,
+      "classification": "operator_or_background_command"
+    },
+    {
+      "command": "refresh_weekly_forecasts",
+      "source": "forecasting/management/commands/refresh_weekly_forecasts.py",
+      "help": "Fit/reuse actual-data weekly SARIMA research offline; never approve a production forecast.",
+      "direct_frontend_route": false,
+      "classification": "operator_or_background_command"
+    },
+    {
+      "command": "run_forecast_refresh",
+      "source": "forecasting/management/commands/run_forecast_refresh.py",
+      "help": "Run one tracked forecast maintenance job with the global manual/midnight lock.",
+      "direct_frontend_route": false,
+      "classification": "operator_or_background_command"
+    },
+    {
+      "command": "verify_forecast_coverage",
+      "source": "forecasting/management/commands/verify_forecast_coverage.py",
+      "help": "Record an admin source reconciliation for one completed month; never infer completeness from invoice counts.",
+      "direct_frontend_route": false,
+      "classification": "operator_or_background_command"
+    },
+    {
+      "command": "verify_projection_coverage",
+      "source": "forecasting/management/commands/verify_projection_coverage.py",
+      "help": "Reconcile a completed regular or feeding period before prospective scoring; combined requires both.",
+      "direct_frontend_route": false,
+      "classification": "operator_or_background_command"
+    },
+    {
+      "command": "watch_forecast_models",
+      "source": "forecasting/management/commands/watch_forecast_models.py",
+      "help": "Refresh saved forecasts on startup, then at midnight Asia/Manila (or an explicit interval).",
+      "direct_frontend_route": false,
+      "classification": "operator_or_background_command"
+    }
+  ],
+  "frontend_analysis": {
+    "parser": "Temporary TypeScript 5.9.3 compiler API for source references/import graph; does not modify installed frontend TypeScript 7.0.2 or compile/build inputs",
+    "runtime_entry": "src/main.tsx",
+    "service_reference_counts_exclude_tests_and_type_queries": true,
+    "limitations": [
+      "Static tracing, not user-flow execution",
+      "A referenced service can still expose fewer roles, parameters or fields than the backend",
+      "Dynamic event and refresh URLs were resolved manually; API transport wrappers propagated through callers",
+      "Internal services and models are not dead code just because the UI does not call their diagnostic endpoints"
+    ]
+  }
+}

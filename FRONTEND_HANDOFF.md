@@ -5,6 +5,11 @@ Updated 2026-11-01 (Asia/Manila), reviewed against frontend `5e390189`.
 current loading cost for finalized release `release-2026.11.01`; this request
 does not block that release.
 
+The [backend/frontend parity review](BACKEND_FRONTEND_PARITY.md) separately
+documents backend-only and partially exposed capabilities, including Stock
+Count. This handoff lists requested implementation work; it is not a claim of
+complete feature parity. Keep the pagination APIs and wrappers below.
+
 Frontend `5e390189`, backend `df6f732a` and the stock-out migration are deployed
 locally. Completed stock-out/idle-session integration and verification are in
 [BACKEND_VALIDATION.md](BACKEND_VALIDATION.md). The completed stock-out API
@@ -21,7 +26,8 @@ Backend APIs are available in the running image. Remaining full-history download
 
 - Staff Sales History (`salesService.getMine`).
 - Admin and staff Orders (`ordersService.getAll`).
-- Admin Sales History and Sales Encoding when searching or sorting.
+- Admin Sales History when searching or sorting.
+- Sales Encoding for both roles when searching or sorting.
 - Staff dashboard order counts (`ordersService.getAll`); use the order summary.
 
 ### API contract

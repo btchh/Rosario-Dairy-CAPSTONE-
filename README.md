@@ -30,6 +30,8 @@ the standalone `compose.production.yaml` and `deployment.env.example`. It also
 supports the frontend in the same stack. The finalized version and deployment
 package are recorded in [RELEASE.md](RELEASE.md); verification and remaining
 acceptance work are in [DEPLOYMENT_FEATURE_AUDIT.md](DEPLOYMENT_FEATURE_AUDIT.md).
+For the selected OVHcloud VPS 1 and free DuckDNS hostname, start with
+[VPS_PREPARATION.md](VPS_PREPARATION.md).
 
 Always apply migrations before starting, including after pulling backend code:
 

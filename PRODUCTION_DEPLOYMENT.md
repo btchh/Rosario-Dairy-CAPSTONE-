@@ -5,6 +5,9 @@ remains the local development stack; do not merge it into production. This
 configuration targets a single VPS with host Nginx terminating HTTPS,
 then the loopback frontend proxy, internal API gateway, Gunicorn and ASGI.
 
+For the selected OVHcloud VPS 1, free DuckDNS hostname, first certificate and
+existing-data restore sequence, use [VPS_PREPARATION.md](VPS_PREPARATION.md).
+
 ## Prepare the release
 
 Keep the backend and frontend checkouts next to each other. Create a private

@@ -1,0 +1,48 @@
+{
+  "full_database_restore": "passed",
+  "restored_ownership_and_runtime_privileges": {
+    "public_tables": 55,
+    "restored_receipts": 4841,
+    "wrong_object_owners": 0,
+    "runtime_elevated_flags": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ],
+    "runtime_can_create_schema_objects": false,
+    "runtime_has_table_crud": true,
+    "runtime_can_truncate_any_table": false
+  },
+  "production_startup_and_preflight": "passed",
+  "production_proxy_routes": "passed",
+  "external_mail_sent": false,
+  "public_vps_accessed": false,
+  "actual_hostname": "rosariodairy.duckdns.org",
+  "hostname_registration": "confirmed by user; VPS/DNS pointing pending",
+  "edge_checks": {
+    "temporary_http_acme_200_and_app_503": true,
+    "final_http_acme_200_and_redirect_301": true,
+    "local_tls_chain": [
+      {
+        "path": "/",
+        "status": 200
+      },
+      {
+        "path": "/backend/accounts/user/",
+        "status": 401
+      },
+      {
+        "path": "/backend/events/",
+        "status": 401
+      }
+    ],
+    "certificate": "offline self-signed fixture, not a public certificate",
+    "incoming_http_scheme_did_not_cause_redirect": true,
+    "edge_overwrites_client_ip_in_configuration": true
+  },
+  "release": "release-2026.11.01",
+  "date": "2026-11-01",
+  "private_credentials_included": false
+}

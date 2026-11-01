@@ -1,5 +1,31 @@
 # Backend validation
 
+## OVHcloud VPS preparation — 2026-11-01
+
+Prepared a supplement for frozen `release-2026.11.01`; no application image or
+frontend change. Selected OVHcloud VPS 1/Ubuntu 24.04 amd64 and DuckDNS. The
+user confirmed claiming `rosariodairy.duckdns.org`; the VPS is not purchased yet.
+
+Generated independent production secrets, preserved the working SMTP settings
+privately, validated Compose settings without displaying them, and generated a
+dedicated SSH key pair. All private files stay outside Git/public packages.
+A fresh full PostgreSQL preparation snapshot restored successfully in an
+isolated production project: 55 tables, 4,841 receipts, all objects owned by the
+migration role. Runtime CRUD passed privilege inspection; all five elevated
+flags, schema creation and table truncation were disabled. Provisioning,
+migrations, preflight and frontend/API/event routes passed.
+
+Added an HTTP-only ACME bootstrap example and preserved the challenge path in
+the final edge's HTTP site for webroot renewal. Both templates passed functional
+checks. An offline local test certificate exercised the TLS edge through the
+production frontend/gateway to API/events, including a spoofed incoming HTTP
+scheme. This did not issue a public certificate, access a VPS, send email or
+alter the running local demo. Disposable rehearsal services were removed.
+
+See [VPS_PREPARATION.md](VPS_PREPARATION.md) and
+[validation/vps-preparation-20261101.json](validation/vps-preparation-20261101.json).
+Actual server/DNS/TLS/email/operations acceptance remains outstanding.
+
 ## Frontend Docker update — `5e390189`, 2026-11-01
 
 Rebuilt backend/frontend images and deployed frontend `5e390189`, which adds

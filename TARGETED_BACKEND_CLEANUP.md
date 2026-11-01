@@ -1,8 +1,10 @@
 # Targeted backend cleanup — 2026-11-01
 
 Source cleanup after `74ee7d9e`, reviewed against frontend `5e390189`.
-**Implemented and tested; not yet deployed into Docker.** No frontend source,
-running database or frozen `release-2026.11.01` image/package/tag was changed.
+**Deployed to local Docker from backend `b6a44d1a`.** Both cleanup migrations
+are applied. Frontend source/build and frozen `release-2026.11.01` image/package/
+tag are unchanged. [Rollout evidence](validation/cleanup-docker-rollout-20261101.json)
+records the quiesced backup/restore, data-preservation checks and service health.
 
 ## Removed
 
@@ -25,18 +27,15 @@ production restriction are unchanged.
 
 **Stock Count is obsolete by user decision and removed from the working source.**
 The model/API/serializer, per-batch count reconciliation service, import/QA
-references and feature-specific tests are removed. Its table contains zero
-records in the running database; the new migration checks again under a lock
-before dropping it. If another installation has counts, migration stops so that
+references and feature-specific tests are removed. Its table had zero
+records at cutover and has now been dropped under the migration lock. If another installation has counts, migration stops so that
 history can be explicitly backed up and archived. Stock quantities, adjustments,
 corrections, FEFO and durable stock-out retry protection remain implemented.
-The running database awaits the coordinated rollout described below.
+The local Docker database now has both cleanup migrations applied.
 
-The running local database still has **55 public tables**: 49 original
-active-model tables,
-`django_migrations` and five legacy reporting-import tables. After both cleanup
-migrations, the source schema has **48 active-model tables**, and the restored
-database has **54 public tables** (48 active + migration history + five legacy).
+Before rollout there were 55 public tables. The running local database now has
+**54 public tables**: **48 active-model tables**, `django_migrations` and the
+five legacy reporting-import tables. The source ERD matches this active schema.
 No unvalidated
 constraints or invalid indexes were found. These checks are catalog/integrity
 checks, not an exhaustive physical corruption or performance audit.
@@ -52,8 +51,8 @@ checks, not an exhaustive physical corruption or performance audit.
 These are populated historical imports without current Django models, not empty
 throwaway tables. No foreign keys from non-reporting tables into them were found;
 that does not establish that their historical data is disposable. They remain
-intact. Only the empty obsolete stock-count table is scheduled for removal; no
-count history or retained business records are discarded.
+intact. Only the empty obsolete stock-count table was removed; no count history
+or retained business records were discarded.
 
 ## Verification
 
@@ -98,12 +97,18 @@ Private backup: `../private-database-backups/stock-count-retirement-20261101/bef
 
 ## Rollout and frontend handoff
 
-Deploy this source with a new backend image and apply both migrations during a
-coordinated backend rollout, with API/events/worker writers stopped and a fresh
-cutover backup. Old images still select the removed columns, so do not migrate
-the running database while old backend services are serving. The current Docker
-stack remains on its previous schema/image. The finalized release archive/tag
-is unchanged; it does not yet include this cleanup.
+Local rollout is complete with image
+`rosario-dairy-backend:cleanup-b6a44d1a-20261101`. API/events/worker writers were
+stopped for a fresh verified backup and migration; all retained table data matched
+before cache rotation/service restart. The unchanged frontend is healthy at
+`http://localhost:5174`. Twenty-four role-scoped API reads, proxy/assets, migration
+checks and SMTP authentication passed. No email or business fixture was sent/written.
+
+For rollback, stop backend writers, reverse inventory to `0013` and systemsetting
+to `0002`, then restore the previous backend image tag and restart/recheck services.
+Old images select the removed columns and must not run against the cleaned schema.
+The finalized release archive/tag is unchanged and does not include this cleanup;
+build/export the current source/image for the later VPS transfer.
 
 Reversing the migrations recreates the empty Stock Count table and restores
 the inactive columns with their former model defaults, not their discarded values. Working notification preferences and all

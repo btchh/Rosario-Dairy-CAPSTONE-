@@ -4,6 +4,13 @@ Application release: `release-2026.11.01`, frontend `5e390189`. This guide is a
 host-preparation supplement; the frozen application archive remains unchanged.
 No VPS has been purchased or accessed yet.
 
+**Later local update:** backend `b6a44d1a` (Stock Count retirement/cleanup) is
+now deployed locally through inventory `0014` and systemsetting `0003`. The frozen
+archive, private preparation image override and old preparation dump predate this
+change. Before VPS transfer, build/export the current backend image and take a
+fresh database cutover export; do not treat the older frozen image/dump as the
+latest local state. See [TARGETED_BACKEND_CLEANUP.md](TARGETED_BACKEND_CLEANUP.md).
+
 ## Server and free hostname
 
 Choose OVHcloud VPS 1, Singapore **standard datacentre**, Ubuntu **24.04 LTS

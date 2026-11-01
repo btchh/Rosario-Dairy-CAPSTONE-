@@ -11,27 +11,27 @@ The subsequent [source parity review](BACKEND_FRONTEND_PARITY.md) identifies
 backend-only flows and partial UI controls. Those capabilities must not be
 treated as completed frontend features; the review preserves server pagination.
 
-## Subsequent targeted cleanup — not yet deployed
+## Subsequent targeted cleanup — deployed locally
 
-The working source removes retired compatibility/demo entry points, the obsolete
-Stock Count model/table and two inactive notification columns. New migrations
-passed migration checks on a restored clone. The running database and Docker
-images still use the finalized release.
-A coordinated backend image/migration rollout is required to deploy this cleanup;
-do not apply the column removal while old backend containers are serving. Stock
-adjustments, retained business data and pagination are preserved. The Stock Count
-migration stops if the table contains any records. See
+Backend `b6a44d1a` is deployed in local Docker. Both cleanup migrations are
+applied: Stock Count and two inactive notification columns are removed, along
+with retired compatibility/demo entry points. A quiesced backup restored exactly;
+all 53 retained non-migration table fingerprints matched after migration. API/
+events are healthy, worker running, proxy/24 role reads and SMTP authentication
+passed. Stock adjustments and server pagination are preserved. Current backend
+regression covers 985 unique passes and one Windows-only skip. The frozen archive
+is still the earlier release; build/export the current backend for VPS transfer. See
 [TARGETED_BACKEND_CLEANUP.md](TARGETED_BACKEND_CLEANUP.md).
 
 ## Current release and verified behavior
 
-Frontend `5e390189` and backend application source `df6f732a` are deployed
-locally. `inventory.0013_stock_adjustment_submission` is applied. Stock-out
+Frontend `5e390189` and backend application source `b6a44d1a` are deployed
+locally, through inventory `0014` and systemsetting `0003`. Stock-out
 request IDs/recovery cover outflows and expired disposal. Idle logout uses
 900 seconds with a 60-second warning; real interaction extends the session,
 while background reads and token refresh do not.
 
-The seven-app backend regression ran 991 tests: **990 passed and one Windows-only
+Before this cleanup, the seven-app backend regression ran 991 tests: **990 passed and one Windows-only
 check skipped**. Twelve real HTTP workflow groups passed in an isolated restored
 database. Chromium checks passed for all 17 main role screens, actual admin/staff
 login/logout and six PDF downloads. These checks do not establish that every UI

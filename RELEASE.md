@@ -6,7 +6,9 @@ public production acceptance follow [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOY
 
 Subsequent [targeted cleanup](TARGETED_BACKEND_CLEANUP.md), including Stock Count
 retirement, changes the working source and adds migrations. Those changes are
-not included in this frozen image/archive/tag and await a coordinated rollout.
+not included in this frozen image/archive/tag. Backend `b6a44d1a` and both cleanup
+migrations are now deployed locally; build/export that current backend before
+transferring the latest version to the VPS.
 
 ## Frozen application
 

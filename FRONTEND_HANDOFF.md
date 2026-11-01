@@ -11,8 +11,9 @@ since been classified as obsolete and removed from the working backend. This
 handoff lists requested implementation work; it is not a claim of
 complete feature parity. Keep the pagination APIs and wrappers below.
 
-Frontend `5e390189`, backend `df6f732a` and the stock-out migration are deployed
-locally. Completed stock-out/idle-session integration and verification are in
+Frontend `5e390189` and backend `b6a44d1a` are deployed locally. Stock-out
+idempotency plus `inventory.0014_remove_obsolete_stock_count` and
+`systemsetting.0003_remove_inactive_notification_flags` are applied. Completed stock-out/idle-session integration and verification are in
 [BACKEND_VALIDATION.md](BACKEND_VALIDATION.md). The completed stock-out API
 contract is retained in the
 [versioned handoff](https://github.com/btchh/Rosario-Dairy-CAPSTONE-/blob/df6f732a/FRONTEND_HANDOFF.md).
@@ -100,7 +101,6 @@ and adjust mock fixtures as appropriate. Keep `low_stock_alerts`,
 `near_expiry_alerts` and `new_order_alerts`, which remain working booleans.
 
 Current Settings forms already read/update only those three active flags, so no
-new controls or behavior changes are requested. This backend cleanup has **not yet
-been rolled into Docker**. Stock Count has also been retired from the backend
-source; its URLs return 404 and no frontend stocktaking integration is requested. See
+new controls or behavior changes are requested. This backend cleanup is **deployed in local Docker** from `b6a44d1a`.
+Stock Count has also been retired from the backend source; its URLs return 404 and no frontend stocktaking integration is requested. See
 [TARGETED_BACKEND_CLEANUP.md](TARGETED_BACKEND_CLEANUP.md).

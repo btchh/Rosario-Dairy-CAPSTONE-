@@ -1,0 +1,225 @@
+{
+  "date": "2026-11-01",
+  "backend_source": "b6a44d1a42857bbf49882255533cb81428453914",
+  "frontend_source": "5e39018993a55461e48b30dedc4ff24132be8c38",
+  "backend_image": "sha256:6447c992b383031d0fe447d8589e185bfb228b79555b050a93544d20a64bf12c",
+  "frontend_unchanged": true,
+  "migrations": [
+    "inventory.0014_remove_obsolete_stock_count",
+    "systemsetting.0003_remove_inactive_notification_flags"
+  ],
+  "backup_sha256": "51bf5766a907fd169ca2bf744182914c264ab8f1daaa1267f3eba2fbe75f8a4f",
+  "quiesced_backup_restored_and_all_55_table_fingerprints_matched": true,
+  "tables_before": 55,
+  "tables_after": 54,
+  "removed_empty_stock_count_table": true,
+  "retained_non_migration_tables_with_unchanged_data": 53,
+  "removed_columns": {
+    "systemsetting_notificationsettings": [
+      "forecast_warnings",
+      "report_ready_notifications"
+    ]
+  },
+  "business_read_cache_invalidated_after_data_comparison": true,
+  "health_wait_passed": true,
+  "gateway_reloaded": true,
+  "previous_backend_image_tag": "rosario-dairy-backend:before-cleanup-b6a44d1a-20261101",
+  "new_backend_image_tag": "rosario-dairy-backend:cleanup-b6a44d1a-20261101",
+  "frozen_release_tag_and_archive_unchanged": true,
+  "external_email_sent": false,
+  "http_checks": [
+    {
+      "path": "/",
+      "status": 200
+    },
+    {
+      "path": "/assets/charts-BjaqPkVh.js",
+      "status": 200
+    },
+    {
+      "path": "/assets/index-BLZ5MKb6.js",
+      "status": 200
+    },
+    {
+      "path": "/assets/index-BpYOvygr.css",
+      "status": 200
+    },
+    {
+      "path": "/assets/logo-DF7DKpcz.jpg",
+      "status": 200
+    },
+    {
+      "path": "/assets/motion-CG4JVH-3.js",
+      "status": 200
+    },
+    {
+      "path": "/assets/react-vendor-C2noAUKQ.js",
+      "status": 200
+    },
+    {
+      "path": "/backend/accounts/user/",
+      "status": 401
+    },
+    {
+      "path": "/backend/sales/transactions/?page=1",
+      "status": 401
+    },
+    {
+      "path": "/backend/events/",
+      "status": 401
+    },
+    {
+      "path": "/backend/inventory/stock-counts/",
+      "status": 404
+    },
+    {
+      "path": "/backend/inventory/stock-counts/1/",
+      "status": 404
+    },
+    {
+      "path": "/backend/inventory/ingredients/",
+      "status": 404
+    },
+    {
+      "path": "/backend/api/forecasting/demo-2026/",
+      "status": 404
+    }
+  ],
+  "frontend_index_and_asset_bytes_match_container": true,
+  "frontend_assets_checked": 6,
+  "authenticated_read_checks": [
+    {
+      "role": "admin",
+      "path": "/settings/",
+      "status": 200
+    },
+    {
+      "role": "admin",
+      "path": "/settings/notifications/",
+      "status": 200
+    },
+    {
+      "role": "admin",
+      "path": "/inventory/products/",
+      "status": 200
+    },
+    {
+      "role": "admin",
+      "path": "/inventory/product-batches/",
+      "status": 200
+    },
+    {
+      "role": "admin",
+      "path": "/inventory/stock-adjustments/",
+      "status": 200
+    },
+    {
+      "role": "admin",
+      "path": "/sales/transactions/?page_size=2",
+      "status": 200
+    },
+    {
+      "role": "admin",
+      "path": "/sales/transactions/summary/",
+      "status": 200
+    },
+    {
+      "role": "admin",
+      "path": "/sales/encoding/?page_size=2",
+      "status": 200
+    },
+    {
+      "role": "admin",
+      "path": "/sales/encoding/summary/",
+      "status": 200
+    },
+    {
+      "role": "admin",
+      "path": "/sales/orders/?page_size=2",
+      "status": 200
+    },
+    {
+      "role": "admin",
+      "path": "/sales/orders/summary/",
+      "status": 200
+    },
+    {
+      "role": "admin",
+      "path": "/sales/customers/",
+      "status": 200
+    },
+    {
+      "role": "staff",
+      "path": "/settings/",
+      "status": 200
+    },
+    {
+      "role": "staff",
+      "path": "/settings/notifications/",
+      "status": 200
+    },
+    {
+      "role": "staff",
+      "path": "/inventory/products/",
+      "status": 200
+    },
+    {
+      "role": "staff",
+      "path": "/inventory/product-batches/",
+      "status": 200
+    },
+    {
+      "role": "staff",
+      "path": "/inventory/stock-adjustments/",
+      "status": 200
+    },
+    {
+      "role": "staff",
+      "path": "/sales/transactions/?page_size=2",
+      "status": 200
+    },
+    {
+      "role": "staff",
+      "path": "/sales/transactions/summary/",
+      "status": 200
+    },
+    {
+      "role": "staff",
+      "path": "/sales/encoding/?page_size=2",
+      "status": 200
+    },
+    {
+      "role": "staff",
+      "path": "/sales/encoding/summary/",
+      "status": 200
+    },
+    {
+      "role": "staff",
+      "path": "/sales/orders/?page_size=2",
+      "status": 200
+    },
+    {
+      "role": "staff",
+      "path": "/sales/orders/summary/",
+      "status": 200
+    },
+    {
+      "role": "staff",
+      "path": "/sales/customers/",
+      "status": 200
+    }
+  ],
+  "active_model_tables": 48,
+  "public_tables": 54,
+  "removed_stock_count_verified": true,
+  "active_notification_fields_verified": true,
+  "constraints_and_indexes_valid": true,
+  "django_system_check_passed": true,
+  "migration_drift_check_passed": true,
+  "pending_migration_check_passed": true,
+  "smtp_connection_and_authentication_passed": true,
+  "temporary_restore_container_removed": true,
+  "prior_backend_regression_unique_passed": 985,
+  "prior_backend_regression_remaining_windows_skip": 1,
+  "scope": "Local Docker rollout and targeted read/transport/schema checks; no VPS deployment or new browser write-flow audit"
+}

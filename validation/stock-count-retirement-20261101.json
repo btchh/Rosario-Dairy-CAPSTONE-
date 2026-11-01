@@ -36,7 +36,6 @@
   "unvalidated_constraints": 0,
   "stock_adjustment_and_submission_tables_preserved": true,
   "stock_quantities_preserved": true,
-  "rollout_pending": true,
   "frozen_release_tag_changed": false,
   "frontend_source_changed": false,
   "route_validation": {
@@ -165,5 +164,8 @@
     "route/ERD structure validation",
     "git diff --check"
   ],
-  "disposable_postgres_and_redis_removed": true
+  "disposable_postgres_and_redis_removed": true,
+  "rollout_pending_at_review": true,
+  "subsequent_local_docker_rollout": "validation/cleanup-docker-rollout-20261101.json",
+  "current_rollout_pending": false
 }

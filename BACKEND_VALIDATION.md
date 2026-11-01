@@ -1,5 +1,44 @@
 # Backend validation
 
+## Cleanup Docker rollout — `b6a44d1a`, 2026-11-01
+
+Pushed the tested cleanup and built/deployed backend application source
+`b6a44d1a`; frontend remains the unchanged `5e390189` image at
+`http://localhost:5174`. API/events are healthy, the forecast worker is running,
+and the gateway was reloaded after backend container recreation.
+
+- Backend image: `sha256:6447c992b383031d0fe447d8589e185bfb228b79555b050a93544d20a64bf12c`.
+- Current tag: `rosario-dairy-backend:cleanup-b6a44d1a-20261101` (also `:local`).
+- Exact previous backend: `rosario-dairy-backend:before-cleanup-b6a44d1a-20261101`.
+- Applied `inventory.0014_remove_obsolete_stock_count` and
+  `systemsetting.0003_remove_inactive_notification_flags`.
+
+Stopped application writers before taking a new full private backup. Its restore
+into disposable PostgreSQL matched all 55 pre-migration table fingerprints.
+After migration, all **53 retained non-migration tables** retained their counts
+and data. Only the empty count table and two inactive columns were removed;
+public table count is now 54. Working alert preferences, stock quantities,
+adjustments, submission records and legacy reporting data are retained. Rotated
+the business read cache after the data comparison, then restarted services.
+
+Served frontend/index plus all six referenced assets matched the unchanged
+container. Proxy/API/events auth returned 401 as expected, removed routes 404.
+Twenty-four authenticated admin/staff read checks passed, including active
+notification fields, inventory, server-paged histories/orders and summaries.
+Django checks, migration drift/pending-migration checks and database constraint/
+index checks passed. Gmail SMTP connection/authentication passed without sending
+email. No business fixture writes, credentials changes or new browser acceptance
+claims. Existing backend regression: 985 unique tests passed, one Windows skip.
+
+Private backup: `../private-database-backups/cleanup-rollout-b6a44d1a-20261101/`.
+Backup SHA-256: `51bf5766a907fd169ca2bf744182914c264ab8f1daaa1267f3eba2fbe75f8a4f`.
+Sanitized evidence:
+[validation/cleanup-docker-rollout-20261101.json](validation/cleanup-docker-rollout-20261101.json).
+The temporary restore service/credentials were removed. Frozen release image/tag/
+archive remain unchanged; they do not contain this later cleanup. Build/export the
+current backend image before transferring the latest version to a VPS.
+
+
 ## Obsolete Stock Count retirement — 2026-11-01
 
 Removed Stock Count's model, API, serializer, reconciliation service and import/

@@ -29,7 +29,6 @@
     "reporting_importedsheet": 201,
     "reporting_workbookimport": 13
   },
-  "rollout_pending": true,
   "live_database_read_only_checks": {
     "stock_count_rows": 0,
     "stock_count_linked_corrections": 0,
@@ -137,5 +136,8 @@
   "subsequent_scope_change": {
     "stock_count": "Retired as obsolete by user decision after this initial cleanup verification; see follow-up evidence",
     "evidence": "validation/stock-count-retirement-20261101.json"
-  }
+  },
+  "rollout_pending_at_review": true,
+  "subsequent_local_docker_rollout": "validation/cleanup-docker-rollout-20261101.json",
+  "current_rollout_pending": false
 }

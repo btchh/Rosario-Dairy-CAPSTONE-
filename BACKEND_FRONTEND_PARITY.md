@@ -207,4 +207,6 @@ The initial source audit was documentation-only; its structural validation
 checked route coverage, classification totals, service references and source links.
 The subsequent targeted cleanup has runtime changes and a migration, with its
 own regression and database-preservation evidence linked above. Server pagination,
-frontend source, running database/images and the frozen release tag are retained.
+frontend source and the frozen release tag/archive are retained. Cleanup is
+now deployed to local Docker from `b6a44d1a`; running images/schema were updated
+with verified retained data. See the linked rollout evidence.

@@ -11,7 +11,7 @@ from django.test import override_settings
 from django.utils import timezone
 
 from config.test_support import APITestCase
-from inventory.models import Category, Product, ProductBatch, StockAdjustment, StockCount
+from inventory.models import Category, Product, ProductBatch, StockAdjustment
 from sales.models import Customer, Order, SaleSubmission, Transaction
 
 
@@ -45,7 +45,7 @@ class InputValidationTests(APITestCase):
         self.batch.refresh_from_db()
         return (tuple(model.objects.count() for model in (
             Product, ProductBatch, Order, Transaction, SaleSubmission,
-            StockAdjustment, StockCount)), self.batch.remaining_quantity)
+            StockAdjustment)), self.batch.remaining_quantity)
 
     def assert_json_error(self, response, field=None):
         self.assertEqual(response.status_code, 400, response.data)
@@ -202,8 +202,6 @@ class InputValidationTests(APITestCase):
             ('/inventory/stock-adjustments/', 'reason', {
                 'product_batch_id': self.batch.pk, 'adjustment_type': 'spillage',
                 'quantity': '1', 'unit_cost': '50'}),
-            ('/inventory/stock-counts/', 'notes', {
-                'product_batch_id': self.batch.pk, 'counted_quantity': '9'}),
         ):
             for value in ([], {'unexpected': 'object'}, True, False, 42, 1.5):
                 with self.subTest(route=route, value=value):
@@ -213,10 +211,6 @@ class InputValidationTests(APITestCase):
     def test_inventory_audit_text_preserves_strings_blank_and_null(self):
         for value in ('Checked today', '', None):
             with self.subTest(value=value):
-                count = self.client.post('/inventory/stock-counts/', {
-                    'product_batch_id': self.batch.pk, 'counted_quantity': '10', 'notes': value}, format='json')
-                self.assertEqual(count.status_code, 201, count.data)
-                self.assertEqual(StockCount.objects.get(pk=count.data['id']).notes, value)
                 adjustment = self.client.post('/inventory/stock-adjustments/', {
                     'product_batch_id': self.batch.pk, 'adjustment_type': 'spillage',
                     'quantity': '1', 'unit_cost': '50', 'reason': value}, format='json')

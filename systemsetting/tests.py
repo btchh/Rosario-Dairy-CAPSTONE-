@@ -203,7 +203,9 @@ class NotificationSettingsViewTests(TestCase):
       self.assertEqual(response.status_code, 200)
       self.assertTrue(response.data['low_stock_alerts'])
       self.assertTrue(response.data['near_expiry_alerts'])
-      self.assertFalse(response.data['report_ready_notifications'])
+      self.assertTrue(response.data['new_order_alerts'])
+      self.assertNotIn('forecast_warnings', response.data)
+      self.assertNotIn('report_ready_notifications', response.data)
 
     def test_staff_can_read_but_cannot_update(self):
         self.client.force_authenticate(user=self.staff)
@@ -217,10 +219,10 @@ class NotificationSettingsViewTests(TestCase):
     def test_patch_toggles_single_field(self):
         self.client.force_authenticate(user=self.admin)
         response = self.client.patch(
-            '/settings/notifications/', {'report_ready_notifications': True}, format='json'
+            '/settings/notifications/', {'new_order_alerts': False}, format='json'
         )
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.data['report_ready_notifications'])
+        self.assertFalse(response.data['new_order_alerts'])
         self.assertTrue(response.data['low_stock_alerts'])  # untouched
 
     def test_singleton_never_duplicates(self):

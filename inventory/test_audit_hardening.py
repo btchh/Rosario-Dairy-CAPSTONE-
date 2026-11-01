@@ -9,7 +9,7 @@ from django.test import SimpleTestCase
 from django.utils import timezone
 
 from config.test_support import APITestCase
-from inventory.models import Category, FEFOConf, Product, ProductBatch, StockAdjustment, StockCount
+from inventory.models import Category, FEFOConf, Product, ProductBatch, StockAdjustment
 from inventory.serializers.fefoconf_serializer import FEFOConfSerializer
 from inventory.services.eligibility import expiry_cutoff
 from inventory.services.stock_check_service import check_product_expiration
@@ -125,11 +125,10 @@ class InventoryIdentifierValidationTests(APITestCase):
         self.product_batch = ProductBatch.objects.create(product=self.product, batch_number='IDENTIFIER-PRODUCT', **fields)
         self.customer = Customer.objects.create(name='Identifier Customer', created_by=self.staff)
 
-    def test_invalid_batch_ids_never_deduct_or_reconcile_a_different_batch(self):
+    def test_invalid_batch_ids_never_deduct_a_different_batch(self):
         for (field, batch) in (('product_batch_id', self.product_batch),):
             for url, payload in (
                 ('/inventory/stock-adjustments/', {'adjustment_type': 'spoilage', 'quantity': '1', 'unit_cost': '1'}),
-                ('/inventory/stock-counts/', {'counted_quantity': '9'}),
             ):
                 for value in (batch.pk + 0.5, float(batch.pk), True, False, [], {}, 0, -1, 2**63, str(2**63)):
                     with self.subTest(field=field, url=url, value=value):
@@ -139,7 +138,6 @@ class InventoryIdentifierValidationTests(APITestCase):
             batch.refresh_from_db()
             self.assertEqual(batch.remaining_quantity, Decimal('10'))
         self.assertEqual(StockAdjustment.objects.count(), 0)
-        self.assertEqual(StockCount.objects.count(), 0)
 
     def test_numeric_string_ids_and_empty_optional_batch_ids_remain_supported(self):
         for (field, other_field, batch) in (('product_batch_id', 'ingredient_batch_id', self.product_batch),):
@@ -148,12 +146,8 @@ class InventoryIdentifierValidationTests(APITestCase):
                 'quantity': '1', 'unit_cost': '1',
             }, format='json')
             self.assertEqual(response.status_code, 201, response.data)
-            response = self.client.post('/inventory/stock-counts/', {
-                field: str(batch.pk), other_field: None, 'counted_quantity': '8',
-            }, format='json')
-            self.assertEqual(response.status_code, 201, response.data)
             batch.refresh_from_db()
-            self.assertEqual(batch.remaining_quantity, Decimal('8'))
+            self.assertEqual(batch.remaining_quantity, Decimal('9'))
 
     def test_invalid_optional_second_batch_id_is_not_silently_ignored(self):
         response = self.client.post('/inventory/stock-adjustments/', {

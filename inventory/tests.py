@@ -27,7 +27,7 @@ from config.test_support import (
 
 from config.data_cache import data_version
 from forecasting.data import load_snapshot
-from inventory.models import BatchSequence, Category, FEFOConf, Product, ProductBatch, StockAdjustment, StockCount
+from inventory.models import BatchSequence, Category, FEFOConf, Product, ProductBatch, StockAdjustment
 from inventory.serializers import ProdBatchSerializer, ProductSerializer
 from inventory.services.batch_sequence_service import next_sequence
 from inventory.services.batch_service import BatchService
@@ -250,7 +250,7 @@ class StaffCategoryVisibilityAPITests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('product_id', response.data)
 
-    def test_staff_cannot_adjust_or_count_stock_in_inactive_category(self):
+    def test_staff_cannot_adjust_stock_in_inactive_category(self):
         batch = ProductBatch.objects.create(
             product=self.visible_product, batch_number='PRD-INACTIVE-ADJUST',
             unit_price=Decimal('10.00'), initial_quantity=Decimal('5.00'),
@@ -264,10 +264,6 @@ class StaffCategoryVisibilityAPITests(TestCase):
             'quantity': '1.00', 'unit_cost': '10.00',
         }, format='json')
         self.assertEqual(adjustment.status_code, 400)
-        count = self.client.post('/inventory/stock-counts/', {
-            'product_batch_id': batch.pk, 'counted_quantity': '4.00',
-        }, format='json')
-        self.assertEqual(count.status_code, 400)
         batch.refresh_from_db()
         self.assertEqual(batch.remaining_quantity, Decimal('5.00'))
 
@@ -487,98 +483,8 @@ class CreateStockAdjustmentTests(TestCase):
                 )
                 self.assertEqual(response.status_code, 400)
 
-    def test_stock_count_api_rejects_nan_and_invalid_batch_id(self):
-        client = APIClient()
-        client.force_authenticate(user=self.user)
-        payloads = [
-            {'product_batch_id': self.batch.pk, 'counted_quantity': 'NaN'},
-            {'product_batch_id': {'invalid': True}, 'counted_quantity': '1.00'},
-        ]
-        for payload in payloads:
-            with self.subTest(payload=payload):
-                response = client.post(
-                    '/inventory/stock-counts/', payload, format='json'
-                )
-                self.assertEqual(response.status_code, 400)
 
 
-class ReconcileTests(TestCase):
-    """Covers: reconcile() stale-read fix, null unit_price guard, IngBatchSerializer unit_price auto-fill gap."""
-
-    def setUp(self):
-        self.user = make_user()
-        self.category = Category.objects.create(name='Dairy')
-        self.product = Product.objects.create(
-            category=self.category, name='Fresh Milk', unit='liter',
-            shelf_life=7,
-        )
-        self.batch = ProductBatch.objects.create(
-            product=self.product, batch_number='PRD-TEST-002',
-            unit_price=Decimal('50.00'),
-            initial_quantity=Decimal('100.00'),
-            remaining_quantity=Decimal('100.00'),
-            expiration_date=timezone.localdate() + timedelta(days=30),
-        )
-
-    def test_reconcile_with_shortage_creates_correction_adjustment(self):
-        count = BatchService.reconcile(
-            counted_quantity=Decimal('90.00'), counted_by=self.user,
-            product_batch=self.batch,
-        )
-        self.assertEqual(count.expected_quantity, Decimal('100.00'))
-        self.assertEqual(count.variance, Decimal('-10.00'))
-        self.assertIsNotNone(count.resulting_adjustment)
-        self.batch.refresh_from_db()
-        self.assertEqual(self.batch.remaining_quantity, Decimal('90.00'))
-
-    def test_reconcile_with_no_variance_creates_no_adjustment(self):
-        count = BatchService.reconcile(
-            counted_quantity=Decimal('100.00'), counted_by=self.user,
-            product_batch=self.batch,
-        )
-        self.assertEqual(count.variance, Decimal('0.00'))
-        self.assertIsNone(count.resulting_adjustment)
-
-    def test_reconcile_reads_current_db_state_not_stale_instance(self):
-        """
-        Simulates the staleness bug: caller holds an old in-memory batch object
-        (remaining=100) while the real DB row has since changed (remaining=70,
-        as if a concurrent sale happened). reconcile() must use the current DB
-        value, not the stale one passed in.
-        """
-        stale_batch = ProductBatch.objects.get(pk=self.batch.pk)  # snapshot at remaining=100
-
-        # Simulate a concurrent sale/adjustment changing the real row
-        self.batch.remaining_quantity = Decimal('70.00')
-        self.batch.save()
-
-        count = BatchService.reconcile(
-            counted_quantity=Decimal('65.00'), counted_by=self.user,
-            product_batch=stale_batch,  # caller's stale object, remaining=100
-        )
-        # expected must reflect the CURRENT db value (70), not the stale one (100)
-        self.assertEqual(count.expected_quantity, Decimal('70.00'))
-        self.assertEqual(count.variance, Decimal('-5.00'))
-
-    def test_reconcile_raises_on_null_unit_price_with_variance(self):
-        self.batch.unit_price = None
-        self.batch.save()
-        with self.assertRaises(ValueError):
-            BatchService.reconcile(
-                counted_quantity=Decimal('90.00'), counted_by=self.user,
-                product_batch=self.batch,
-            )
-
-    def test_reconcile_allows_null_unit_price_when_no_variance(self):
-        """No variance means no adjustment is created, so a null unit_price shouldn't block it."""
-        self.batch.unit_price = None
-        self.batch.save()
-        count = BatchService.reconcile(
-            counted_quantity=Decimal('100.00'), counted_by=self.user,
-            product_batch=self.batch,
-        )
-        self.assertEqual(count.variance, Decimal('0.00'))
-        self.assertIsNone(count.resulting_adjustment)
 
 
 
@@ -603,7 +509,7 @@ class BatchQuantityUpdateTests(TestCase):
         """
         quantity is intentionally write_only/create-only. This test locks in
         that PATCHing it is silently ignored rather than raising OR actually
-        changing stock outside the audited adjustment/reconcile paths —
+        changing stock outside the audited adjustment paths —
         this is the corrected, intentional behavior, not the old bug.
         """
         from inventory.serializers import ProdBatchSerializer
@@ -1015,7 +921,7 @@ class BatchStatusReadOnlyTests(TestCase):
     could silently un-dispose a batch that was written off for spoilage,
     re-entering it into the sellable FEFO pool with no adjustment record.
     Same treatment as quantity from the prior round: read-only, only
-    mutable via create_stock_adjustment()/reconcile().
+    mutable via create_stock_adjustment().
     """
 
     def setUp(self):
@@ -1260,12 +1166,6 @@ class InventoryAuditRegressionTests(TestCase):
                 unit_cost=Decimal('1.00'), adjusted_by=self.user,
             )
 
-    def test_stock_count_requires_exactly_one_batch_at_database_level(self):
-        with self.assertRaises(IntegrityError), transaction.atomic():
-            StockCount.objects.create(
-                expected_quantity=Decimal('1.00'), counted_quantity=Decimal('1.00'),
-                variance=Decimal('0.00'), counted_by=self.user,
-            )
 
 
 class FEFOTransactionBoundaryTests(TransactionTestCase):

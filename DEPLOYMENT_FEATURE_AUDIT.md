@@ -5,6 +5,11 @@ the checks below. Production hosting and the acceptance gaps below still require
 work before public sign-off. Pagination was subsequently accepted as deferred
 for the finalized release; see [RELEASE.md](RELEASE.md).
 
+Stock Count was later classified as obsolete and removed from the working
+backend. Historical workflow/test coverage below describes the earlier release;
+see [TARGETED_BACKEND_CLEANUP.md](TARGETED_BACKEND_CLEANUP.md) for the current
+source changes and pending rollout.
+
 ## Scope and evidence
 
 Backend application source `df6f732a` (release documentation `0cc5d0c4`), frontend

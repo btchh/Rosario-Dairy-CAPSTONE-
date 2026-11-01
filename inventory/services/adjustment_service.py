@@ -1,7 +1,7 @@
 from decimal import Decimal
 from django.db import transaction as db_transaction
 from django.utils import timezone
-from ..models import ProductBatch, StockAdjustment, StockCount
+from ..models import ProductBatch, StockAdjustment
 
 
 def create_stock_adjustment(adjustment_type, quantity, unit_cost, adjusted_by, reason: str | None = "", product_batch=None):
@@ -39,8 +39,8 @@ def create_stock_adjustment(adjustment_type, quantity, unit_cost, adjusted_by, r
             batch.remaining_quantity = Decimal('0.00')
             batch.status = 'disposed' if adjustment_type in ['spoilage', 'expired'] else 'depleted'
         elif adjustment_type == 'correction' and batch.status == 'depleted':
-            # A physical count can rediscover stock in a batch previously
-            # considered empty. Make it eligible for stock totals and FEFO.
+            # A correction can restore stock in a previously depleted batch.
+            # Make it eligible for stock totals and FEFO.
             batch.status = 'available'
         batch.save()
 
@@ -54,41 +54,3 @@ def create_stock_adjustment(adjustment_type, quantity, unit_cost, adjusted_by, r
         )
         adjustment.save()
         return adjustment
-
-def reconcile(counted_quantity, counted_by, notes: str | None = "", product_batch=None):
-  if product_batch is None:
-      raise ValueError("product_batch must be provided.")
-
-  with db_transaction.atomic():
-      batch = ProductBatch.objects.select_for_update().get(pk=product_batch.pk)
-
-      expected = batch.remaining_quantity
-      variance = counted_quantity - expected
-
-      count = StockCount(
-          product_batch=product_batch,
-          expected_quantity=expected,
-          counted_quantity=counted_quantity,
-          variance=variance,
-          counted_by=counted_by,
-          notes=notes
-      )
-      count.save()
-
-      if variance != Decimal('0.00'):
-          if batch.unit_price is None:
-              raise ValueError(
-                  f"Cannot record a correction for batch {batch.batch_number}: unit_price is not set. Set a unit price on the batch before reconciling."
-              )
-          adjustment = create_stock_adjustment(
-              adjustment_type='correction',
-              quantity=-variance,
-              unit_cost=batch.unit_price,
-              adjusted_by=counted_by,
-              reason=notes or 'Daily stock count variance',
-              product_batch=product_batch
-          )
-          count.resulting_adjustment = adjustment
-          count.save()
-
-      return count

@@ -1,0 +1,141 @@
+{
+  "review_date": "2026-11-01",
+  "source_base": "74ee7d9e",
+  "frontend_commit": "5e39018993a55461e48b30dedc4ff24132be8c38",
+  "database_scope": "Private consistent backup restored into isolated PostgreSQL; no running database schema/data writes",
+  "backup_sha256": "ddc61e64aef0f70251668cd30da21e51bab89767ace8ef917d29df536b02fa16",
+  "table_count": 55,
+  "all_non_migration_table_fingerprints_preserved_except_removed_flag_values": true,
+  "changed_columns": {
+    "systemsetting_notificationsettings": [
+      "forecast_warnings",
+      "report_ready_notifications"
+    ]
+  },
+  "migration": "systemsetting.0003_remove_inactive_notification_flags",
+  "forward_reverse_forward_verified": true,
+  "unvalidated_constraints": 0,
+  "invalid_indexes": 0,
+  "stock_count": {
+    "table": "inventory_stockcount",
+    "rows": 0,
+    "frontend_flow": false,
+    "preserved": true
+  },
+  "retained_legacy_reporting_tables": {
+    "reporting_historicalsale": 1590,
+    "reporting_historicalsalesday": 333,
+    "reporting_importedrow": 19005,
+    "reporting_importedsheet": 201,
+    "reporting_workbookimport": 13
+  },
+  "rollout_pending": true,
+  "live_database_read_only_checks": {
+    "stock_count_rows": 0,
+    "stock_count_linked_corrections": 0,
+    "unvalidated_constraints": 0,
+    "invalid_indexes": 0,
+    "foreign_keys_from_non_reporting_tables_to_legacy_reporting": 0
+  },
+  "route_validation": {
+    "before_route_patterns": 79,
+    "after_route_patterns": 77,
+    "before_declared_method_bindings": 122,
+    "after_declared_method_bindings": 116,
+    "remaining_classifications": {
+      "wired": 73,
+      "alternative_or_equivalent_route": 24,
+      "service_only": 4,
+      "diagnostic_without_ui": 5,
+      "rejected_405": 1,
+      "api_root_metadata": 2,
+      "restricted_maintenance_without_ui": 1,
+      "feature_without_ui": 6
+    },
+    "all_previously_resolved_frontend_requests_preserved": true,
+    "removed_bindings": [
+      {
+        "method": "GET",
+        "path": "/api/forecasting/demo-2026/",
+        "old_classification": "retired_410"
+      },
+      {
+        "method": "GET",
+        "path": "/inventory/(?:ingredients|ingredient-batches|suppliers|low-stock/ingredients|expiring/ingredients)/{legacy_detail}",
+        "old_classification": "retired_compatibility"
+      },
+      {
+        "method": "POST",
+        "path": "/inventory/(?:ingredients|ingredient-batches|suppliers|low-stock/ingredients|expiring/ingredients)/{legacy_detail}",
+        "old_classification": "retired_compatibility"
+      },
+      {
+        "method": "PUT",
+        "path": "/inventory/(?:ingredients|ingredient-batches|suppliers|low-stock/ingredients|expiring/ingredients)/{legacy_detail}",
+        "old_classification": "retired_compatibility"
+      },
+      {
+        "method": "PATCH",
+        "path": "/inventory/(?:ingredients|ingredient-batches|suppliers|low-stock/ingredients|expiring/ingredients)/{legacy_detail}",
+        "old_classification": "retired_compatibility"
+      },
+      {
+        "method": "DELETE",
+        "path": "/inventory/(?:ingredients|ingredient-batches|suppliers|low-stock/ingredients|expiring/ingredients)/{legacy_detail}",
+        "old_classification": "retired_compatibility"
+      }
+    ],
+    "preserve_server_pagination": true
+  },
+  "custom_management_commands": [
+    "accounts/management/commands/check_smtp.py",
+    "inventory/management/commands/consolidate_products.py",
+    "sales/management/commands/backup_sales_history.py",
+    "sales/management/commands/consolidate_customers.py",
+    "sales/management/commands/import_annual_sales.py",
+    "sales/management/commands/refresh_annual_sales.py",
+    "sales/management/commands/remove_dummy_data.py",
+    "forecasting/management/commands/activate_forecast_model.py",
+    "forecasting/management/commands/audit_forecast_accuracy.py",
+    "forecasting/management/commands/investigate_feeding_sales.py",
+    "forecasting/management/commands/refresh_beta_graphs.py",
+    "forecasting/management/commands/refresh_forecast_models.py",
+    "forecasting/management/commands/refresh_forecast_patterns.py",
+    "forecasting/management/commands/refresh_projection_evidence.py",
+    "forecasting/management/commands/refresh_provisional_forecasts.py",
+    "forecasting/management/commands/refresh_weekly_forecasts.py",
+    "forecasting/management/commands/run_forecast_refresh.py",
+    "forecasting/management/commands/verify_forecast_coverage.py",
+    "forecasting/management/commands/verify_projection_coverage.py",
+    "forecasting/management/commands/watch_forecast_models.py"
+  ],
+  "tests": {
+    "command": "manage.py test inventory systemsetting forecasting.test_demo forecasting.test_beta_graph forecasting.test_chart forecasting.test_refresh_jobs sales.test_history_api reporting.test_complete_reports reporting.test_inventory_ledger config.test_cache_consistency --noinput --verbosity 1",
+    "tests_run": 274,
+    "passed": 274,
+    "duration_seconds": 86.108,
+    "scope": "Changed areas and adjacent inventory/history/report/cache/forecast contracts; not a repeat of the full seven-app or browser audit",
+    "isolated_test_overrides": [
+      "locmem cache",
+      "locmem email; no external messages",
+      "MD5 password hasher for test speed only"
+    ]
+  },
+  "additional_checks": [
+    "Django system check",
+    "makemigrations --check --dry-run",
+    "migrate --check on migrated clone",
+    "git diff --check",
+    "all active ERD table metadata unchanged except two removed columns; 49 tables/51 FKs; eight-page A3 PDF regenerated"
+  ],
+  "running_docker_images_changed": false,
+  "frontend_source_changed": false,
+  "frozen_release_tag_changed": false,
+  "all_table_names_preserved": true,
+  "all_non_migration_table_row_counts_preserved": true,
+  "isolated_database_container_removed": true,
+  "subsequent_scope_change": {
+    "stock_count": "Retired as obsolete by user decision after this initial cleanup verification; see follow-up evidence",
+    "evidence": "validation/stock-count-retirement-20261101.json"
+  }
+}

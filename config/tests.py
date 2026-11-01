@@ -150,7 +150,6 @@ class BackendRegressionTests(TestCase):
     def test_manual_endpoints_reject_non_object_bodies_without_mutations(self):
         endpoints = [
             ('post', '/sales/checkout/'),
-            ('post', '/inventory/stock-counts/'),
             ('post', '/inventory/stock-adjustments/'),
             ('post', '/accounts/register/'),
             ('post', '/accounts/change-password/'),

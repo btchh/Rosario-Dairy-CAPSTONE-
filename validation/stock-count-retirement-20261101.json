@@ -1,0 +1,169 @@
+{
+  "review_date": "2026-11-01",
+  "source_base": "74ee7d9e",
+  "scope": "Targeted cleanup plus user-directed retirement of Stock Count; verified on a private restored PostgreSQL clone",
+  "backup_sha256": "27695a6e393db69ed73ef42e45d940a17d8656e96df85c59aa78858a6dbb26d8",
+  "live_database_schema_or_business_writes": false,
+  "tables_before": 55,
+  "tables_after": 54,
+  "removed_tables": {
+    "inventory_stockcount": {
+      "rows_before": 0,
+      "guard": "Migration locks the table and aborts if any count records exist"
+    }
+  },
+  "changed_columns_on_retained_tables": {
+    "systemsetting_notificationsettings": [
+      "forecast_warnings",
+      "report_ready_notifications"
+    ]
+  },
+  "retained_non_migration_tables_with_preserved_counts_and_fingerprints": 53,
+  "retained_legacy_reporting_tables": {
+    "reporting_historicalsale": 1590,
+    "reporting_historicalsalesday": 333,
+    "reporting_importedrow": 19005,
+    "reporting_importedsheet": 201,
+    "reporting_workbookimport": 13
+  },
+  "migration_history_rows_added": 2,
+  "migrations": [
+    "inventory.0014_remove_obsolete_stock_count",
+    "systemsetting.0003_remove_inactive_notification_flags"
+  ],
+  "forward_reverse_forward_verified": true,
+  "invalid_indexes": 0,
+  "unvalidated_constraints": 0,
+  "stock_adjustment_and_submission_tables_preserved": true,
+  "stock_quantities_preserved": true,
+  "rollout_pending": true,
+  "frozen_release_tag_changed": false,
+  "frontend_source_changed": false,
+  "route_validation": {
+    "route_patterns": 75,
+    "declared_method_bindings": 113,
+    "classification_counts": {
+      "wired": 73,
+      "alternative_or_equivalent_route": 24,
+      "service_only": 4,
+      "diagnostic_without_ui": 5,
+      "rejected_405": 1,
+      "api_root_metadata": 2,
+      "restricted_maintenance_without_ui": 1,
+      "feature_without_ui": 3
+    },
+    "all_previously_resolved_frontend_requests_preserved": true,
+    "preserve_server_pagination": true,
+    "removed_bindings": [
+      {
+        "method": "GET",
+        "path": "/api/forecasting/demo-2026/"
+      },
+      {
+        "method": "GET",
+        "path": "/inventory/(?:ingredients|ingredient-batches|suppliers|low-stock/ingredients|expiring/ingredients)/{legacy_detail}"
+      },
+      {
+        "method": "POST",
+        "path": "/inventory/(?:ingredients|ingredient-batches|suppliers|low-stock/ingredients|expiring/ingredients)/{legacy_detail}"
+      },
+      {
+        "method": "PUT",
+        "path": "/inventory/(?:ingredients|ingredient-batches|suppliers|low-stock/ingredients|expiring/ingredients)/{legacy_detail}"
+      },
+      {
+        "method": "PATCH",
+        "path": "/inventory/(?:ingredients|ingredient-batches|suppliers|low-stock/ingredients|expiring/ingredients)/{legacy_detail}"
+      },
+      {
+        "method": "DELETE",
+        "path": "/inventory/(?:ingredients|ingredient-batches|suppliers|low-stock/ingredients|expiring/ingredients)/{legacy_detail}"
+      },
+      {
+        "method": "GET",
+        "path": "/inventory/stock-counts/"
+      },
+      {
+        "method": "POST",
+        "path": "/inventory/stock-counts/"
+      },
+      {
+        "method": "GET",
+        "path": "/inventory/stock-counts/{pk}/"
+      }
+    ]
+  },
+  "erd_validation": {
+    "tables": 48,
+    "foreign_keys": 48,
+    "stock_count_absent": true,
+    "remaining_model_metadata_unchanged": true,
+    "all_complete_diagram_fields_match_models": true,
+    "all_pk_fk_fields_present_in_module_diagrams": true,
+    "pdf_pages": 8,
+    "pdf_size": "A3 landscape"
+  },
+  "full_backend_suite": {
+    "command": "manage.py test accounts config sales inventory reporting systemsetting forecasting --noinput --verbosity 1",
+    "tests_run": 986,
+    "passed": 978,
+    "errors": 1,
+    "error_type": "New migration test fixture used a historical accounts model without token_version; corrected to current user model with FK IDs",
+    "skipped": 7,
+    "duration_seconds": 561.934,
+    "redis_integration_skipped_in_initial_run": [
+      "config.test_live_events.RedisHTTPStreamTests.test_separate_asgi_process_delivers_committed_sale_over_http_without_gzip_buffering",
+      "config.test_live_events.RedisStreamTests.test_broker_connection_failure_after_http_headers_is_a_safe_event",
+      "config.test_live_events.RedisStreamTests.test_broker_failure_emits_unavailable_and_closes",
+      "config.test_live_events.RedisStreamTests.test_heartbeat_catches_missed_publication_and_reconnect_always_resyncs",
+      "config.test_live_events.RedisStreamTests.test_open_connection_stops_after_revocation_role_change_and_expiry",
+      "config.test_live_events.RedisStreamTests.test_sale_reaches_two_viewers_with_coalesced_metadata_only"
+    ]
+  },
+  "redis_follow_up": {
+    "command": "manage.py test config.test_live_events.RedisStreamTests config.test_live_events.RedisHTTPStreamTests --noinput --verbosity 2",
+    "disposable_redis": true,
+    "separate_test_database": true,
+    "tests_run": 6,
+    "passed": 6,
+    "duration_seconds": 6.423,
+    "covers_all_six_opt_in_tests_skipped_in_full_run": true
+  },
+  "six_app_rerun": {
+    "command": "manage.py test accounts config sales inventory reporting systemsetting --noinput --verbosity 1",
+    "tests_run": 752,
+    "passed": 751,
+    "skipped": 1,
+    "duration_seconds": 91.579,
+    "disposable_redis_supplied": true,
+    "migration_guard_regression_passed_after_fixture_fix": true
+  },
+  "combined_unique_test_results": {
+    "discovered": 986,
+    "passed": 985,
+    "skipped": 1,
+    "remaining_skip": {
+      "test": "sales.test_backup_security.PrivateBackupDirectoryTests.test_windows_private_directory_and_inherited_file_acl",
+      "reason": "Requires native Windows ACL APIs and an ACL-capable filesystem."
+    },
+    "coverage": "All 234 forecasting tests passed in the initial run; all 751 runnable six-app tests, including Redis and the fixed migration regression, passed on rerun"
+  },
+  "guard_tests": [
+    "empty stock-count table removed without changing batches/adjustments",
+    "existing count history blocks removal and preserves linked adjustment"
+  ],
+  "test_only_overrides": [
+    "locmem cache unless a test explicitly supplies Redis",
+    "locmem email; no external mail",
+    "MD5 password hasher for test speed only"
+  ],
+  "additional_checks": [
+    "Django check",
+    "makemigrations --check --dry-run",
+    "migrate --check on restored/migrated clone",
+    "forward/reverse/forward migrations",
+    "route/ERD structure validation",
+    "git diff --check"
+  ],
+  "disposable_postgres_and_redis_removed": true
+}

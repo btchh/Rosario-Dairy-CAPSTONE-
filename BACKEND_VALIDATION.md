@@ -1,5 +1,51 @@
 # Backend validation
 
+## Obsolete Stock Count retirement — 2026-11-01
+
+Removed Stock Count's model, API, serializer, reconciliation service and import/
+QA callers following the user's scope correction. The new migration locks the
+count table and refuses to drop it if records exist; regression tests cover both
+empty removal and populated-history preservation, including linked adjustments.
+Stock adjustments, FEFO, durable retry protection and server pagination remain.
+
+**985 unique backend tests passed; one native-Windows ACL test skipped.** The
+initial seven-app run discovered 986 tests in 561.934 seconds, with one
+new migration-test fixture error (old user schema omitted `token_version`) and
+six opt-in Redis skips plus Windows. The fixture now uses the current user
+model. All six non-forecast apps reran with disposable Redis: 752 tests, 751
+passed, one Windows skip, in 91.579 seconds. All 234 forecasting
+tests passed initially; their code was unchanged. The six Redis integration
+tests also passed independently; none remains unverified.
+
+A fresh consistent backup restored successfully; forward/reverse/forward checks
+removed only the empty count table (55 public tables to 54) and the two inactive
+notification columns. Counts/fingerprints of all 53 retained non-migration tables
+match, including stock/adjustment/submission/legacy reporting records. Resolver
+checks retain every frontend caller and pagination contract: 75 patterns/113
+bindings. ERD PDF/dictionary regenerated: 48 active tables and 48 foreign keys.
+
+The source changes are local, not deployed. Docker, running database and frozen
+release archive/tag remain unchanged. See
+[TARGETED_BACKEND_CLEANUP.md](TARGETED_BACKEND_CLEANUP.md) and
+[validation/stock-count-retirement-20261101.json](validation/stock-count-retirement-20261101.json).
+The earlier sections below describe their corresponding historical source/schema.
+
+## Targeted cleanup and database review — 2026-11-01
+
+Removed retired inventory/demo compatibility entry points and two no-effect
+notification flags. All **274 targeted regression tests passed**. A fresh private
+backup restored into isolated PostgreSQL; forward/reverse/forward migration
+checks preserved all 55 table names and counts/retained values across all 54
+non-migration tables. Only two inactive columns are dropped. Live database checks
+were read-only: Stock Count exists with zero rows; five populated legacy reporting
+tables are retained. Pagination, actual forecasting and business APIs remain.
+
+ERD PDF/dictionary updated to the source schema (49 active tables/51 FKs).
+No Docker rollout, live migration, external email, frontend source change or
+release tag/package update. This cleanup is pending a coordinated backend
+image/migration rollout; see [TARGETED_BACKEND_CLEANUP.md](TARGETED_BACKEND_CLEANUP.md)
+and [validation/targeted-cleanup-20261101.json](validation/targeted-cleanup-20261101.json).
+
 ## Frontend/backend source parity — 2026-11-01
 
 Reviewed backend `0b7f9aee` (application source `df6f732a`) against frontend

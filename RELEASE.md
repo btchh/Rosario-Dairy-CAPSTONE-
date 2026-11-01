@@ -4,11 +4,15 @@ Finalized on 2026-11-01 (Asia/Manila) for deployment preparation. This freezes
 the tested application and records the accepted limits. Target-host setup and
 public production acceptance follow [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md).
 
+Subsequent [targeted cleanup](TARGETED_BACKEND_CLEANUP.md), including Stock Count
+retirement, changes the working source and adds migrations. Those changes are
+not included in this frozen image/archive/tag and await a coordinated rollout.
+
 ## Frozen application
 
 | Component | Revision / image |
 | --- | --- |
-| Backend application source | `df6f732a` (subsequent changes are release records/packaging) |
+| Backend application source | `df6f732a` (application code in this frozen image/archive) |
 | Backend release records | Git tag `release-2026.11.01` |
 | Frontend source | `5e39018993a55461e48b30dedc4ff24132be8c38` |
 | Backend image | `rosario-dairy-backend:release-2026.11.01` |

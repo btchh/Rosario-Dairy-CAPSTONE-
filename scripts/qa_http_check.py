@@ -41,7 +41,7 @@ def main():
     from django.db import connection, close_old_connections
     from django.utils import timezone
     from rest_framework_simplejwt.tokens import AccessToken
-    from inventory.models import Category, Product, ProductBatch, StockAdjustment, StockCount
+    from inventory.models import Category, Product, ProductBatch, StockAdjustment
     from sales.models import Customer, Order, Transaction, SaleSubmission, StockReturn
 
     with connection.cursor() as cursor:
@@ -97,7 +97,7 @@ def main():
         return status, data
     def snapshot():
         return {'counts': [model.objects.count() for model in (users, Category, Product, ProductBatch,
-            Customer, Order, Transaction, SaleSubmission, StockAdjustment, StockCount, StockReturn)],
+            Customer, Order, Transaction, SaleSubmission, StockAdjustment, StockReturn)],
             'stock': list(ProductBatch.objects.order_by('pk').values_list('pk', 'remaining_quantity', 'status'))}
     def phase(name, function):
         started = time.monotonic()
@@ -117,7 +117,7 @@ def main():
         before = snapshot()
         routes = ['/sales/checkout/', '/sales/orders/', '/sales/encoding/', '/sales/customers/',
             '/inventory/products/', '/inventory/categories/', '/inventory/product-batches/',
-            '/inventory/stock-adjustments/', '/inventory/stock-counts/', '/accounts/register/',
+            '/inventory/stock-adjustments/', '/accounts/register/',
             '/accounts/change-password/', '/accounts/email-change/', '/api/reports/refresh/']
         for index, path in enumerate(routes):
             for case_index, body in enumerate(([], [1], 'invalid', True, 1, None)):

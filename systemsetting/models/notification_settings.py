@@ -4,8 +4,6 @@ class NotificationSettings(models.Model):
   low_stock_alerts = models.BooleanField(default=True)
   near_expiry_alerts = models.BooleanField(default=True)
   new_order_alerts = models.BooleanField(default=True)
-  forecast_warnings = models.BooleanField(default=True)
-  report_ready_notifications = models.BooleanField(default=False)
 
   updated_at = models.DateTimeField(auto_now=True)
 

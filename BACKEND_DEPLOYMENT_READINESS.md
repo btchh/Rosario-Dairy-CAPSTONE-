@@ -11,6 +11,18 @@ The subsequent [source parity review](BACKEND_FRONTEND_PARITY.md) identifies
 backend-only flows and partial UI controls. Those capabilities must not be
 treated as completed frontend features; the review preserves server pagination.
 
+## Subsequent targeted cleanup — not yet deployed
+
+The working source removes retired compatibility/demo entry points, the obsolete
+Stock Count model/table and two inactive notification columns. New migrations
+passed migration checks on a restored clone. The running database and Docker
+images still use the finalized release.
+A coordinated backend image/migration rollout is required to deploy this cleanup;
+do not apply the column removal while old backend containers are serving. Stock
+adjustments, retained business data and pagination are preserved. The Stock Count
+migration stops if the table contains any records. See
+[TARGETED_BACKEND_CLEANUP.md](TARGETED_BACKEND_CLEANUP.md).
+
 ## Current release and verified behavior
 
 Frontend `5e390189` and backend application source `df6f732a` are deployed

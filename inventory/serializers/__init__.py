@@ -3,5 +3,4 @@ from .product_serializer import ProductSerializer
 from .productbatch_serializer import ProdBatchSerializer
 from .productstock_serializer import LowStockProductSerializer
 from .stockadjustment_serializer import StockAdjustmentSerializer
-from .stockcount_serializer import StockCountSerializer
 from .fefoconf_serializer import FEFOConfSerializer

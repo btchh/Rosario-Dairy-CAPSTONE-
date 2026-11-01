@@ -9,7 +9,6 @@ from accounts.throttles import ExpensiveReadRateThrottle, ForecastRefreshRateThr
 from rest_framework.exceptions import NotFound
 from config.data_cache import cache_api_response
 from .serving import patterns_report, models_report, report
-from .demo import demo_report
 from .feeding import feeding_report
 from .chart import chart_report
 from .weekly import weekly_report
@@ -140,12 +139,3 @@ class ModelStatusView(APIView):
 
     @cache_api_response
     def get(self,request):return Response(models_report())
-
-
-class DemoForecastView(APIView):
-    permission_classes = [IsAdmin]
-    throttle_classes = [ExpensiveReadRateThrottle]
-
-    # Bypass cached synthetic payloads after the actual-only policy change.
-    def get(self, request):
-        return Response(demo_report(), status=410)

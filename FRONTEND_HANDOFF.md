@@ -1,13 +1,14 @@
 # Frontend handoff — open requests only
 
 Updated 2026-11-01 (Asia/Manila), reviewed against frontend `5e390189`.
-**One deferred request: complete server pagination.** The user accepted the
-current loading cost for finalized release `release-2026.11.01`; this request
-does not block that release.
+**Deferred request: complete server pagination; small follow-up: notification type cleanup.**
+The user accepted the current pagination cost for finalized release
+`release-2026.11.01`. Neither request blocks that frozen release.
 
 The [backend/frontend parity review](BACKEND_FRONTEND_PARITY.md) separately
-documents backend-only and partially exposed capabilities, including Stock
-Count. This handoff lists requested implementation work; it is not a claim of
+documents backend-only and partially exposed capabilities. Stock Count has
+since been classified as obsolete and removed from the working backend. This
+handoff lists requested implementation work; it is not a claim of
 complete feature parity. Keep the pagination APIs and wrappers below.
 
 Frontend `5e390189`, backend `df6f732a` and the stock-out migration are deployed
@@ -87,3 +88,19 @@ and ordering parameters and cover the entire filtered result.
    navigation/reconnect and first usable rows/KPIs on the representative 4,800+
    receipt dataset without downloading full histories. Record timings, run
    frontend tests/TypeScript and rebuild Docker.
+
+## Small follow-up: remove inactive notification type fields
+
+The backend targeted cleanup removes `forecast_warnings` and
+`report_ready_notifications` from Notification Settings responses and persistence
+(`systemsetting.0003_remove_inactive_notification_flags`). Neither field generated
+alerts or had a frontend control. Remove those two unused required properties
+from `NotificationSettings` in `src/features/settings/api/settings.service.ts`
+and adjust mock fixtures as appropriate. Keep `low_stock_alerts`,
+`near_expiry_alerts` and `new_order_alerts`, which remain working booleans.
+
+Current Settings forms already read/update only those three active flags, so no
+new controls or behavior changes are requested. This backend cleanup has **not yet
+been rolled into Docker**. Stock Count has also been retired from the backend
+source; its URLs return 404 and no frontend stocktaking integration is requested. See
+[TARGETED_BACKEND_CLEANUP.md](TARGETED_BACKEND_CLEANUP.md).

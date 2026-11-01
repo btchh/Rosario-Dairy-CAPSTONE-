@@ -5,6 +5,14 @@ This review documents code that the current frontend does not call, exposes only
 partly, or uses indirectly. It does not remove code or add features to the release.
 **Keep server-side pagination, summaries, filters and detail endpoints.**
 
+**Subsequent targeted cleanup:** retired ingredient/supplier compatibility routes,
+the disabled synthetic-demo endpoint/command, obsolete Stock Count and two inactive notification fields
+have been removed from the working source. The original counts/evidence below
+remain the pre-cleanup snapshot; the current resolver has **75 route patterns and
+113 declared method bindings**, with all frontend-called paths preserved. See
+[TARGETED_BACKEND_CLEANUP.md](TARGETED_BACKEND_CLEANUP.md) for the database review,
+retained capabilities and migration/rollout status.
+
 ## Reviewed revisions and method
 
 - Backend checkout: `0b7f9aee39c23f97d27152e38055ca61f8154bdc`;
@@ -49,7 +57,7 @@ permission, field or workflow parity: several gaps below share a called route.
 
 | ID | Backend capability | Actual frontend coverage | Consequence / disposition |
 | --- | --- | --- | --- |
-| P01 | Stock counts: GET/POST `/inventory/stock-counts/`, GET detail; [view](inventory/views/stockcount_views.py), [reconciliation](inventory/services/adjustment_service.py) | No stock-count DTO/service/form/history. Inventory screens use products, batches and adjustments. | **Backend-only physical stocktaking.** No UI entry of counted quantity, expected-versus-actual variance, counter/date/notes or linked correction. Keep the model/API; frontend integration needs a separate request. |
+| P01 | Stock Count was present at the original audit | No stock-count DTO/service/form/history. | **Obsolete by user decision; removed from the working source.** Migration `inventory.0014_remove_obsolete_stock_count` drops its table only when empty. No UI integration is requested. |
 | P02 | Eight [stock-adjustment types](inventory/models/stockadjustment.py) | `outflows.service.ts:6` and `OUTFLOW_TYPES` offer `expired`, `spoilage`, `complimentary`, `free_taste`. | `spillage`, `taste_test` (Taste Test Rejection), `processing_use` and `correction` cannot be submitted by current controls. Free Taste is already supported and differs from rejection. History can display other saved types via its fallback label, but cannot specifically select them in its type filter. |
 | P03 | Admin receipt voiding: POST `/sales/transactions/{id}/cancel/` and inherited `/sales/encoding/{id}/cancel/`; [view](sales/views/transaction_views.py), [stock restoration](sales/services/order_service.py) | `ordersService.cancelOrder` is wired in Admin Orders. There is no transaction/encoding cancellation service or button. | **Standalone POS and manually encoded receipts cannot be voided through their UI.** Order cancellation remains implemented. Imported receipts are intentionally non-cancellable. Backend optional cancellation `reason` is not collected by the existing order dialog. Receipt details show the voided flag, but not `voided_at`, `voided_by` or `void_reason`. |
 | P04 | Product reactivation: POST `/inventory/products/{id}/reactivate/`; [mixin](inventory/views/mixins.py) | Admin Inventory can delete; linked products become inactive. No product reactivation service/control or inactive-product recovery list. | A deactivated product cannot be restored through the current UI. Categories and customers **do** have reactivation flows. Category management reads inactive products for category counts, not product recovery. |
@@ -57,16 +65,14 @@ permission, field or workflow parity: several gaps below share a called route.
 | P06 | Self-service profile PATCH accepts `phone_number` and `address`; [profile service](accounts/services/profile_service.py) | Personal Profile and `userService.updateCurrentUser` cover username, names and verified recovery email. | Users cannot edit their own contact number/address in Personal Profile. Admin User Management already creates/updates these fields for users, so the backend fields are not globally unused. |
 | P07 | Staff may preview/export five non-forecast report types and request report refresh; [report views](reporting/views.py), [role guard](reporting/services.py) | Report services are wired to Admin Reports. `StaffLayout.tsx` has no Reports page or report-download control. | Staff report capability is **API-only for that role**. Forecast reports remain admin-only. Whether staff should receive a report screen is a product/role decision, not an automatic permission change. |
 | P08 | System settings accept `system_name`, `currency`, `date_format`, `language`; [serializer](systemsetting/serializers/settings_serializers.py) | Admin Settings edits six business-profile fields, three inventory thresholds and three alert switches. It does not offer these general-preference controls. | Values are returned in the overview but not editable through this UI. Currency affects backend PDFs while UI money formats remain PHP; language affects server middleware while UI strings are fixed. Do not promise global currency/language/date-format switching. Timezone is governed by `DJANGO_TIME_ZONE` and the API rejects a different zone; it is not a missing arbitrary-timezone selector. |
-| P09 | Notification fields `forecast_warnings`, `report_ready_notifications`; [model](systemsetting/models/notification_settings.py) | Present in the frontend type, absent from Admin Settings' `liveAlerts` controls. | These are **reserved/inactive flags**, not two complete backend alert features waiting for buttons: [the inbox generator](systemsetting/notifications.py) generates stock, expiry and fulfilled-order alerts, and does not read those flags. Graph warnings and report-success feedback are separate existing behaviors. |
+| P09 | Notification fields `forecast_warnings`, `report_ready_notifications`; [model](systemsetting/models/notification_settings.py) | Present in the frontend type, absent from Admin Settings' `liveAlerts` controls. | These were **reserved/inactive flags** and have now been removed from the source model/serializer by `systemsetting.0003_remove_inactive_notification_flags`; they were not two complete backend alert features waiting for buttons: [the inbox generator](systemsetting/notifications.py) generates stock, expiry and fulfilled-order alerts, and does not read those flags. Graph warnings and report-success feedback are separate existing behaviors. |
 
-For P01, counts are per batch and record expected quantity, counted quantity,
-variance, user, date and notes. A nonzero variance creates a linked correction;
-the correction must obey batch state, cost and initial-quantity limits. Counts
-are not silently created by checkout or outflows. The stock-count POST does not
-use the stock-adjustment submission UUID protocol; a future UI must not assume
-that passing the outflow `request_id` contract makes stock-count retries keyed.
-The ERD describes actual storage; including Stock Count there does not imply a
-stocktaking screen exists. This review does not change the active schema.
+P01 is resolved by retirement, not by adding a frontend screen. The original
+model/API/service and its three foreign keys are removed from the source schema.
+The live table was empty at review; the migration locks it and refuses to remove
+populated count history on another installation. Stock adjustment/correction
+services and pagination are retained. Historical audit evidence below still
+describes the pre-cleanup source revision.
 
 ## P10: forecast interfaces without UI callers
 
@@ -93,8 +99,10 @@ are operator management commands with publication/reconciliation gates.
 
 The graph's development-only `scope=demo2026` is not selected by the UI; its
 service explicitly restricts scope to `real`, and production rejects demo scope.
-The separate `/api/forecasting/demo-2026/` endpoint always returns 410, and
-`evaluate_demo_forecasts` explicitly fails. Neither is a missing live sales feature.
+The separate `/api/forecasting/demo-2026/` endpoint and disabled
+`evaluate_demo_forecasts` command have now been removed by targeted cleanup;
+their former 410/error behavior is recorded in the original audit evidence.
+Archived experiment rows and the real-data graph/forecast pipelines are retained.
 
 ## Server pagination and summaries — retain
 
@@ -151,8 +159,9 @@ GET `/inventory/` and `/sales/` are browsable API-root metadata, not missing
 business screens. POST `/api/forecasting/refresh/{job_id}/` always returns 405;
 the UI correctly starts jobs at the collection URL and GETs the status URL.
 
-Retired ingredient/supplier routes return empty collection reads or 410. The
-frontend correctly stopped calling them. Old discount columns/neutral replay
+Retired ingredient/supplier routes formerly returned empty collection reads or
+410. Targeted cleanup has removed their compatibility handler, so those paths
+now resolve to 404. The frontend already stopped calling them. Old discount columns/neutral replay
 compatibility do not mean discount pricing needs restoring: new non-neutral
 discount input is rejected by [pricing policy](sales/services/item_pricing.py).
 
@@ -183,18 +192,19 @@ misclassify those existing flows. Tests were not treated as application callers.
 | `StockReturn` | Order cancellation automatically records actual restoration outcomes; inventory reports use retained movements. |
 | `NotificationState`, cache invalidation/signals, SSE | Used by inbox actions, committed writes and live refresh. They are not unimplemented UI entities. |
 | Forecast model/issue/score/coverage/research tables | Background fitting/scoring, saved graphs and PDF reports. Detailed operator review is not all represented by dashboard controls. |
-| Import/consolidation/cleanup/backup tools | The 21 custom management commands are not direct frontend APIs. Data import, reconciliation, gated activation, SMTP diagnostics and recovery deliberately remain operator actions. Some forecast commands are also launched indirectly by the worker/job flow. |
+| Import/consolidation/cleanup/backup tools | The original 21 custom management commands were not direct frontend APIs (20 remain after removing the disabled demo command). Data import, reconciliation, gated activation, SMTP diagnostics and recovery deliberately remain operator actions. Some forecast commands are also launched indirectly by the worker/job flow. |
 | Django migrations, provisioning/preflight/health scripts, packaging and QA tools | Deployment, permission checks, recovery and verification infrastructure. A frontend caller is not expected. |
-| Retained legacy reporting-import database tables | Five old tables have no active Django models or frontend calls. They are retained data, not current frontend features; this audit does not authorize dropping them. |
+| Retained legacy reporting-import database tables | Five old tables have no active Django models or frontend calls. They are retained data, not current frontend features; the subsequent database review found populated historical tables and preserved them. |
 
 ## Result and next decisions
 
 Record P01–P09 as the unexposed/partial capability inventory and P10 as diagnostic
 coverage. They are review findings, not an instruction to implement every API
 operation in the UI. Decide required business flows before changing the frozen
-release. In particular, Stock Count cannot be described as a completed UI feature.
+release. Stock Count is now retired as obsolete, not pending frontend work.
 
-This documentation adds no runtime changes. Backend APIs, server pagination,
-frontend source, database contents, Docker images and release tag are retained.
-No test suite was rerun for these documentation changes; structural validation
+The initial source audit was documentation-only; its structural validation
 checked route coverage, classification totals, service references and source links.
+The subsequent targeted cleanup has runtime changes and a migration, with its
+own regression and database-preservation evidence linked above. Server pagination,
+frontend source, running database/images and the frozen release tag are retained.

@@ -35,8 +35,9 @@ For the selected OVHcloud VPS 1 and free DuckDNS hostname, start with
 
 Backend capabilities without current UI flows, partial field/role coverage and
 intentionally server-only code are recorded in
-[BACKEND_FRONTEND_PARITY.md](BACKEND_FRONTEND_PARITY.md). Server pagination is
-retained; an implemented API is not evidence of a completed frontend feature.
+[BACKEND_FRONTEND_PARITY.md](BACKEND_FRONTEND_PARITY.md). See the subsequent
+[targeted cleanup and database review](TARGETED_BACKEND_CLEANUP.md) for removals
+and migration status. Server pagination is retained; an implemented API is not evidence of a completed frontend feature.
 
 Always apply migrations before starting, including after pulling backend code:
 
@@ -230,7 +231,7 @@ and product-batch IDs accept positive integers or integer strings, and
 reject decimal numbers without truncating them. Optional nullable IDs retain
 their existing behavior. Invalid catalog body types return JSON validation
 errors. The best-seller report accepts `limit` from 1 through 500 (default 10).
-Stock-adjustment reasons and stock-count notes accept text or null; other JSON
+Stock-adjustment reasons accept text or null; other JSON
 types return 400 before stock changes.
 
 Admins can cancel any local sale using

@@ -6,19 +6,29 @@ For the separate production stack, database roles and HTTPS proxy configuration,
 follow [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md). The actual hosting,
 domain, SMTP account and backup/recovery setup still need configuring.
 
-For an image archive your frontend teammate can load, and an optional frontend
-service in the same stack, see [FRONTEND_DOCKER_HANDOFF.md](FRONTEND_DOCKER_HANDOFF.md).
+For the finalized paired backend/frontend image archive and production package,
+see [RELEASE.md](RELEASE.md). The legacy `docker/export-handoff.sh` exports only
+the backend image and local Compose inputs.
 
 The backend image contains application code, migrations and container startup
 scripts. Tests, QA evidence, documentation, host deployment examples, local
 environments and private data stay outside the image. Run automated test suites
 from the source checkout; use the container checks below for runtime health.
 
-To add the frontend to an already running backend, follow **Add the frontend
-image to the same stack** in that guide. It builds with
-`docker/compose.frontend.build.yaml` and starts only the frontend service;
-the existing backend and database stay running. The local Docker frontend uses
-port 5174 while the native Vite server occupies 5173.
+To add the frontend to an already running local backend, use the sibling
+checkout with the following commands. Set `FRONTEND_PORT=5174` in the private
+`.env.docker` when the native Vite server uses 5173:
+
+```bash
+docker compose --env-file .env.docker -f compose.yaml \
+  -f docker/compose.frontend.example.yaml -f docker/compose.frontend.build.yaml \
+  build frontend
+docker compose --env-file .env.docker -f compose.yaml \
+  -f docker/compose.frontend.example.yaml \
+  up -d --no-deps --no-build --wait frontend
+```
+
+The second command requires the existing backend/gateway to be running.
 
 Services are PostgreSQL 18, Redis, a one-shot migration/static-file job, Gunicorn,
 an ASGI live-events service, the midnight forecast worker, and an Nginx gateway

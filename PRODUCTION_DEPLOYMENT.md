@@ -2,7 +2,7 @@
 
 Use `compose.production.yaml` as a **standalone** deployment. `compose.yaml`
 remains the local development stack; do not merge it into production. This
-configuration targets a single OVHcloud VPS with host Nginx terminating HTTPS,
+configuration targets a single VPS with host Nginx terminating HTTPS,
 then the loopback frontend proxy, internal API gateway, Gunicorn and ASGI.
 
 ## Prepare the release
@@ -101,9 +101,8 @@ the internal proxies directly to the internet.
 
 Health probes call their own process on loopback with the allowed health host
 and configured HTTPS forwarding header. They expect an unauthenticated 401,
-not a redirect. Every proxy keeps SSE unbuffered and uncached. The frontend
-application in frontend `63ecff33` implements the live-event client described in
-`FRONTEND_HANDOFF.md`; deploy that image alongside the matching backend.
+not a redirect. Every proxy keeps SSE unbuffered and uncached. Deploy the paired
+frontend/backend revisions and images pinned in [RELEASE.md](RELEASE.md).
 
 After startup, create the initial administrator using the API service's Django
 management command. Verify authenticated API/history reads, a sale and stock
@@ -126,4 +125,4 @@ Ordinary container recreation preserves named volumes. Never use
 
 See `BACKEND_VALIDATION.md` for local verification and
 `BACKEND_DEPLOYMENT_READINESS.md` for remaining hosting checks. Local smoke
-results do not qualify the eventual OVHcloud deployment.
+results do not qualify the eventual VPS deployment.

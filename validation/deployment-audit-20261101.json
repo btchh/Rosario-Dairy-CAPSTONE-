@@ -1,0 +1,418 @@
+{
+  "audit_date": "2026-11-01",
+  "backend_application_commit": "df6f732a",
+  "backend_documentation_commit_before_audit": "0cc5d0c4",
+  "frontend_commit": "840f08ea",
+  "public_deployment_signed_off": false,
+  "application_code_changed": false,
+  "external_email_sent": false,
+  "business_writes": "disposable restored database only",
+  "backend_regression": {
+    "total": 991,
+    "by_app": {
+      "accounts": 109,
+      "config": 181,
+      "sales": 214,
+      "inventory": 136,
+      "reporting": 76,
+      "systemsetting": 40,
+      "forecasting": 235
+    },
+    "passed": 990,
+    "skipped": 1,
+    "seconds": 621.972,
+    "skip_reason": "Windows-only private backup ACL check on Linux"
+  },
+  "frontend_checks": {
+    "tests_passed": 657,
+    "typescript_passed": true,
+    "production_build_passed": true,
+    "scope": "preceding rollout, not rerun during this audit"
+  },
+  "http_workflows": [
+    {
+      "feature": "authentication_and_roles",
+      "status": "pass",
+      "seconds": 5.77,
+      "note": "Real admin/staff login, role boundaries, refresh rotation and idle activity."
+    },
+    {
+      "feature": "catalog_batches_visibility",
+      "status": "pass",
+      "seconds": 0.53,
+      "note": "Category/product/batch creation, expiry/cost inputs, staff visibility and management denial."
+    },
+    {
+      "feature": "customer_create_update",
+      "status": "pass",
+      "seconds": 0.12,
+      "note": "Customer creation and profile update."
+    },
+    {
+      "feature": "pos_checkout_fefo_change_retry",
+      "status": "pass",
+      "seconds": 0.33,
+      "note": "Cash checkout/change, FEFO deduction, keyed retry and oversell rejection."
+    },
+    {
+      "feature": "manual_encoding_and_payment_finality",
+      "status": "pass",
+      "seconds": 0.38,
+      "note": "Manual date/encoder, retry, payment updater and immutable paid payment."
+    },
+    {
+      "feature": "orders_cancellation_and_restock",
+      "status": "pass",
+      "seconds": 0.58,
+      "note": "Fulfilled order/retry, admin-only cancellation, restored stock and repeated-cancel guard."
+    },
+    {
+      "feature": "stock_out_count_disposal",
+      "status": "pass",
+      "seconds": 0.56,
+      "note": "Stock-out/replay/conflict, physical count correction and complete expired disposal."
+    },
+    {
+      "feature": "history_customer_totals_deactivation",
+      "status": "pass",
+      "seconds": 0.69,
+      "note": "Paged history/summaries, exact customer totals, void exclusion and linked-customer deactivation/recovery."
+    },
+    {
+      "feature": "settings_alerts_notifications",
+      "status": "pass",
+      "seconds": 0.83,
+      "note": "Business identity, stock/expiry thresholds, notification preferences/inbox and staff boundaries."
+    },
+    {
+      "feature": "six_report_previews_and_pdfs",
+      "status": "pass",
+      "seconds": 3.2,
+      "note": "All six preview/PDF types, invalid date range and staff forecast-report denial; PDF visual layout not signed off."
+    },
+    {
+      "feature": "nine_forecast_views_and_refresh_queue",
+      "status": "pass",
+      "seconds": 2.63,
+      "note": "All nine views read successfully; refresh queued and both audit jobs completed successfully. Availability after fixture mutations is not live dataset evidence."
+    },
+    {
+      "feature": "user_management_profile_password_otp_email_logout",
+      "status": "pass",
+      "seconds": 22.43,
+      "note": "Admin registration/update/deactivation; profile; captured OTP request/reset; password and verified email changes; revocation/logout. No external email sent."
+    }
+  ],
+  "browser_checks": [
+    {
+      "role": "admin",
+      "feature": "actual_browser_login",
+      "status": "pass"
+    },
+    {
+      "role": "admin",
+      "feature": "Dashboard",
+      "status": "pass",
+      "apiReads": 0,
+      "settledMs": 106
+    },
+    {
+      "role": "admin",
+      "feature": "Inventory",
+      "status": "pass",
+      "apiReads": 4,
+      "settledMs": 714
+    },
+    {
+      "role": "admin",
+      "feature": "Categories",
+      "status": "pass",
+      "apiReads": 3,
+      "settledMs": 822
+    },
+    {
+      "role": "admin",
+      "feature": "Orders",
+      "status": "pass",
+      "apiReads": 10,
+      "settledMs": 15374
+    },
+    {
+      "role": "admin",
+      "feature": "Customers",
+      "status": "pass",
+      "apiReads": 1,
+      "settledMs": 840
+    },
+    {
+      "role": "admin",
+      "feature": "Sales History",
+      "status": "pass",
+      "apiReads": 3,
+      "settledMs": 974
+    },
+    {
+      "role": "admin",
+      "feature": "Sales Encoding",
+      "status": "pass",
+      "apiReads": 1,
+      "settledMs": 753
+    },
+    {
+      "role": "admin",
+      "feature": "Reports",
+      "status": "pass",
+      "apiReads": 6,
+      "settledMs": 1392
+    },
+    {
+      "role": "admin",
+      "feature": "six_actual_browser_pdf_downloads",
+      "status": "pass"
+    },
+    {
+      "role": "admin",
+      "feature": "User Management",
+      "status": "pass",
+      "apiReads": 1,
+      "settledMs": 640
+    },
+    {
+      "role": "admin",
+      "feature": "Settings",
+      "status": "pass",
+      "apiReads": 1,
+      "settledMs": 620
+    },
+    {
+      "role": "admin",
+      "feature": "actual_browser_logout",
+      "status": "pass"
+    },
+    {
+      "role": "staff",
+      "feature": "actual_browser_login",
+      "status": "pass"
+    },
+    {
+      "role": "staff",
+      "feature": "Dashboard",
+      "status": "pass",
+      "apiReads": 0,
+      "settledMs": 105
+    },
+    {
+      "role": "staff",
+      "feature": "Point of Sale",
+      "status": "pass",
+      "apiReads": 1,
+      "settledMs": 1426
+    },
+    {
+      "role": "staff",
+      "feature": "Orders",
+      "status": "pass",
+      "apiReads": 10,
+      "settledMs": 1656
+    },
+    {
+      "role": "staff",
+      "feature": "Inventory",
+      "status": "pass",
+      "apiReads": 2,
+      "settledMs": 636
+    },
+    {
+      "role": "staff",
+      "feature": "Sales History",
+      "status": "pass",
+      "apiReads": 2,
+      "settledMs": 771
+    },
+    {
+      "role": "staff",
+      "feature": "Sales Encoding",
+      "status": "pass",
+      "apiReads": 1,
+      "settledMs": 848
+    },
+    {
+      "role": "staff",
+      "feature": "Settings",
+      "status": "pass",
+      "apiReads": 0,
+      "settledMs": 128
+    },
+    {
+      "role": "staff",
+      "feature": "actual_browser_logout",
+      "status": "pass"
+    }
+  ],
+  "browser_runtime_exceptions": [],
+  "browser_scope": "17 role screen loads, actual admin/staff login/logout and six download clicks; not every write form",
+  "pdf_structure_text_checks": [
+    {
+      "report": "customer",
+      "pages": 1,
+      "contains_text": true,
+      "business_identity_present": true
+    },
+    {
+      "report": "daily_sales",
+      "pages": 1,
+      "contains_text": true,
+      "business_identity_present": true
+    },
+    {
+      "report": "inventory",
+      "pages": 24,
+      "contains_text": true,
+      "business_identity_present": true
+    },
+    {
+      "report": "monthly_sales",
+      "pages": 1,
+      "contains_text": true,
+      "business_identity_present": true
+    },
+    {
+      "report": "sarima_forecast",
+      "pages": 1,
+      "contains_text": true,
+      "business_identity_present": true
+    },
+    {
+      "report": "weekly_sales",
+      "pages": 2,
+      "contains_text": true,
+      "business_identity_present": true
+    }
+  ],
+  "pdf_visual_layout_reviewed": false,
+  "live_forecast_read_only": {
+    "weekly": {
+      "status": "ready",
+      "views": {
+        "combined": {
+          "status": "available",
+          "available_points": 7,
+          "expected_points": 7,
+          "production_approved": false,
+          "freshness_status": "stale_data",
+          "message": null
+        },
+        "regular": {
+          "status": "available",
+          "available_points": 7,
+          "expected_points": 7,
+          "production_approved": false,
+          "freshness_status": "stale_data",
+          "message": null
+        },
+        "feeding": {
+          "status": "available",
+          "available_points": 7,
+          "expected_points": 7,
+          "production_approved": false,
+          "freshness_status": "stale_data",
+          "message": null
+        }
+      }
+    },
+    "monthly": {
+      "status": "ready",
+      "views": {
+        "combined": {
+          "status": "available",
+          "available_points": 7,
+          "expected_points": 7,
+          "production_approved": false,
+          "freshness_status": "stale_data",
+          "message": null
+        },
+        "regular": {
+          "status": "available",
+          "available_points": 7,
+          "expected_points": 7,
+          "production_approved": false,
+          "freshness_status": "current",
+          "message": null
+        },
+        "feeding": {
+          "status": "available",
+          "available_points": 7,
+          "expected_points": 7,
+          "production_approved": false,
+          "freshness_status": "stale_data",
+          "message": null
+        }
+      }
+    },
+    "yearly": {
+      "status": "ready",
+      "views": {
+        "combined": {
+          "status": "partially_available",
+          "available_points": 3,
+          "expected_points": 5,
+          "production_approved": false,
+          "freshness_status": "stale_data",
+          "message": null
+        },
+        "regular": {
+          "status": "partially_available",
+          "available_points": 4,
+          "expected_points": 5,
+          "production_approved": false,
+          "freshness_status": "current",
+          "message": null
+        },
+        "feeding": {
+          "status": "partially_available",
+          "available_points": 3,
+          "expected_points": 5,
+          "production_approved": false,
+          "freshness_status": "stale_data",
+          "message": null
+        }
+      }
+    },
+    "latest_refresh": [
+      {
+        "status": "succeeded",
+        "stage": "complete",
+        "error_code": ""
+      }
+    ]
+  },
+  "live_runtime": {
+    "environment": "development",
+    "debug": false,
+    "https_redirect": false,
+    "secure_session_cookie": false,
+    "secure_csrf_cookie": false,
+    "hsts_seconds": 0,
+    "database_elevated_flags": {
+      "superuser": true,
+      "create_database": true,
+      "create_role": true,
+      "replication": true,
+      "bypass_row_security": true
+    },
+    "deployment_warnings": [
+      "security.W004",
+      "security.W008",
+      "security.W012",
+      "security.W016"
+    ]
+  },
+  "remaining_checks": [
+    "Production settings, restricted roles, TLS and firewall on chosen host",
+    "Server pagination frontend integration",
+    "Forecast data freshness, partial yearly coverage and production approval review",
+    "Actual-host SMTP delivery, data transfer, off-host backups, monitoring, reboot and capacity",
+    "Full browser form journeys, responsive layouts and visual PDF review",
+    "User-reported POS-to-admin update-delay scenario acceptance"
+  ]
+}

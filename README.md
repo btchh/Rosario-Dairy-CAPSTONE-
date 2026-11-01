@@ -27,8 +27,9 @@ PostgreSQL database, Redis, API/static gateway and the forecast scheduler.
 
 For hosting, follow [PRODUCTION_DEPLOYMENT.md](PRODUCTION_DEPLOYMENT.md), using
 the standalone `compose.production.yaml` and `deployment.env.example`. It also
-supports the frontend in the same stack. The latest test results and remaining
-performance work are recorded in [QA_REPORT_2026-10-30.md](QA_REPORT_2026-10-30.md).
+supports the frontend in the same stack. The finalized version and deployment
+package are recorded in [RELEASE.md](RELEASE.md); verification and remaining
+acceptance work are in [DEPLOYMENT_FEATURE_AUDIT.md](DEPLOYMENT_FEATURE_AUDIT.md).
 
 Always apply migrations before starting, including after pulling backend code:
 

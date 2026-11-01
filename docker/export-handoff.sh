@@ -21,8 +21,7 @@ trap 'rm -rf -- "$staging"' EXIT
 package="$staging/$release_name"
 mkdir -p "$package/docker"
 cp -- "$repo_dir/compose.yaml" "$repo_dir/docker.env.example" \
-    "$repo_dir/DOCKER.md" "$repo_dir/FRONTEND_DOCKER_HANDOFF.md" \
-    "$repo_dir/FRONTEND_HANDOFF.md" "$package/"
+    "$repo_dir/DOCKER.md" "$repo_dir/FRONTEND_HANDOFF.md" "$package/"
 cp -- "$repo_dir/docker/nginx.conf" "$repo_dir/docker/frontend.nginx.conf" \
     "$repo_dir/docker/compose.frontend.example.yaml" \
     "$repo_dir/docker/compose.frontend.build.yaml" \

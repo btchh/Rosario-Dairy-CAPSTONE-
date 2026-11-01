@@ -1,5 +1,66 @@
 # Backend validation
 
+## Frontend Docker update — `5e390189`, 2026-11-01
+
+Rebuilt backend/frontend images and deployed frontend `5e390189`, which adds
+Staff Orders loading/unavailable summary placeholders and regression coverage.
+All **662 frontend tests passed**, `tsc --noEmit` passed, and the Docker
+production build passed. Server pagination remains open.
+
+- Running frontend image: `sha256:6d9207b5b6465bdbda12ae6666503c82ea543b781ab7fd3d6339f77917a4790d`.
+- Rebuilt backend manifest: `sha256:6e76d80935c1bf2174d7ab4f662c16d15814858c301f9187607f6009d7bff7a0`.
+  Its filesystem layers and image configuration exactly match the running
+  backend `sha256:ce31672a1ccfd3678c2bbc7161e993bb4ccd5d81b08b2e41f4bdf2831c21854e`;
+  backend services were retained without restart. No schema migration required.
+- Built images tagged `:frontend-5e390189-20261101`; previous running images
+  retained as `:before-5e390189-20261101`.
+
+The updated frontend is healthy at `http://localhost:5174`. Served index and
+all six referenced assets matched the new container byte for byte. API/event
+routes through the frontend proxy correctly rejected unauthenticated reads
+with 401. API/events/database/cache health, Django system checks and pending-
+migration checks passed; the forecast worker remained running. No business
+fixture writes or external emails were used. This was a frontend rollout check,
+not a repeat of every authenticated browser workflow or production sign-off.
+
+Logs: `/tmp/frontend-5e390189-tests.log`,
+`/tmp/frontend-5e390189-typecheck.log`, `/tmp/docker-5e390189-build.log`,
+`/tmp/docker-5e390189-smoke.json`.
+
+## Comprehensive feature/deployment audit — 2026-11-01
+
+Reviewed backend application source `df6f732a` and frontend `840f08ea` without
+changing application code. All seven apps ran **991 tests in 621.972 seconds:
+990 passed and one Windows-only backup ACL test skipped**. This includes the
+forecasting app's 235 tests omitted by the prior six-app run. Test-only
+hashing/email settings did not change the live runtime.
+
+Using current images and a disposable restored database, all 12 real HTTP
+workflow groups passed: login/roles/session activity, catalog, POS/FEFO/change/
+retry, manual payment finality/updater, order cancellation/restock, stock-out/
+count/disposal, customer history, settings/alerts, six report types, nine forecast
+views and captured-OTP/password/email/user management. Two isolated forecast
+refresh jobs subsequently completed successfully.
+
+Chromium passed 22 checks covering actual login/logout, all 17 main role screens
+and six PDF downloads. PDFs had valid structure, extractable text and the test
+business identity. No observed JavaScript runtime exceptions or HTTP 500s.
+Most write workflows were HTTP submissions, not browser form submissions.
+PDF visual layout, mobile layouts and every form journey remain unverified.
+Frontend 657 tests/TypeScript/build passed during rollout, not repeated here.
+
+The local runtime still has development HTTPS/cookie settings and an elevated
+database role. Remaining pagination causes full-history downloads, including ten
+Orders requests. Live forecast weekly/monthly points were available, yearly
+points partial, several freshness states stale and all views unapproved for
+production. Public-host TLS, SMTP, operations, capacity and complete browser
+acceptance remain release checks.
+
+See [DEPLOYMENT_FEATURE_AUDIT.md](DEPLOYMENT_FEATURE_AUDIT.md) for the feature
+matrix, limits and sanitized evidence. No external email was sent or live
+business fixtures written. Disposable services/volumes, private credentials/
+tokens and downloaded business-data PDFs were removed after checks.
+
 ## Coordinated stock-out Docker rollout — 2026-11-01
 
 Built/deployed frontend `840f08ea` and backend source `df6f732a`, with server
@@ -531,7 +592,7 @@ signatures; none were found. QA JSON evidence parses successfully.
 ## Full QA and debugging — 2026-10-30
 
 Full results, remaining findings, evidence and scope are in
-[QA_REPORT_2026-10-30.md](QA_REPORT_2026-10-30.md).
+[the versioned 2026-10-30 QA report](https://github.com/btchh/Rosario-Dairy-CAPSTONE-/blob/0cc5d0c4/QA_REPORT_2026-10-30.md).
 
 The initial full backend run completed 916 tests (915 passed, one Windows-only
 skip); all 472 frontend tests, strict TypeScript and the frontend build passed.
@@ -676,7 +737,8 @@ Verification used an access token with the account's current token version and
 did not create accounts, sales or stock changes. Nginx syntax, both frontend
 Compose variants, the export script syntax and whitespace checks passed.
 
-Build/start/update instructions are in `FRONTEND_DOCKER_HANDOFF.md`. This adds
+Build/start/update instructions for this historical rollout are in the
+[versioned frontend Docker handoff](https://github.com/btchh/Rosario-Dairy-CAPSTONE-/blob/0cc5d0c4/FRONTEND_DOCKER_HANDOFF.md). This adds
 container packaging; the live event client's frontend implementation remains
 the separate request in `FRONTEND_HANDOFF.md`.
 

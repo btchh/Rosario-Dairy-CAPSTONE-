@@ -1,9 +1,11 @@
 # Frontend handoff — open requests only
 
-Updated 2026-11-01 (Asia/Manila), reviewed against frontend `840f08ea`.
-**One open request: complete server pagination.**
+Updated 2026-11-01 (Asia/Manila), reviewed against frontend `5e390189`.
+**One deferred request: complete server pagination.** The user accepted the
+current loading cost for finalized release `release-2026.11.01`; this request
+does not block that release.
 
-Frontend `840f08ea`, backend `df6f732a` and the stock-out migration are deployed
+Frontend `5e390189`, backend `df6f732a` and the stock-out migration are deployed
 locally. Completed stock-out/idle-session integration and verification are in
 [BACKEND_VALIDATION.md](BACKEND_VALIDATION.md). The completed stock-out API
 contract is retained in the
@@ -13,7 +15,7 @@ contract is retained in the
 handoff. Do not edit the sibling frontend source during backend maintenance.
 API paths below are relative to the configured base (`/backend` locally).
 
-## Complete server pagination
+## Deferred: complete server pagination
 
 Backend APIs are available in the running image. Remaining full-history downloads:
 

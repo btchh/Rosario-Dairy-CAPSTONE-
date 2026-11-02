@@ -13,4 +13,5 @@ urlpatterns = [
   path('', include(router.urls)),
   path('low-stock/products/', views.LowStockProductView.as_view(), name='low-stock-products'),
   path('expiring/products/', views.ExpiringProductView.as_view(), name='expiring-products'),
+  path('expired/products/', views.ExpiredProductView.as_view(), name='expired-products'),
 ]

@@ -22,6 +22,39 @@ contract is retained in the
 handoff. Do not edit the sibling frontend source during backend maintenance.
 API paths below are relative to the configured base (`/backend` locally).
 
+## Ready for integration: already-expired product inventory
+
+Use authenticated `GET /inventory/expired/products/` for both admin and staff
+expired inventory views. It returns a plain array of the existing product-batch
+response objects, with nested `product`/`product.category` and
+`expiry_status: "expired"`. The array is ordered by `expiration_date`, then `id`;
+an empty list is `[]`. Normal JWT authentication applies. Staff receive only
+active products in active categories visible to staff. Admins also see expired
+stock for inactive or hidden products/categories. Writes to this endpoint return
+405; viewing it never changes batch status or stock.
+
+The backend includes only received, nonhistorical batches with positive remaining
+quantity where `status == "expired"` or
+`status == "available" && expiration_date < business-local today`. A batch expiring
+today is not expired unless explicitly marked expired. Disposed/depleted batches,
+zero stock and future receipts are excluded. The stored `status` remains unchanged
+(so it can still be `available`); use `expiry_status` for the Expired badge. The
+list remains available even when `near_expiry_alerts` is disabled.
+
+Update `inventoryService.getExpiredBatches()` to request this endpoint instead of
+downloading `/inventory/product-batches/` and deriving the expired list. Update
+`getCatalogOverview()` to load its expired rows from this dedicated feed rather
+than passing the shared unfiltered product-batch promise to `getExpiredBatches()`.
+Keep the normal batch feed for sellable inventory metadata. Extend the frontend
+`DjangoProductBatch.expiry_status` union to include `"expired"`. Existing expired
+row mapping, admin/staff inventory presentation and expired-disposal actions can
+reuse their current fields. Refresh inventory after disposal; disposed/empty
+batches drop out of this feed through existing cache invalidation.
+
+`/inventory/expiring/products/` continues to return upcoming expirations only;
+use the new endpoint for already-expired inventory. No frontend source changes
+were made in this backend task.
+
 ## Deferred: complete server pagination
 
 Backend APIs are available in the running image. Remaining full-history downloads:

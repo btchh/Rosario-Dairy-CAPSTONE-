@@ -3,7 +3,7 @@ from django.utils import timezone
 from django.db.models import Case, CharField, DecimalField, Prefetch, Q, Sum, Value, When
 from django.db.models.functions import Coalesce
 from ..models import Product, ProductBatch, FEFOConf
-from .eligibility import expiry_cutoff
+from .eligibility import expired_stock_filter, expiry_cutoff
 
 
 STOCK_OUTPUT_FIELD = DecimalField(max_digits=20, decimal_places=2)
@@ -63,3 +63,18 @@ def check_product_expiration(visible_to_staff=False):
     batches = batches.filter(product__is_active=True, product__category__is_active=True,
                              product__category__is_visible_to_staff=True)
   return batches.order_by('expiration_date')
+
+
+def check_expired_products(visible_to_staff=False):
+  today = timezone.localdate()
+  batches = ProductBatch.objects.filter(
+    expired_stock_filter(today), is_historical_reference=False,
+  ).annotate(expiry_status=Value('expired', output_field=CharField())).prefetch_related(Prefetch(
+    'product', queryset=Product.objects.select_related('category').annotate(
+      available_stock=_available_stock('batches', today)
+    ),
+  ))
+  if visible_to_staff:
+    batches = batches.filter(product__is_active=True, product__category__is_active=True,
+                             product__category__is_visible_to_staff=True)
+  return batches.order_by('expiration_date', 'pk')

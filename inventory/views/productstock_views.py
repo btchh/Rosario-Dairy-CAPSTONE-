@@ -32,3 +32,15 @@ class ExpiringProductView (APIView):
     )
     serializer = ProdBatchSerializer(expiring, many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class ExpiredProductView(APIView):
+  permission_classes = [IsAdmin | IsStaff]
+
+  @cache_api_response
+  def get(self, request):
+    expired = batch_service.BatchService.check_expired_products(
+      visible_to_staff=request.user.role == 'staff'
+    )
+    serializer = ProdBatchSerializer(expired, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)

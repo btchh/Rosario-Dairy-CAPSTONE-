@@ -207,6 +207,20 @@ a completed disposal returns 400 without recording another movement. Future
 receipt dates are rejected; legacy future receipts are excluded from sellable
 stock and the physical ledger until their receipt date.
 
+`GET /inventory/expired/products/` returns an array of expired product batches
+for authenticated admins and staff, ordered by expiration date then batch ID.
+Each entry uses the product-batch serializer (including nested product/category,
+batch number, remaining quantity, expiration date and stored status), with
+`expiry_status: "expired"`. Eligible batches have remaining quantity greater than
+zero, have been received, and are either marked `expired` or still `available`
+with an expiration date before the current business-local date. Batches expiring
+today remain unexpired. Disposed, depleted, empty, future-received and historical
+reference batches are excluded. Staff results additionally require an active
+product and an active category visible to staff; admins can review expired stock
+for inactive or hidden products too. This read-only list does not depend on
+notification preferences and returns `[]` when no batches qualify.
+`GET /inventory/expiring/products/` remains the separate upcoming-expiration feed.
+
 Batch metadata edits lock/reload the current batch before saving. Staff caches
 verify category visibility and product assignments directly against the database.
 Cancellations record actual restored units and dates; the ledger retains physical

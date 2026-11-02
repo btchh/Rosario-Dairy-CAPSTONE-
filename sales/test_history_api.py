@@ -149,7 +149,7 @@ class HistoryAPITests(APITestCase):
         hidden = self.batch('Hidden', is_visible_to_staff=False)
         inactive = self.batch('Inactive', is_active=False)
         for batches in ((visible, visible), (hidden,), (visible, hidden), (inactive,)):
-            order = self.sale(order=True, payment_status='pending')
+            order = self.sale(order=True, handled_by=self.staff, payment_status='pending')
             for batch in batches:
                 self.attach(order.transaction, batch)
                 OrderItem.objects.create(order=order, product=batch.product, quantity=1, unit_price=5, subtotal=5)
@@ -162,23 +162,24 @@ class HistoryAPITests(APITestCase):
 
     def test_order_visibility_checks_order_and_receipt_items_independently(self):
         hidden = self.batch('Hidden Order', is_visible_to_staff=False)
-        receipt_hidden = self.sale(order=True, payment_status='pending')
+        receipt_hidden = self.sale(order=True, handled_by=self.staff, payment_status='pending')
         self.attach(receipt_hidden.transaction, hidden)
-        order_hidden = self.sale(order=True, payment_status='pending')
+        order_hidden = self.sale(order=True, handled_by=self.staff, payment_status='pending')
         OrderItem.objects.create(order=order_hidden, product=hidden.product, quantity=1, unit_price=5, subtotal=5)
         self.client.force_authenticate(self.staff)
         self.assertEqual(self.get('orders')['count'], 0)
         self.assertEqual(self.get('orders', 'summary/')['order_count'], 0)
 
-    def test_staff_handled_by_filter_is_opt_in_and_does_not_change_shared_history(self):
+    def test_staff_handled_by_filter_cannot_expand_owned_history(self):
         self.sale(order=True, handled_by=self.staff, payment_status='pending')
         self.sale(order=True, payment_status='pending')
         self.client.force_authenticate(self.staff)
         for resource, count in (('transactions', 'transaction_count'), ('orders', 'order_count')):
-            self.assertEqual(self.get(resource, 'summary/')[count], 2)
+            self.assertEqual(self.get(resource, 'summary/')[count], 1)
             summary = self.get(resource, 'summary/', handled_by=self.staff.pk)
             self.assertEqual(summary[count], 1)
             self.assertEqual(summary['total_revenue'], '10.10')
+            self.assertEqual(self.get(resource, handled_by=self.admin.pk)['count'], 0)
 
     def test_encoding_inherits_filters_and_summary_without_including_other_sales(self):
         self.sale('4.20', encoded_at=timezone.now(), payment_status='pending')
@@ -192,6 +193,14 @@ class HistoryAPITests(APITestCase):
             expected = {'id': encoder.pk, 'username': encoder.username, 'role': encoder.role}
             for viewer in (self.admin, self.staff):
                 self.client.force_authenticate(viewer)
+                if viewer.role == 'staff' and encoder != viewer:
+                    for resource in ('transactions', 'encoding'):
+                        self.assertEqual(self.client.get(f'/sales/{resource}/{order.transaction_id}/').status_code, 404)
+                        self.assertNotIn(order.transaction_id, [row['id'] for row in self.get(resource)['results']])
+                    self.assertEqual(self.client.get(f'/sales/orders/{order.pk}/').status_code, 404)
+                    self.assertNotIn(order.pk, [row['id'] for row in self.get('orders')['results']])
+                    self.assertNotIn(order.transaction_id, [row['id'] for row in self.client.get(f'/sales/customers/{self.customer.pk}/transactions/').data['results']])
+                    continue
                 for url in (f'/sales/transactions/{order.transaction_id}/',
                             f'/sales/encoding/{order.transaction_id}/'):
                     response = self.client.get(url)
@@ -276,7 +285,7 @@ class HistoryAPITests(APITestCase):
 
     def test_cached_staff_totals_follow_category_visibility_changes(self):
         batch = self.batch('Visibility Change')
-        order = self.sale(order=True, payment_status='pending')
+        order = self.sale(order=True, handled_by=self.staff, payment_status='pending')
         self.attach(order.transaction, batch)
         self.client.force_authenticate(self.staff)
         for resource in ('transactions', 'orders'):

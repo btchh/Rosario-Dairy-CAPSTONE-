@@ -13,7 +13,7 @@ from .transaction_views import TransactionViewSet
 
 
 class EncodingViewSet(TransactionViewSet):
-    """Staff/admin manual encoding; records remain shared with all sales consumers."""
+    """Manual encoding with the same staff ownership rules as sales history."""
     http_method_names = ['get', 'post', 'patch', 'head', 'options']
 
     def get_queryset(self):

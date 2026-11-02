@@ -85,10 +85,10 @@ class CustomerTotalTests(APITestCase):
         visible_batch = self.batch('Total Visible')
         hidden_batch = self.batch('Total Hidden', is_visible_to_staff=False)
         inactive_batch = self.batch('Total Inactive', is_active=False)
-        visible = self.sale('10.00')
-        hidden = self.sale('100.00')
-        mixed = self.sale('200.00')
-        inactive = self.sale('300.00')
+        visible = self.sale('10.00', handled_by=self.staff)
+        hidden = self.sale('100.00', handled_by=self.staff)
+        mixed = self.sale('200.00', handled_by=self.staff)
+        inactive = self.sale('300.00', handled_by=self.staff)
         for sale, batch in ((visible, visible_batch), (visible, visible_batch),
                             (hidden, hidden_batch), (mixed, visible_batch),
                             (mixed, hidden_batch), (inactive, inactive_batch)):

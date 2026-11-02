@@ -138,7 +138,7 @@ class CustomerVisibilityAuditTests(APITestCase):
             (self.customer, batches[:2], False, timezone.now()-timedelta(days=1)),
             (self.customer, [batches[0]], True, timezone.now()),
             (self.hidden_customer, [batches[1]], False, timezone.now())]:
-            sale = Transaction.objects.create(handled_by=self.admin, customer=customer,
+            sale = Transaction.objects.create(handled_by=self.staff, customer=customer,
                 total_amount=50*len(selected), is_voided=voided)
             Transaction.objects.filter(pk=sale.pk).update(created_at=stamp)
             for batch in selected:

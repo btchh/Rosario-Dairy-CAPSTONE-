@@ -58,7 +58,7 @@ class ReportRefreshIsolationTests(APITransactionTestCase):
         self.assertEqual(response.data['refresh_status'], 'coalesced')
         self.assertGreater(response.data['retry_after_seconds'], 0)
         self.assertEqual(response.data['report_types'], [])
-        self.assertEqual(rebuild.call_count, 2)  # First refresh builds admin and staff scopes.
+        self.assertEqual(rebuild.call_count, 1)  # Only the requesting admin scope is rebuilt.
         self.assert_committed([first, second])
 
     def test_global_cooldown_also_limits_another_authorized_account(self):
@@ -68,7 +68,7 @@ class ReportRefreshIsolationTests(APITransactionTestCase):
             response = self.client.post('/api/reports/refresh/', {})
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['refresh_status'], 'coalesced')
-        self.assertEqual(rebuild.call_count, 2)
+        self.assertEqual(rebuild.call_count, 1)
 
     def test_account_throttle_cache_read_and_write_failures_return_safe_503(self):
         for operation in ('get', 'set'):

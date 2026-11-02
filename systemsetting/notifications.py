@@ -6,6 +6,7 @@ from inventory.services.batch_service import BatchService
 from inventory.services.eligibility import expired_stock_filter
 from inventory.models import FEFOConf, ProductBatch
 from sales.models import Order
+from sales.visibility import visible_orders
 from .models import NotificationSettings, NotificationState
 
 
@@ -58,10 +59,7 @@ def live_notifications(user):
                     [batch.pk, batch.expiration_date, batch.expiry_status])
     if settings.new_order_alerts:
         orders = Order.objects.filter(status='fulfilled').select_related('transaction')
-        if visible:
-            orders = orders.exclude(items__product__category__is_visible_to_staff=False).exclude(
-                items__product__category__is_active=False
-            )
+        orders = visible_orders(user, orders)
         for order in orders.order_by('-created_at', '-pk')[:2]:
             elapsed = (timezone.localdate() - timezone.localdate(order.created_at)).days
             label = 'Today' if elapsed <= 0 else 'Yesterday' if elapsed == 1 else f'{elapsed} days ago'

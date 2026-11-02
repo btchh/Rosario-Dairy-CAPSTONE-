@@ -107,6 +107,8 @@ class DiscountRetirementTests(TestCase):
 
     def test_history_and_reports_hide_discounts_and_preserve_every_legacy_row(self):
         sale, item, order = self.legacy_sale()
+        Transaction.objects.filter(pk=sale.pk).update(handled_by=self.staff)
+        Order.objects.filter(pk=order.pk).update(handled_by=self.staff)
         models = (Transaction, TransactionItem, Order, OrderItem, ProductBatch)
         before = {model: list(model.objects.order_by('pk').values()) for model in models}
         for user in (self.admin, self.staff):

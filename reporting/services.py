@@ -2,6 +2,8 @@ from calendar import monthrange
 from datetime import date, timedelta
 from decimal import Decimal
 from contextlib import contextmanager
+from hashlib import sha256
+import json
 import logging
 
 from django.core.cache import cache
@@ -23,7 +25,7 @@ REPORT_TYPES = (
     'daily_sales', 'weekly_sales', 'monthly_sales', 'inventory',
     'sarima_forecast', 'customer',
 )
-CACHE_PREFIX = 'reporting:preview:v11:'
+CACHE_PREFIX = 'reporting:preview:v12:'
 CACHE_TIMEOUT = 300
 logger = logging.getLogger(__name__)
 
@@ -63,8 +65,8 @@ def _growth_rate(current, previous):
     return round(float(((current - previous) / previous) * 100), 2)
 
 
-def _sales_summary(start_date, end_date, visible_to_staff=False):
-    values = visible_transactions(visible_to_staff).filter(
+def _sales_summary(start_date, end_date, visible_to_staff=False, *, staff_user_id=None):
+    values = visible_transactions(visible_to_staff, staff_user_id=staff_user_id).filter(
         is_voided=False,
         created_at__date__gte=start_date,
         created_at__date__lte=end_date,
@@ -76,8 +78,8 @@ def _product_label(name, variant):
     return f'{name} · {variant}' if variant else name
 
 
-def _sales_drivers(start_date, end_date, visible_to_staff=False):
-    transactions = visible_transactions(visible_to_staff).filter(
+def _sales_drivers(start_date, end_date, visible_to_staff=False, *, staff_user_id=None):
+    transactions = visible_transactions(visible_to_staff, staff_user_id=staff_user_id).filter(
         is_voided=False, created_at__date__gte=start_date,
         created_at__date__lte=end_date,
     )
@@ -88,7 +90,7 @@ def _sales_drivers(start_date, end_date, visible_to_staff=False):
     payment_mix = list(transactions.values('payment_method').annotate(
         transaction_count=Count('id'), revenue=Sum('total_amount'),
     ).order_by('-revenue'))
-    category_mix = list(_period_items(start_date, end_date, visible_to_staff).annotate(
+    category_mix = list(_period_items(start_date, end_date, visible_to_staff, staff_user_id=staff_user_id).annotate(
         category=Coalesce('category_name_snapshot', 'product_batch__product__category__name'),
     ).values('category').annotate(
         gross_sales=Sum(_line_revenue()), quantity=Sum('quantity'),
@@ -96,7 +98,7 @@ def _sales_drivers(start_date, end_date, visible_to_staff=False):
     # The source sales workbooks put pack sizes beneath each product heading.
     # Roll up the transaction snapshots by product name so renamed catalog
     # entries do not rewrite the history shown in exported reports.
-    family_mix = list(_period_items(start_date, end_date, visible_to_staff).annotate(
+    family_mix = list(_period_items(start_date, end_date, visible_to_staff, staff_user_id=staff_user_id).annotate(
         product_name=Coalesce('product_name_snapshot', 'product_batch__product__name'),
     ).values('product_name').annotate(
         gross_sales=Sum(_line_revenue()), quantity=Sum('quantity'),
@@ -112,14 +114,14 @@ def _sales_drivers(start_date, end_date, visible_to_staff=False):
     }
 
 
-def daily_sales(visible_to_staff=False, start_date=None, end_date=None):
+def daily_sales(visible_to_staff=False, start_date=None, end_date=None, *, staff_user_id=None):
     today = timezone.localdate()
     start_date, end_date = start_date or today, end_date or today
-    revenue, count = _sales_summary(start_date, end_date, visible_to_staff)
+    revenue, count = _sales_summary(start_date, end_date, visible_to_staff, staff_user_id=staff_user_id)
     line_total = _line_revenue()
     item_rows = (
         TransactionItem.objects.filter(
-            transaction__in=visible_transactions(visible_to_staff),
+            transaction__in=visible_transactions(visible_to_staff, staff_user_id=staff_user_id),
             transaction__is_voided=False,
             transaction__created_at__date__range=(start_date, end_date),
         )
@@ -142,7 +144,7 @@ def daily_sales(visible_to_staff=False, start_date=None, end_date=None):
     ]
     previous_end = start_date - timedelta(days=1)
     previous_start = previous_end - (end_date - start_date)
-    previous_revenue, previous_count = _sales_summary(previous_start, previous_end, visible_to_staff)
+    previous_revenue, previous_count = _sales_summary(previous_start, previous_end, visible_to_staff, staff_user_id=staff_user_id)
     return {
         'date': end_date, 'start_date': start_date, 'end_date': end_date,
         'previous_period_start': previous_start, 'previous_period_end': previous_end,
@@ -153,7 +155,7 @@ def daily_sales(visible_to_staff=False, start_date=None, end_date=None):
         'previous_transaction_count': previous_count,
         'growth_rate': _growth_rate(revenue, previous_revenue),
         'items': items,
-        **_sales_drivers(start_date, end_date, visible_to_staff),
+        **_sales_drivers(start_date, end_date, visible_to_staff, staff_user_id=staff_user_id),
     }
 
 
@@ -166,18 +168,18 @@ def _line_revenue():
     )
 
 
-def _period_items(start_date, end_date, visible_to_staff=False):
+def _period_items(start_date, end_date, visible_to_staff=False, *, staff_user_id=None):
     return TransactionItem.objects.filter(
-        transaction__in=visible_transactions(visible_to_staff),
+        transaction__in=visible_transactions(visible_to_staff, staff_user_id=staff_user_id),
         transaction__is_voided=False,
         transaction__created_at__date__gte=start_date,
         transaction__created_at__date__lte=end_date,
     )
 
 
-def _daily_sales_breakdown(start_date, end_date, visible_to_staff=False):
+def _daily_sales_breakdown(start_date, end_date, visible_to_staff=False, *, staff_user_id=None):
     daily_rows = (
-        visible_transactions(visible_to_staff).filter(
+        visible_transactions(visible_to_staff, staff_user_id=staff_user_id).filter(
             is_voided=False,
             created_at__date__gte=start_date,
             created_at__date__lte=end_date,
@@ -201,9 +203,9 @@ def _daily_sales_breakdown(start_date, end_date, visible_to_staff=False):
     return daily_breakdown
 
 
-def _top_products(start_date, end_date, visible_to_staff=False):
+def _top_products(start_date, end_date, visible_to_staff=False, *, staff_user_id=None):
     product_rows = (
-        _period_items(start_date, end_date, visible_to_staff)
+        _period_items(start_date, end_date, visible_to_staff, staff_user_id=staff_user_id)
         .annotate(sale_product_name=Coalesce('product_name_snapshot', 'product_batch__product__name'))
         .annotate(sale_variant=Coalesce('product_variant_snapshot', 'product_batch__product__variant'))
         .values('sale_product_name', 'sale_variant')
@@ -217,15 +219,15 @@ def _top_products(start_date, end_date, visible_to_staff=False):
     } for row in product_rows]
 
 
-def weekly_sales(visible_to_staff=False, start_date=None, end_date=None):
+def weekly_sales(visible_to_staff=False, start_date=None, end_date=None, *, staff_user_id=None):
     end_date = end_date or timezone.localdate()
     start_date = start_date or end_date - timedelta(days=6)
     previous_end = start_date - timedelta(days=1)
     previous_start = previous_end - (end_date - start_date)
-    revenue, count = _sales_summary(start_date, end_date, visible_to_staff)
-    previous_revenue, previous_count = _sales_summary(previous_start, previous_end, visible_to_staff)
-    daily_breakdown = _daily_sales_breakdown(start_date, end_date, visible_to_staff)
-    top_products = _top_products(start_date, end_date, visible_to_staff)
+    revenue, count = _sales_summary(start_date, end_date, visible_to_staff, staff_user_id=staff_user_id)
+    previous_revenue, previous_count = _sales_summary(previous_start, previous_end, visible_to_staff, staff_user_id=staff_user_id)
+    daily_breakdown = _daily_sales_breakdown(start_date, end_date, visible_to_staff, staff_user_id=staff_user_id)
+    top_products = _top_products(start_date, end_date, visible_to_staff, staff_user_id=staff_user_id)
     return {
         'start_date': start_date, 'end_date': end_date, 'revenue': revenue,
         'product_revenue_basis': 'recorded_line_amounts',
@@ -234,11 +236,11 @@ def weekly_sales(visible_to_staff=False, start_date=None, end_date=None):
         'growth_rate': _growth_rate(revenue, previous_revenue),
         'previous_period_start': previous_start, 'previous_period_end': previous_end,
         'daily_breakdown': daily_breakdown, 'top_products': top_products,
-        **_sales_drivers(start_date, end_date, visible_to_staff),
+        **_sales_drivers(start_date, end_date, visible_to_staff, staff_user_id=staff_user_id),
     }
 
 
-def monthly_sales(visible_to_staff=False, start_date=None, end_date=None):
+def monthly_sales(visible_to_staff=False, start_date=None, end_date=None, *, staff_user_id=None):
     today = timezone.localdate()
     custom = start_date is not None
     start_date = start_date or today.replace(day=1)
@@ -249,8 +251,8 @@ def monthly_sales(visible_to_staff=False, start_date=None, end_date=None):
     if custom:
         previous_end = start_date - timedelta(days=1)
         previous_start = previous_end - (end_date - start_date)
-    revenue, count = _sales_summary(start_date, end_date, visible_to_staff)
-    previous_revenue, previous_count = _sales_summary(previous_start, previous_end, visible_to_staff)
+    revenue, count = _sales_summary(start_date, end_date, visible_to_staff, staff_user_id=staff_user_id)
+    previous_revenue, previous_count = _sales_summary(previous_start, previous_end, visible_to_staff, staff_user_id=staff_user_id)
     week_starts = []
     cursor = start_date
     while cursor <= end_date:
@@ -262,14 +264,14 @@ def monthly_sales(visible_to_staff=False, start_date=None, end_date=None):
     for week_start in week_starts:
         bucket_start = max(week_start, start_date)
         bucket_end = min(week_start + timedelta(days=6), end_date)
-        bucket_revenue, bucket_count = _sales_summary(bucket_start, bucket_end, visible_to_staff)
+        bucket_revenue, bucket_count = _sales_summary(bucket_start, bucket_end, visible_to_staff, staff_user_id=staff_user_id)
         weekly_breakdown.append({
             'week_start': bucket_start,
             'week_end': bucket_end,
             'transaction_count': bucket_count,
             'revenue': bucket_revenue,
         })
-    top_products = _top_products(start_date, end_date, visible_to_staff)
+    top_products = _top_products(start_date, end_date, visible_to_staff, staff_user_id=staff_user_id)
     return {
         'start_date': start_date, 'end_date': end_date, 'revenue': revenue,
         'product_revenue_basis': 'recorded_line_amounts',
@@ -278,7 +280,7 @@ def monthly_sales(visible_to_staff=False, start_date=None, end_date=None):
         'previous_period_start': previous_start, 'previous_period_end': previous_end,
         'growth_rate': _growth_rate(revenue, previous_revenue),
         'weekly_breakdown': weekly_breakdown, 'top_products': top_products,
-        **_sales_drivers(start_date, end_date, visible_to_staff),
+        **_sales_drivers(start_date, end_date, visible_to_staff, staff_user_id=staff_user_id),
     }
 
 
@@ -337,12 +339,12 @@ def inventory_ledger(visible_to_staff=False, start_date=None, end_date=None):
     Encoding deducts stock at entry time even when the invoice is backdated.
     Opening stock is reconstructed, not a persisted opening count.
     """
+    if visible_to_staff:
+        raise PermissionDenied('Global inventory movement reports require an admin account.')
     custom = start_date is not None
     end_date = end_date or timezone.localdate()
     start_date = start_date or end_date
     products = Product.objects.filter(is_active=True).order_by('name', 'variant', 'pk')
-    if visible_to_staff:
-        products = products.filter(category__is_active=True, category__is_visible_to_staff=True)
     rows = {p.pk: {
         'id': p.pk, 'name': _product_label(p.name, p.variant), 'unit': p.unit,
         'beginning': Decimal('0'), 'received': Decimal('0'), 'total': Decimal('0'),
@@ -378,15 +380,11 @@ def inventory_ledger(visible_to_staff=False, start_date=None, end_date=None):
         for movement in StockReturn.objects.filter(sale_item__product_batch__in=batches, created_at__date__gt=end_date).values('sale_item__product_batch__product_id').annotate(quantity=Sum('quantity')):
             rows[movement['sale_item__product_batch__product_id']]['ending'] -= movement['quantity']
     sales = sales.filter(movement_at__date__range=(start_date, end_date)).select_related('transaction__customer', 'product_batch')
-    visible_ids = set(visible_transactions(True).filter(pk__in=sales.values('transaction_id')).values_list('pk', flat=True)) if visible_to_staff else set()
     columns = {}
     for item in sales:
         row = rows[item.product_batch.product_id]
         txn = item.transaction
-        # Mixed invoices stay hidden in staff reports, including their buyers.
-        if visible_to_staff and txn.pk not in visible_ids:
-            key, name = 'restricted', 'Other stock deductions'
-        elif txn.customer_id:
+        if txn.customer_id:
             key, name = f'customer-{txn.customer_id}', txn.customer.name
         elif txn.source_customer_label.strip() and txn.source_customer_label.strip().lower() != 'outlet sales':
             key, name = f'source-{txn.source_customer_label.strip()}', txn.source_customer_label.strip()
@@ -492,12 +490,12 @@ def sarima_forecast(period='monthly', start_date=None, end_date=None):
     return data
 
 
-def customer_report(visible_to_staff=False, start_date=None, end_date=None):
+def customer_report(visible_to_staff=False, start_date=None, end_date=None, *, staff_user_id=None):
     today = timezone.localdate()
     start_date = start_date or today.replace(day=1)
     end_date = end_date or today
     active_since = today - timedelta(days=89)
-    history = visible_transactions(visible_to_staff).filter(is_voided=False, created_at__date__lte=today)
+    history = visible_transactions(visible_to_staff, staff_user_id=staff_user_id).filter(is_voided=False, created_at__date__lte=today)
     all_sales = history.filter(created_at__date__range=(start_date, end_date))
     transactions = all_sales.filter(customer__isnull=False)
     # Group by identity: unrelated customers can share the same name.
@@ -598,15 +596,22 @@ REPORT_BUILDERS = {
 }
 
 
-def get_report(report_type, force_refresh=False, visible_to_staff=False, period='monthly', start_date=None, end_date=None):
+def get_report(report_type, force_refresh=False, visible_to_staff=False, period='monthly', start_date=None, end_date=None, *, user=None):
     if report_type not in REPORT_BUILDERS:
         raise ValueError(f'Unsupported report type: {report_type}')
-    if report_type == 'sarima_forecast' and visible_to_staff:
-        raise PermissionDenied('Global sales forecasts require an admin account.')
-    scope = 'staff' if visible_to_staff else 'admin'
+    if user is not None:
+        visible_to_staff = user.role == 'staff'
+    if visible_to_staff and (user is None or not user.is_authenticated):
+        raise PermissionDenied('Staff reports require an authenticated staff identity.')
+    if visible_to_staff and report_type in ('sarima_forecast', 'inventory'):
+        raise PermissionDenied('Global forecasts and inventory movement reports require an admin account.')
+    staff_user_id = user.pk if visible_to_staff else None
+    scope = f'staff:{staff_user_id}' if visible_to_staff else 'admin'
     settings_version = get_runtime_settings()['version']
-    key = (f'{CACHE_PREFIX}{data_version(visible_to_staff=visible_to_staff)}:{settings_version}:{scope}:{report_type}:'
-           f'{period}:{start_date}:{end_date}:{timezone.get_current_timezone_name()}:{timezone.localdate()}')
+    identity = (data_version(visible_to_staff=visible_to_staff), settings_version,
+                scope, report_type, period, start_date, end_date,
+                timezone.get_current_timezone_name(), timezone.localdate())
+    key = CACHE_PREFIX + sha256(json.dumps(identity, default=str).encode()).hexdigest()
     if not force_refresh:
         try:
             cached = cache.get(key)
@@ -618,7 +623,10 @@ def get_report(report_type, force_refresh=False, visible_to_staff=False, period=
     if report_type == 'sarima_forecast':
         data = sarima_forecast(period, start_date, end_date)
     else:
-        data = REPORT_BUILDERS[report_type](visible_to_staff=visible_to_staff, start_date=start_date, end_date=end_date)
+        options = {'visible_to_staff': visible_to_staff, 'start_date': start_date, 'end_date': end_date}
+        if report_type != 'inventory':
+            options['staff_user_id'] = staff_user_id
+        data = REPORT_BUILDERS[report_type](**options)
         if report_type in ('daily_sales', 'weekly_sales', 'monthly_sales'):
             data['is_custom_range'] = start_date is not None
     try:
@@ -628,11 +636,13 @@ def get_report(report_type, force_refresh=False, visible_to_staff=False, period=
     return data
 
 
-def refresh_reports(visible_to_staff=False):
+def refresh_reports(visible_to_staff=False, *, user=None):
+    if user is not None:
+        visible_to_staff = user.role == 'staff'
     generated_at = timezone.now()
     refreshed = {
-        name: get_report(name, force_refresh=True, visible_to_staff=visible_to_staff)
-        for name in REPORT_TYPES if not (visible_to_staff and name == 'sarima_forecast')
+        name: get_report(name, force_refresh=True, visible_to_staff=visible_to_staff, user=user)
+        for name in REPORT_TYPES if not (visible_to_staff and name in ('sarima_forecast', 'inventory'))
     }
     return generated_at, refreshed
 

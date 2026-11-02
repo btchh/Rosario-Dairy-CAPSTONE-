@@ -24,6 +24,7 @@ from accounts.throttles import SaleWriteRateThrottle
 from .transaction_views import CancellationInput
 from ..services.submission_service import request_id, submit_sale
 from sales.history import HistoryFilterError, filter_history, order_history
+from sales.visibility import visible_orders
 
 
 class OrderPagination(PageNumberPagination):
@@ -83,16 +84,7 @@ class OrderViewSet(CachedListMixin, viewsets.ModelViewSet):
                 Prefetch('items', queryset=order_items),
                 Prefetch('transaction__items', queryset=transaction_items),
             )
-        if self.request.user.role == 'staff':
-            queryset = queryset.exclude(
-                items__product__category__is_visible_to_staff=False
-            ).exclude(
-                items__product__category__is_active=False
-            ).exclude(
-                transaction__items__product_batch__product__category__is_visible_to_staff=False
-            ).exclude(
-                transaction__items__product_batch__product__category__is_active=False
-            )
+        queryset = visible_orders(self.request.user, queryset)
         if self.action in ('list', 'summary'):
             try:
                 queryset = filter_history(queryset, self.request.query_params, orders=True)

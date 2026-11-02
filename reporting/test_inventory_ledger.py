@@ -1,3 +1,4 @@
+from rest_framework.exceptions import PermissionDenied
 from datetime import timedelta
 from decimal import Decimal
 
@@ -102,10 +103,8 @@ class InventoryLedgerTests(TestCase):
         customer = Customer.objects.create(name='Private buyer', created_by=self.user)
         mixed = self.sale(1, customer)
         TransactionItem.objects.create(transaction=mixed, product_batch=hidden_batch, quantity=1, unit_price=10)
-        ledger = self.ledger(staff=True)
-        self.assertEqual(len(ledger['rows']), 1)
-        self.assertNotIn('Private buyer', str(ledger['columns']))
-        self.assertEqual(ledger['rows'][0]['allocations']['restricted'], 1)
+        with self.assertRaises(PermissionDenied):
+            self.ledger(staff=True)
 
     def test_inventory_preview_and_download_include_ledger(self):
         client = APIClient()

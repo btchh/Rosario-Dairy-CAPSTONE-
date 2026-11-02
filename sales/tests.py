@@ -685,7 +685,9 @@ class TransactionHistoryTests(TestCase):
         self._make_txn(staff=self.other_staff)
         response = self.client.get(f'/sales/transactions/?handled_by={self.other_staff.pk}')
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data['count'], 0)
+        own = self.client.get(f'/sales/transactions/?handled_by={self.staff.pk}')
+        self.assertEqual(own.data['count'], 1)
 
     def test_handled_by_filter_non_numeric_rejected(self):
         self._make_txn()
@@ -1378,6 +1380,7 @@ class CustomerTransactionHistoryTests(TestCase):
         hidden = self.sale()
         TransactionItem.objects.create(transaction=hidden, product_batch=batch, quantity=1, unit_price=100)
         visible = self.sale()
+        Transaction.objects.filter(pk__in=[hidden.pk, visible.pk]).update(handled_by=self.staff)
         self.client.force_authenticate(self.staff)
         response = self.client.get(self.url)
         self.assertEqual(response.data['count'], 1)
@@ -1701,6 +1704,7 @@ class EncodingPaymentTests(TestCase):
         self.assertEqual(response.data['change_due'], '100.00')
 
     def test_mark_paid_updates_shared_history_without_new_sale_stock_deduction_or_revenue(self):
+        payment_admin = make_user('payment-audit-admin', role='admin')
         created = self.create()
         sale_id = created.data['id']
         sale = Transaction.objects.get(pk=sale_id)
@@ -1710,15 +1714,15 @@ class EncodingPaymentTests(TestCase):
         # Warm shared history before changing payment state.
         self.assertEqual(self.client.get(f'/sales/customers/{self.customer.pk}/transactions/').data['results'][0]['payment_status'], 'pending')
         version = data_version()
-        self.client.force_authenticate(self.other_staff)
+        self.client.force_authenticate(payment_admin)
         with self.captureOnCommitCallbacks(execute=True):
             paid = self.patch(sale_id, payment_status='paid', amount_tendered='350')
         self.assertEqual(paid.status_code, 200, paid.data)
         self.assertEqual(paid.data['payment_status'], 'paid')
         self.assertFalse(paid.data['can_update_payment'])
         self.assertEqual(paid.data['change_due'], '50.00')
-        self.assertEqual(paid.data['payment_updated_by'], self.other_staff.pk)
-        expected_updater = {'id': self.other_staff.pk, 'username': self.other_staff.username, 'role': self.other_staff.role}
+        self.assertEqual(paid.data['payment_updated_by'], payment_admin.pk)
+        expected_updater = {'id': payment_admin.pk, 'username': payment_admin.username, 'role': payment_admin.role}
         self.assertEqual(paid.data['payment_updated_by_user'], expected_updater)
         self.assertIsNotNone(paid.data['payment_updated_at'])
         self.assertNotEqual(data_version(), version)
@@ -1747,7 +1751,7 @@ class EncodingPaymentTests(TestCase):
 
     def test_missing_payment_updater_is_null_without_inferring_the_encoder_or_viewer(self):
         sale = Transaction.objects.create(handled_by=self.staff, encoded_at=timezone.now(), total_amount=100)
-        for viewer in (self.staff, self.other_staff):
+        for viewer in (self.staff, make_user('null-payment-admin', role='admin')):
             self.client.force_authenticate(viewer)
             row = self.client.get(f'/sales/transactions/{sale.pk}/').data
             self.assertIsNone(row['payment_updated_by'])
@@ -1755,12 +1759,13 @@ class EncodingPaymentTests(TestCase):
             self.assertEqual(row['handled_by']['username'], self.staff.username)
 
     def test_payment_updater_is_read_only_and_paid_retry_retains_the_original_actor(self):
+        payment_admin = make_user('payment-audit-admin', role='admin')
         from sales.serializers import TransactionSerializer
         from sales.serializers.order_serializer import OrderListTransactionSerializer
         for serializer in (TransactionSerializer, OrderListTransactionSerializer):
             self.assertTrue(serializer().fields['payment_updated_by_user'].read_only)
         sale_id = self.create().data['id']
-        self.client.force_authenticate(self.other_staff)
+        self.client.force_authenticate(payment_admin)
         spoofed = self.patch(sale_id, payment_status='paid', amount_tendered='300',
                              payment_updated_by=self.staff.pk,
                              payment_updated_by_user={'id': self.staff.pk, 'username': 'forged', 'role': 'admin'})
@@ -1771,7 +1776,7 @@ class EncodingPaymentTests(TestCase):
         replay = self.patch(sale_id, payment_status='paid', amount_tendered='300')
         self.assertEqual(replay.status_code, 200, replay.data)
         self.assertEqual(replay.data['payment_updated_by_user'], paid.data['payment_updated_by_user'])
-        self.assertEqual(replay.data['payment_updated_by_user']['username'], self.other_staff.username)
+        self.assertEqual(replay.data['payment_updated_by_user']['username'], payment_admin.username)
         self.assertEqual(replay.data['payment_updated_at'], paid.data['payment_updated_at'])
 
     def test_paid_cannot_be_reopened_and_identical_retry_preserves_payment_audit(self):
@@ -1799,7 +1804,7 @@ class EncodingPaymentTests(TestCase):
             created = self.create(payment_status='paid', payment_method=method, amount_tendered=amount)
             sale_id = created.data['id']
             before = Transaction.objects.filter(pk=sale_id).values().get()
-            for actor in (admin, self.other_staff):
+            for actor in (admin, self.staff):
                 self.client.force_authenticate(actor)
                 for details in ({'payment_status': 'pending'},
                                 {'payment_status': 'paid', 'payment_method': 'online' if method == 'cash' else 'cash', 'amount_tendered': '400'},

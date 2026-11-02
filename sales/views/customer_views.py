@@ -45,7 +45,8 @@ class CustomerViewSet(CachedListMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         active_sales = Q(transactions__is_voided=False)
         if self.request.user.role == 'staff':
-            active_sales &= Q(transactions__in=visible_transactions(True).values('pk'))
+            active_sales &= Q(transactions__in=visible_transactions(
+                True, staff_user_id=self.request.user.pk).values('pk'))
         queryset = super().get_queryset()
         if self.action == 'list' and self.request.query_params.get('include_inactive', 'false').lower() != 'true':
             queryset = queryset.filter(is_active=True)

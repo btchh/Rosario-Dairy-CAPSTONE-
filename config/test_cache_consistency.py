@@ -64,7 +64,7 @@ class CacheOutageTests(CacheFixture, APITestCase):
         with warnings.catch_warnings():
             warnings.simplefilter('error', CacheKeyWarning)
             response = self.client.get('/api/reports/preview/', {
-                'type': 'inventory', 'start_date': '2024-01-01', 'end_date': '2024-12-31'})
+                'type': 'daily_sales', 'start_date': '2024-01-01', 'end_date': '2024-12-31'})
         self.assertEqual(response.status_code, 200, response.data)
 
     def test_failed_rotation_retires_api_report_and_rendered_history_payloads(self):

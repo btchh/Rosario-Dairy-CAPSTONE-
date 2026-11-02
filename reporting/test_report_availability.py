@@ -83,7 +83,7 @@ class ReportReadAllowanceTests(APITransactionTestCase):
             response = self.client.post('/api/reports/refresh/', {}, format='json')
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['refresh_status'], 'refreshed')
-        self.assertEqual(build.call_count, 2)
+        self.assertEqual(build.call_count, 1)
 
     def test_coalesced_refresh_preserves_the_real_generation_timestamp(self):
         generated = timezone.now() - timedelta(minutes=5)
@@ -95,7 +95,7 @@ class ReportReadAllowanceTests(APITransactionTestCase):
         self.assertEqual(second.data['refresh_status'], 'coalesced')
         self.assertEqual(second.data['generated_at'], generated.isoformat())
         self.assertEqual(second.data['report_types'], [])
-        self.assertEqual(build.call_count, 2)
+        self.assertEqual(build.call_count, 1)
 
 
 @override_settings(CACHES=CACHE)
@@ -141,4 +141,4 @@ class ActiveReportRefreshTests(APITransactionTestCase):
                 first = active.result(timeout=15)
         self.assertEqual(first.status_code, 200, first.data)
         self.assertEqual(first.data['refresh_status'], 'refreshed')
-        self.assertEqual(rebuild.call_count, 2)
+        self.assertEqual(rebuild.call_count, 1)

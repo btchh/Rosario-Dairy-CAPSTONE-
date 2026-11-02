@@ -1,3 +1,4 @@
+from rest_framework.exceptions import PermissionDenied
 from datetime import date, datetime
 from decimal import Decimal
 from unittest.mock import patch
@@ -121,10 +122,8 @@ class InventoryRangeTests(TestCase):
         ProductBatch.objects.filter(pk=hidden_batch.pk).update(created_at=stamp(1))
         item = self.sale(14, 1, customer=self.customer)
         TransactionItem.objects.create(transaction=item.transaction, product_batch=hidden_batch, quantity=1, unit_price=10)
-        ledger = inventory_ledger(True, date(2024, 1, 14), date(2024, 1, 14))
-        self.assertEqual(len(ledger['rows']), 1)
-        self.assertEqual(ledger['columns'], [{'key': 'restricted', 'name': 'Other stock deductions'}])
-        self.assertNotIn(self.customer.name, str(ledger))
+        with self.assertRaises(PermissionDenied):
+            inventory_ledger(True, date(2024, 1, 14), date(2024, 1, 14))
 
 
 class ForecastRangeTests(TestCase):

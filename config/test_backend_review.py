@@ -16,7 +16,7 @@ from inventory.models import Category, Product, ProductBatch
 from inventory.serializers import ProdBatchSerializer
 from inventory.services.batch_service import BatchService
 from reporting.services import inventory_ledger
-from sales.models import Customer, Transaction, Order, StockReturn
+from sales.models import Customer, Transaction, TransactionItem, Order, StockReturn
 from sales.services.order_service import place_order, void_fulfilled_order
 
 
@@ -57,7 +57,9 @@ class BackendReviewRegressions(APITestCase):
     def test_staff_caches_cannot_revive_hidden_product_after_invalidation_outage(self):
         self.client.force_authenticate(self.staff)
         self.assertIn(self.product.pk, [r['id'] for r in self.client.get('/inventory/products/').data])
-        first_report = self.client.get('/api/reports/preview/?type=inventory')
+        sale = Transaction.objects.create(handled_by=self.staff, subtotal=10, total_amount=10)
+        TransactionItem.objects.create(transaction=sale, product_batch=self.batch, quantity=1, unit_price=10)
+        first_report = self.client.get('/api/reports/preview/?type=daily_sales')
         self.assertEqual(len(first_report.data['data']['items']), 1)
         with patch('config.data_cache.cache.set', side_effect=ConnectionError('outage')), self.capture_commit_callbacks(execute=True):
             self.category.is_visible_to_staff = False
@@ -65,7 +67,7 @@ class BackendReviewRegressions(APITestCase):
         self.assertEqual(self.client.get(f'/inventory/products/{self.product.pk}/').status_code, 404)
         result = self.client.get('/inventory/products/')
         self.assertNotIn(self.product.pk, [r['id'] for r in result.data])
-        report = self.client.get('/api/reports/preview/?type=inventory')
+        report = self.client.get('/api/reports/preview/?type=daily_sales')
         self.assertEqual(report.data['data']['items'], [])
 
     def test_product_moved_into_private_category_is_removed_from_staff_cache(self):

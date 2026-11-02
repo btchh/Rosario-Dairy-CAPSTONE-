@@ -500,7 +500,7 @@ class SecurityHardeningTests(TestCase):
         TransactionItem.objects.create(transaction=txn,product_batch=visible_batch,quantity=1,unit_price=100)
         for report_type in ('daily_sales','weekly_sales','monthly_sales','customer'):
             with self.subTest(report_type=report_type):
-                data = get_report(report_type, visible_to_staff=True)
+                data = get_report(report_type, visible_to_staff=True, user=self.user)
                 self.assertNotIn('Hidden', str(data))
                 self.assertNotIn('Restricted customer', str(data))
                 if report_type == 'customer':
@@ -520,7 +520,7 @@ class SecurityHardeningTests(TestCase):
         batch.product.category.save(update_fields=['is_active'])
         txn=Transaction.objects.create(handled_by=self.user, subtotal=100, total_amount=100)
         TransactionItem.objects.create(transaction=txn,product_batch=batch,quantity=1,unit_price=100)
-        self.assertEqual(get_report('daily_sales', visible_to_staff=True)['total_revenue'], 0)
+        self.assertEqual(get_report('daily_sales', visible_to_staff=True, user=self.user)['total_revenue'], 0)
 
     def test_global_forecasts_require_admin_for_api_preview_and_pdf(self):
         for url in ('/api/forecasting/forecast/', '/api/reports/preview/?type=sarima_forecast', '/api/reports/export-pdf/?type=sarima_forecast'):

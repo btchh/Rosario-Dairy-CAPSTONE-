@@ -47,7 +47,7 @@ class ReportPreviewView(ReportTypeMixin, APIView):
             'generated_at': timezone.now(),
             'data': self.serialized_data(
                 report_type,
-                get_report(report_type, visible_to_staff=self.staff_scope(request),
+                get_report(report_type, visible_to_staff=self.staff_scope(request), user=request.user,
                        period=options.get('period', 'monthly'),
                        start_date=options.get('start_date'), end_date=options.get('end_date')),
             ),
@@ -64,7 +64,7 @@ class ReportPDFExportView(ReportTypeMixin, APIView):
         report_type = options['type']
         data = self.serialized_data(
             report_type,
-            get_report(report_type, visible_to_staff=self.staff_scope(request),
+            get_report(report_type, visible_to_staff=self.staff_scope(request), user=request.user,
                        period=options.get('period', 'monthly'),
                        start_date=options.get('start_date'), end_date=options.get('end_date')),
         )
@@ -116,9 +116,7 @@ class ReportRefreshView(APIView):
         try:
             with report_refresh_slot():
                 invalidate_data_cache()
-                generated_at, refreshed = refresh_reports(visible_to_staff=visible_to_staff)
-                if not visible_to_staff:
-                    refresh_reports(visible_to_staff=True)
+                generated_at, refreshed = refresh_reports(visible_to_staff=visible_to_staff, user=request.user)
                 try:
                     cache.set(LAST_REFRESH_KEY, {'generated_at': generated_at.isoformat()}, timeout=300)
                 except Exception:

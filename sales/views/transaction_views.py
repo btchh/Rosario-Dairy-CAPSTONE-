@@ -41,7 +41,7 @@ def transaction_history_queryset(user):
     queryset = Transaction.objects.select_related(
         'handled_by', 'customer', 'payment_updated_by'
     ).prefetch_related(Prefetch('items', queryset=items)).order_by('-created_at', '-id')
-    return visible_transactions(user.role == 'staff', queryset)
+    return visible_transactions(user.role == 'staff', queryset, staff_user_id=user.pk)
 
 
 class TransactionViewSet(viewsets.ReadOnlyModelViewSet):

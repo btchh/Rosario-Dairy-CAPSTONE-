@@ -1,3 +1,4 @@
+from rest_framework.exceptions import PermissionDenied
 from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import call, patch
@@ -106,9 +107,8 @@ class ReportAPITests(TestCase):
     def test_staff_inventory_report_excludes_inactive_category(self):
         self.category.is_active = False
         self.category.save(update_fields=['is_active'])
-        result = inventory_status(visible_to_staff=True)
-        self.assertEqual(result['total_products'], 0)
-        self.assertFalse(any(item['item_type'] == 'product' for item in result['items']))
+        with self.assertRaises(PermissionDenied):
+            inventory_status(visible_to_staff=True)
 
     def test_all_preview_types_return_valid_payloads(self):
         self.client.force_authenticate(user=self.staff)
@@ -118,7 +118,7 @@ class ReportAPITests(TestCase):
         ):
             with self.subTest(report_type=report_type):
                 response = self.client.get(f'/api/reports/preview/?type={report_type}')
-                if report_type == 'sarima_forecast':
+                if report_type in ('sarima_forecast', 'inventory'):
                     self.assertEqual(response.status_code, 403)
                     continue
                 self.assertEqual(response.status_code, 200, response.data)
@@ -232,13 +232,13 @@ class ReportAPITests(TestCase):
         )
         self.client.force_authenticate(user=self.staff)
         response = self.client.get('/api/reports/preview/?type=inventory')
-        names = [item['name'] for item in response.data['data']['items']]
+        self.assertEqual(response.status_code, 403)
+        names = [item['name'] for item in self.client.get('/inventory/products/').data]
         self.assertNotIn('Admin Product', names)
-        self.assertEqual(response.data['data']['status_counts']['expiring_soon'], 1)
 
     def test_pdf_export_streams_a_pdf_attachment(self):
         self.client.force_authenticate(user=self.staff)
-        response = self.client.get('/api/reports/export-pdf/?type=inventory')
+        response = self.client.get('/api/reports/export-pdf/?type=daily_sales')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'application/pdf')
         self.assertIn('attachment;', response['Content-Disposition'])
@@ -250,11 +250,12 @@ class ReportAPITests(TestCase):
         self.client.force_authenticate(user=self.staff)
         response = self.client.post('/api/reports/refresh/', {}, format='json')
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data['report_types']), 5)
+        self.assertEqual(len(response.data['report_types']), 4)
         self.assertNotIn('sarima_forecast', response.data['report_types'])
+        self.assertNotIn('inventory', response.data['report_types'])
 
     @patch('reporting.views.refresh_reports')
-    def test_admin_refreshes_admin_and_staff_cache_scopes(self, refresh_mock):
+    def test_admin_refreshes_only_the_admin_cache_scope(self, refresh_mock):
         admin = User.objects.create_user(
             username='reportadmin', password='testpass123!',
             email='reportadmin@example.com', role='admin',
@@ -271,5 +272,5 @@ class ReportAPITests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             refresh_mock.call_args_list,
-            [call(visible_to_staff=False), call(visible_to_staff=True)],
+            [call(visible_to_staff=False, user=admin)],
         )

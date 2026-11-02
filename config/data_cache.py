@@ -83,9 +83,8 @@ def cache_api_response(handler):
             request.build_absolute_uri(), timezone.get_current_timezone_name(),
             str(timezone.localdate()),
         )
-        # v8 includes the payment updater's display identity as well as the
-        # paid-payment capability and current cashier/filter response shapes.
-        key = 'api-data:v8:' + sha256(json.dumps(identity).encode()).hexdigest()
+        # v9 discards historical responses cached before staff ownership checks.
+        key = 'api-data:v9:' + sha256(json.dumps(identity).encode()).hexdigest()
         timeout = getattr(self, 'data_cache_timeout', settings.API_DATA_CACHE_TIMEOUT)
         try:
             payload = get_payload(key)

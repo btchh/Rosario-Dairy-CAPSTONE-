@@ -22,6 +22,7 @@ class StockAdjustmentViewSet(CachedListMixin, viewsets.ModelViewSet):
         ).order_by('-created_at', '-id')
         if self.request.user.role == 'staff':
             qs = qs.filter(
+                adjusted_by=self.request.user,
                 product_batch__product__is_active=True,
                   product_batch__product__category__is_active=True,
                   product_batch__product__category__is_visible_to_staff=True

@@ -34,6 +34,8 @@ def payment_values(total, method, status, amount_tendered):
 @transaction.atomic
 def update_encoding_payment(sale_id, user, *, payment_status, **details):
     sale = Transaction.objects.select_for_update().get(pk=sale_id)
+    if user.role == 'staff' and sale.handled_by_id != user.pk:
+        raise ValueError('This transaction is unavailable.')
     if sale.encoded_at is None:
         raise ValueError('Only manually encoded transactions can use this payment update.')
     if sale.is_voided:

@@ -44,3 +44,32 @@ preflight/checksum logs and business-table fingerprints.
 
 The longer requested timeline does not manufacture missing forecasts. Saved
 availability, missing-sales warnings and planning-only status remain truthful.
+
+## Animation follow-up — 4 November 2026
+
+The latest frontend is `b2a06d9b6a9f3cfe9685a051555b23338436cab0`, image
+`rosario-dairy-frontend:release-2026.11.04-forecast.2`, ID
+`sha256:3f0c51ead8aad41a15698bfcaf5f19bf5a9efda25c5f8e136f4d0b25182295bc`.
+This supersedes the original frontend's disabled animations: the forecast and
+recorded-sales curves now use their original Recharts transitions. The forecast
+still renders as one curve, with no independent boundary connector.
+
+Only the frontend container changed; the API, events and forecast-worker
+container IDs and images were verified unchanged. All 709 frontend tests,
+TypeScript and the production build passed. Chromium on local and public
+sites verified intermediate animation frames and settled geometry for all nine
+period/view combinations, including rapid view reversals. Public entry-point
+asset hashes matched the new image. Temporary check sessions/tokens were
+removed by exact ID. No sales or inventory request was submitted.
+
+The active release remains `rosario-release-2026.11.04-forecast.1`, with its
+frontend image pin updated. The exact newer frontend source archive, manifest,
+previous image pins and previous private environment are retained under
+`/opt/rosario/private/forecast-animation-20261104/`. Frontend-only rollback:
+
+```sh
+sudo bash /opt/rosario/private/forecast-animation-20261104/deploy-or-rollback.sh rollback
+```
+
+The frontend upstream still denies the configured GitHub account write access;
+the local commit and combined frontend patch are retained for handoff.

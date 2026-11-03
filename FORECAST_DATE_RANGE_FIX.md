@@ -21,8 +21,8 @@ The frontend sends target dates instead of using To as `as_of`. A custom range
 overrides seasonal/centered display modes; clearing dates restores the selected
 ordinary mode. One forecast curve reads the existing past/future values with a
 hard orange/green SVG gradient. Actual revenue has its own blue line. Both
-curves disable transition animation; null values still break the path. No
-separate boundary connector remains.
+curves use Recharts transition animations (restored in the frontend follow-up);
+null values still break the path. No separate boundary connector remains.
 
 Validation: 709 frontend tests, TypeScript and production build; 54 existing
 graph/origin/finalization backend tests and nine range tests. Chromium against

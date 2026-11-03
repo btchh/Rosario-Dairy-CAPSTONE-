@@ -1,15 +1,18 @@
 from django.db import transaction as db_transaction
 from decimal import Decimal
+from datetime import datetime, time
 from django.utils import timezone
 from ..models import Transaction, TransactionItem
 from inventory.services.batch_service import BatchService
 from .item_pricing import ZERO, money, price_items, reject_invoice_discount
 from .payment_service import payment_values
+from .invoice_service import assign_invoice
 
 
 def checkout(cart_items, staff_user, payment_method='cash',
              discount_type='none', discount_value=ZERO,
-             amount_tendered=None, customer=None, payment_status='paid'):
+             amount_tendered=None, customer=None, payment_status='paid', *,
+             invoice_date=None, invoice_number=None):
     """Every cart line explicitly supplies its final selling price."""
     if payment_method not in ('cash', 'online'):
         raise ValueError(f"Invalid payment_method '{payment_method}'. Must be cash or online.")
@@ -20,12 +23,23 @@ def checkout(cart_items, staff_user, payment_method='cash',
     amount_tendered, change_due = payment_values(total, payment_method, payment_status, amount_tendered)
 
     with db_transaction.atomic():
+        entered_at = timezone.now()
+        business_date = invoice_date or timezone.localdate(entered_at)
+        effective_at = (entered_at if business_date == timezone.localdate(entered_at)
+                        else timezone.make_aware(datetime.combine(business_date, time(12))))
+        number, number_source = assign_invoice(business_date.year, invoice_number)
         txn = Transaction.objects.create(
             handled_by=staff_user, customer=customer, payment_method=payment_method,
             subtotal=subtotal, total_amount=total,
             amount_tendered=amount_tendered, change_due=change_due,
             payment_status=payment_status, payment_updated_at=timezone.now(), payment_updated_by=staff_user,
+            source_invoice_number=number, invoice_year=business_date.year,
+            invoice_number_source=number_source,
         )
+        # auto_now_add samples the clock again. Freeze the effective date used
+        # for allocation, including a checkout spanning business New Year.
+        txn.created_at = effective_at
+        txn.save(update_fields=['created_at'])
         # Lock products in a stable order, retaining the original encoded line numbers.
         for line_number, line in sorted(enumerate(lines, 1), key=lambda pair: pair[1].product.pk):
             consumed = BatchService.deduct_product_batch(line.product, line.quantity)

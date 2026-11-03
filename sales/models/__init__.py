@@ -5,3 +5,4 @@ from .transaction import Transaction
 from .transaction_item import TransactionItem
 from .stock_return import StockReturn
 from .submission import SaleSubmission
+from .invoice_sequence import InvoiceSequence

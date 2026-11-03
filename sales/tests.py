@@ -1548,7 +1548,7 @@ class StaffEncodingTests(TestCase):
 
     def test_new_module_is_paginated_and_excludes_regular_pos_sales(self):
         self.assertEqual(self.post().status_code, 201)
-        self.assertEqual(self.post().status_code, 201)
+        self.assertEqual(self.post(self.payload(si_number='SI0609')).status_code, 201)
         Transaction.objects.create(handled_by=self.staff, total_amount=50)
         response = self.client.get('/sales/encoding/', {'page_size': 1})
         self.assertEqual(response.status_code, 200)

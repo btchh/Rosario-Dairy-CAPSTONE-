@@ -195,6 +195,36 @@ manifest; see the archived `DATA_CLEANUP_REPORT.md`. Use a reconciled,
 real-only dataset for production; other sales/report APIs are not a mechanism
 for filtering an imported demonstration database.
 
+## Sales invoice numbers
+
+POS, direct customer orders and sales encoding with a blank SI share a
+database-locked counter per sales year. Numbers use `SI0001`, `SI0002`, etc.;
+each January starts a separate counter in the Asia/Manila business timezone.
+Backdated encoding uses the selected sales year, not its entry year. On first
+use of a year with existing records, the counter continues the latest dated
+plain `SI` number in that year; historical resets and transcription outliers
+are not interpreted as a global maximum. Further automatic allocations advance
+the saved counter and skip already recorded numbers in the same year, including
+voided invoices. Failed sales roll back allocation; cancellations retain numbers.
+
+Encoding preserves a supplied paper SI. New manual paper references cannot
+repeat another paper reference in the same sales year (case and surrounding
+spaces are ignored for comparison). A paper reference may overlap an automatic
+number. Server-only provenance distinguishes these origins; the existing
+`transaction_number` and `source_invoice_number` response fields carry the saved
+SI, so frontend changes are unnecessary. Request UUIDs still protect retries;
+SI numbers do not replace transaction IDs or request IDs. A fresh blank-SI
+submission is a new sale, even if its other details match an earlier invoice.
+
+Apply `sales.0018_yearly_invoice_numbers` before serving the new code. The
+migration adds the counter, server-only provenance/year fields and a conditional
+uniqueness constraint for new invoices. Existing invoice strings, missing SIs
+and historical duplicates are not rewritten; legacy references are treated as
+paper when checking new entries. No global SI uniqueness is imposed across years
+or between paper and automatic origins. Run `python manage.py test
+sales.test_invoice_numbers` for rollover, backdating, retry, rollback and
+PostgreSQL concurrency coverage.
+
 ## Inventory consistency
 
 Inventory is product-only; supplier and ingredient management have been retired.

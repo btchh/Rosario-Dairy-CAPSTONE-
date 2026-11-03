@@ -1,5 +1,5 @@
 """Record backdated sales through the same inventory, order and receipt pipeline."""
-from datetime import date, datetime, time
+from datetime import date, datetime
 from hashlib import sha256
 import json
 
@@ -58,25 +58,24 @@ def encode_transaction(*, items, handled_by, transaction_date, request_id,
                 order = order_service.place_order(
                     customer, items, handled_by, payment_method=payment_method,
                     amount_tendered=amount_tendered, payment_status=payment_status,
+                    invoice_date=transaction_date, invoice_number=si_number,
                 )
                 sale = order.transaction
             else:
                 sale = checkout_service.checkout(
                     items, handled_by, payment_method=payment_method,
                     amount_tendered=amount_tendered, payment_status=payment_status,
+                    invoice_date=transaction_date, invoice_number=si_number,
                 )
             entered_at = timezone.now()
-            sale.created_at = (entered_at if transaction_date == timezone.localdate(entered_at)
-                               else timezone.make_aware(datetime.combine(transaction_date, time(12))))
             sale.encoded_at = entered_at
             sale.encoding_request_id = request_id
             sale.encoding_payload_hash = fingerprint
-            sale.source_invoice_number = si_number
             sale.source_note = note
             sale.source_customer_label = customer.name if customer else ''
             sale.save(update_fields=[
                 'created_at', 'encoded_at', 'encoding_request_id', 'encoding_payload_hash',
-                'source_invoice_number', 'source_note', 'source_customer_label',
+                'source_note', 'source_customer_label',
             ])
             # Orders use the same business date; updated_at retains actual encoding time.
             Order.objects.filter(transaction=sale).update(created_at=sale.created_at)

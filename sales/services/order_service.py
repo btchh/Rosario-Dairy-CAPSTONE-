@@ -7,7 +7,8 @@ from . import checkout_service
 
 
 def place_order(customer, items, handled_by, discount_type='none', discount_value=None,
-                 payment_method='cash', amount_tendered=None, payment_status='paid'):
+                 payment_method='cash', amount_tendered=None, payment_status='paid', *,
+                 invoice_date=None, invoice_number=None):
     """Encode final item prices and immediately fulfill atomically."""
     from .item_pricing import ZERO, price_items, reject_invoice_discount
     reject_invoice_discount(discount_type, ZERO if discount_value is None else discount_value)
@@ -23,9 +24,11 @@ def place_order(customer, items, handled_by, discount_type='none', discount_valu
         txn = checkout_service.checkout(
             items, handled_by, payment_method=payment_method,
             amount_tendered=amount_tendered, customer=customer, payment_status=payment_status,
+            invoice_date=invoice_date, invoice_number=invoice_number,
         )
         order.transaction = txn
-        order.save(update_fields=['transaction', 'updated_at'])
+        order.created_at = txn.created_at
+        order.save(update_fields=['transaction', 'created_at', 'updated_at'])
     order.refresh_from_db()
     return order
 

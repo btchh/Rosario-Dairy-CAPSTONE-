@@ -1,0 +1,40 @@
+{
+  "verified_at": "2026-11-03T22:58:08.238036+08:00",
+  "scope": "local Docker backend; public VPS deployment not performed",
+  "backend_base_commit": "9bf6c105b871ec3fa667b4c5026f24850f1a909a",
+  "frontend_unchanged": true,
+  "runtime_image": "sha256:f767be54629e6813279fd6f54be9226baa6d4727bebfa9ca65f223b416b39267",
+  "runtime_source_parity": {
+    "matching_files": 267
+  },
+  "migration": "sales.0018_yearly_invoice_numbers",
+  "migration_rehearsed_on_restored_private_snapshot": true,
+  "preexisting_table_fingerprints_preserved_at_migration": 51,
+  "sales_and_inventory_tables_rechecked_after_restart": 14,
+  "retained_transactions": 4835,
+  "private_recovery_backups_created": true,
+  "synthetic_business_records_created_in_working_database": false,
+  "new_numbering_tests": 24,
+  "tests": {
+    "broad_before_final_order_date_alignment": {
+      "run": 831,
+      "seconds": 134.255,
+      "skipped": 1,
+      "result": "passed"
+    },
+    "final_sales_and_reporting": {
+      "run": 327,
+      "seconds": 50.716,
+      "skipped": 1,
+      "result": "passed"
+    }
+  },
+  "http_smoke": {
+    "frontend": 200,
+    "gateway_auth": 401,
+    "gateway_history": 401,
+    "gateway_encoding": 401,
+    "frontend_proxy": 401,
+    "events_auth": 401
+  }
+}

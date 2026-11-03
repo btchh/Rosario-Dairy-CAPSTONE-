@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.db.models.functions import Trim, Upper
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -43,6 +44,13 @@ class Transaction(models.Model):
   void_reason = models.CharField(max_length=2000, blank=True, editable=False)
   source_reference = models.CharField(max_length=100, unique=True, null=True, blank=True)
   source_invoice_number = models.CharField(max_length=50, blank=True, null=True, default=None)
+  # Empty provenance preserves legacy records, including missing/duplicate SIs.
+  # These server-only fields distinguish paper references from issued numbers.
+  invoice_year = models.PositiveSmallIntegerField(null=True, editable=False)
+  invoice_number_source = models.CharField(
+    max_length=10, blank=True, default='', editable=False,
+    choices=[('automatic', 'Automatic'), ('manual', 'Paper invoice')],
+  )
   source_customer_label = models.CharField(max_length=255, blank=True)
   # Empty retains legacy/live classification. Workbook refreshes explicitly
   # hold entries with unresolved identity/date out of either training segment.
@@ -60,6 +68,13 @@ class Transaction(models.Model):
   encoding_payload_hash = models.CharField(max_length=64, blank=True, editable=False)
 
   class Meta:
+    constraints = [
+      models.UniqueConstraint(
+        Upper(Trim('source_invoice_number')), 'invoice_year', 'invoice_number_source',
+        condition=models.Q(invoice_number_source__in=['automatic', 'manual']),
+        name='sales_invoice_year_source_unique',
+      ),
+    ]
     indexes = [
       models.Index(fields=['-created_at', '-id'], name='sales_txn_history_order_idx'),
     ]

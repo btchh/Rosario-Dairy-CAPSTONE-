@@ -7,6 +7,7 @@ from config.api_inputs import object_body
 from sales.serializers.encoding_serializer import EncodingInputSerializer, EncodingPaymentSerializer
 from sales.serializers.sale_input_serializer import encoded_sale_items
 from sales.services.encoding_service import EncodingConflict, encode_transaction
+from sales.services.invoice_service import InvoiceNumberConflict
 from sales.services.item_pricing import reject_discount_fields
 from sales.services.payment_service import PaymentLockedError, update_encoding_payment
 from .transaction_views import TransactionViewSet
@@ -46,7 +47,7 @@ class EncodingViewSet(TransactionViewSet):
             sale, created = encode_transaction(
                 items=items, handled_by=request.user, **metadata.validated_data,
             )
-        except EncodingConflict as exc:
+        except (EncodingConflict, InvoiceNumberConflict) as exc:
             return Response({'error': str(exc)}, status=status.HTTP_409_CONFLICT)
         except ValueError as exc:
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

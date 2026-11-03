@@ -1,0 +1,45 @@
+{
+  "verified_at": "2026-11-03T23:12:04.028522+08:00",
+  "public_url": "https://rosariodairy.duckdns.org",
+  "release": "rosario-release-2026.11.03-yearly-si.1",
+  "backend_commit": "279ab4508727f27881ecda079659b7e1489144ef",
+  "backend_image": "rosario-dairy-backend:release-2026.11.03-yearly-si.1",
+  "backend_image_id": "sha256:f767be54629e6813279fd6f54be9226baa6d4727bebfa9ca65f223b416b39267",
+  "archive_sha256": "5eaef395e0ee9f3d808b5115205a28d246695b398f5ac648f18f05575b2702fd",
+  "frontend_source_image_and_container_unchanged": true,
+  "frontend_image": "rosario-dairy-frontend:release-2026.11.02-frontend.2",
+  "migration": "sales.0018_yearly_invoice_numbers",
+  "production_preflight": "passed",
+  "runtime": {
+    "pending_migrations": 0,
+    "timezone": "Asia/Manila",
+    "runtime_role_flags": {
+      "superuser": false,
+      "create_database": false,
+      "create_role": false,
+      "replication": false,
+      "bypass_rls": false
+    },
+    "transactions": 4835,
+    "transactions_this_year": 0,
+    "counter_rows": 0
+  },
+  "runtime_source_parity": {
+    "matching_runtime_files": 267
+  },
+  "unchanged_retained_tables_during_migration": 51,
+  "unchanged_sales_inventory_tables_after_public_checks": 14,
+  "retained_transactions": 4835,
+  "public_authenticated_checks_passed": 34,
+  "duplicate_paper_si_http_status": 409,
+  "temporary_verification_sessions_removed": true,
+  "number_allocation_probes_rolled_back": true,
+  "live_business_records_created_by_verification": false,
+  "quiesced_backup_downloaded_checksum_verified_and_restored": true,
+  "backup_restore_matched_retained_tables": 51,
+  "upgrade_and_schema_rollback_rehearsed": true,
+  "previous_backend_commit": "9bf6c105b871ec3fa667b4c5026f24850f1a909a",
+  "previous_backend_image_id": "sha256:827af503adf15cbc5452ae7d190fbd9e5dda45db6544f6d7baa72efc2f633d95",
+  "persistent_compose_wrapper_updated": true,
+  "boot_backup_and_certificate_timers_enabled": true
+}

@@ -225,6 +225,9 @@ or between paper and automatic origins. Run `python manage.py test
 sales.test_invoice_numbers` for rollover, backdating, retry, rollback and
 PostgreSQL concurrency coverage.
 
+The public rollout and recovery checkpoint are recorded in
+[YEARLY_SI_DEPLOYMENT.md](YEARLY_SI_DEPLOYMENT.md).
+
 ## Inventory consistency
 
 Inventory is product-only; supplier and ingredient management have been retired.

@@ -15,6 +15,7 @@ from .weekly import weekly_report
 from .refresh_jobs import enqueue, launch_after_commit, lookup, payload
 from .prospective import evidence_report
 from .beta_graph import report as beta_graph_report
+from .graph_range import range_report, calendar
 from django.utils import timezone
 
 
@@ -72,8 +73,25 @@ class BetaGraphQuery(serializers.Serializer):
     period = serializers.ChoiceField(choices=['weekly', 'monthly', 'yearly'], default='monthly')
     scope = serializers.ChoiceField(choices=['real', 'demo2026'], default='real')
     as_of = serializers.DateField(default=timezone.localdate)
+    start_date = serializers.DateField(required=False)
+    end_date = serializers.DateField(required=False)
 
     def validate(self, attrs):
+        if 'start_date' in attrs or 'end_date' in attrs:
+            if not all(key in attrs for key in ('start_date', 'end_date')):
+                raise serializers.ValidationError('Choose both start_date and end_date.')
+            if attrs['scope'] != 'real' or 'as_of' in self.initial_data:
+                raise serializers.ValidationError('Custom display dates require real scope without as_of.')
+            if not all(3 <= attrs[key].year <= 9997 for key in ('start_date', 'end_date')):
+                raise serializers.ValidationError('Dates are outside the supported calendar.')
+            if attrs['end_date'] < attrs['start_date']:
+                raise serializers.ValidationError('end_date must be on or after start_date.')
+            try:
+                calendar(attrs['period'], attrs['start_date'], attrs['end_date'])
+            except ValueError as exc:
+                raise serializers.ValidationError(str(exc)) from exc
+            attrs.pop('as_of')
+            return attrs
         if attrs['scope'] == 'demo2026' and settings.IS_PRODUCTION:
             raise serializers.ValidationError({'scope': 'Demo forecasting is unavailable in production.'})
         if not 3 <= attrs['as_of'].year <= 9997:
@@ -92,7 +110,8 @@ class BetaGraphView(APIView):
     def get(self, request):
         query = BetaGraphQuery(data=request.query_params)
         query.is_valid(raise_exception=True)
-        return Response(beta_graph_report(**query.validated_data))
+        handler = range_report if 'start_date' in query.validated_data else beta_graph_report
+        return Response(handler(**query.validated_data))
 
 
 class ForecastChartView(APIView):

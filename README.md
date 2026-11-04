@@ -186,8 +186,16 @@ stock references or stock-return records require reconciliation before removal.
 Shared customers, products, stock and real forecast history are retained. Existing
 SQL backups and original source files remain private and are not removed.
 Demo comparisons are unavailable in production.
+The graph implementation is `forecasting.graph_forecasts`; its maintenance
+command is `refresh_forecast_graphs` and new runs use `centered-sarima-v6`.
+Update external automation to use the renamed command. Migration
+`forecasting.0013_rename_graph_constraints` updates constraint names only.
+Existing saved runs and issued predictions retain their original provenance;
+the reader accepts the previous engine identifier only with matching source
+signatures and a valid checksum. Forecast calculations are unchanged.
+
 Development-only comparisons require explicit `scope=demo2026` and an offline
-refresh using `refresh_beta_graphs --scope demo2026`. Legacy reserved demo
+refresh using `refresh_forecast_graphs --scope demo2026`. Legacy reserved demo
 references are excluded from training. Ordinary local records are included;
 this filter does not independently verify their provenance. The authorized
 2026 demonstration extension has now been removed using its exact private
@@ -229,6 +237,15 @@ The public rollout and recovery checkpoint are recorded in
 [YEARLY_SI_DEPLOYMENT.md](YEARLY_SI_DEPLOYMENT.md).
 
 ## Inventory consistency
+
+The reviewed product aliases in `inventory/product_names.py` consolidate the
+200 ml melon labels, the 300 ml melon labels, and unsized Mozza/Mozzarella.
+Chocolate labels, different pack sizes, packaging, units and variants remain
+separate. Imports and catalog duplicate checks share these reviewed identities.
+`consolidate_products` previews the merge plan; repeat `--product-id` to limit
+it to selected records. Applying with `--apply` takes a private full-data backup,
+holds maintenance/table locks, and verifies business-table fingerprints before
+committing. Original source labels, quantities and monetary fields are retained.
 
 Inventory is product-only; supplier and ingredient management have been retired.
 Product batch creation, edits and deletion require an admin. Staff can still

@@ -1,6 +1,5 @@
-"""Merge formatting duplicates without combining sizes, flavors, or variants."""
+"""Merge formatting duplicates and approved aliases, preserving sizes and variants."""
 
-import re
 from collections import defaultdict
 
 from django.db import transaction
@@ -8,29 +7,27 @@ from django.db.models import F, Q
 
 from config.data_cache import invalidate_data_cache
 from inventory.models import Product, ProductBatch
+from inventory.product_names import canonical_product_name, product_name_key
 from sales.models import OrderItem, TransactionItem
 
 
-def product_name_key(value):
-    # Retain punctuation such as hyphens, decimal points and slashes: these may
-    # distinguish flavors or package sizes. Parentheses only wrap label text.
-    return re.sub(r'[\s()]', '', value or '').casefold()
-
-
-def duplicate_product_groups():
+def duplicate_product_groups(product_ids=None):
     groups = defaultdict(list)
-    for product in Product.objects.select_related('category').order_by('id'):
+    products = Product.objects.select_related('category').order_by('id')
+    if product_ids is not None:
+        products = products.filter(pk__in=product_ids)
+    for product in products:
         key = (product_name_key(product.name), product.unit.strip().casefold(),
                (product.variant or '').strip().casefold())
         groups[key].append(product)
     return [group for group in groups.values() if len(group) > 1]
 
 
-def consolidation_plan():
+def consolidation_plan(product_ids=None):
     plans = []
-    for group in duplicate_product_groups():
+    for group in duplicate_product_groups(product_ids):
         keeper = group[0]  # Keep the oldest stable product ID and its category.
-        label = min(group, key=lambda p: (len(p.name), p.pk)).name
+        label = canonical_product_name(min(group, key=lambda p: (len(p.name), p.pk)).name)
         plans.append({'keep_id': keeper.pk, 'name': label,
                       'members': [{'id': p.pk, 'name': p.name,
                                    'category_id': p.category_id} for p in group]})
@@ -38,9 +35,9 @@ def consolidation_plan():
 
 
 @transaction.atomic
-def consolidate_products():
+def consolidate_products(product_ids=None):
     """Caller must prevent concurrent catalog/stock/sales writes (see command)."""
-    plans = consolidation_plan()
+    plans = consolidation_plan(product_ids)
     for plan in plans:
         keeper = Product.objects.get(pk=plan['keep_id'])
         ids = [member['id'] for member in plan['members']]

@@ -14,7 +14,7 @@ from .chart import chart_report
 from .weekly import weekly_report
 from .refresh_jobs import enqueue, launch_after_commit, lookup, payload
 from .prospective import evidence_report
-from .beta_graph import report as beta_graph_report
+from .graph_forecasts import report as forecast_graph_report
 from .graph_range import range_report, calendar
 from django.utils import timezone
 
@@ -69,7 +69,7 @@ class ForecastQuery(serializers.Serializer):
     scope = serializers.ChoiceField(choices=['real'], default='real')
 
 
-class BetaGraphQuery(serializers.Serializer):
+class ForecastGraphQuery(serializers.Serializer):
     period = serializers.ChoiceField(choices=['weekly', 'monthly', 'yearly'], default='monthly')
     scope = serializers.ChoiceField(choices=['real', 'demo2026'], default='real')
     as_of = serializers.DateField(default=timezone.localdate)
@@ -103,14 +103,14 @@ class BetaGraphQuery(serializers.Serializer):
         return attrs
 
 
-class BetaGraphView(APIView):
+class ForecastGraphView(APIView):
     permission_classes = [IsAdmin]
     throttle_classes = [ExpensiveReadRateThrottle]
 
     def get(self, request):
-        query = BetaGraphQuery(data=request.query_params)
+        query = ForecastGraphQuery(data=request.query_params)
         query.is_valid(raise_exception=True)
-        handler = range_report if 'start_date' in query.validated_data else beta_graph_report
+        handler = range_report if 'start_date' in query.validated_data else forecast_graph_report
         return Response(handler(**query.validated_data))
 
 

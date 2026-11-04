@@ -2,7 +2,7 @@ import json
 from datetime import date
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
-from forecasting.beta_graph import PERIODS, SCOPES, refresh
+from forecasting.graph_forecasts import PERIODS, SCOPES, refresh
 
 
 class Command(BaseCommand):

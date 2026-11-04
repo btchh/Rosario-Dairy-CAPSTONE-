@@ -7,7 +7,7 @@ from unittest.mock import patch
 from django.test import SimpleTestCase
 
 from . import graph_range
-from .views import BetaGraphQuery, BetaGraphView
+from .views import ForecastGraphQuery, ForecastGraphView
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 
@@ -59,7 +59,7 @@ class GraphRangeTests(SimpleTestCase):
         self.assertIsNone(result['seasonal_outlook'])
 
     def test_future_range_keeps_unavailable_tail_without_projecting(self):
-        with patch('forecasting.beta_graph.fit', side_effect=AssertionError('GET must not fit')):
+        with patch('forecasting.graph_forecasts.fit', side_effect=AssertionError('GET must not fit')):
             result = self.run_range('2027-04-01', '2027-08-31')
         points = result['views']['regular']['points']
         self.assertEqual(len(points), 5)
@@ -77,17 +77,17 @@ class GraphRangeTests(SimpleTestCase):
 
     def test_range_validation_accepts_future_and_rejects_ambiguous_or_unbounded_requests(self):
         good = {'start_date': '2025-01-01', 'end_date': '2027-01-01'}
-        query = BetaGraphQuery(data=good)
+        query = ForecastGraphQuery(data=good)
         self.assertTrue(query.is_valid(), query.errors)
         self.assertNotIn('as_of', query.validated_data)
         for bad in [{'start_date': '2025-01-01'}, {**good, 'as_of': '2025-01-01'},
                     {**good, 'end_date': '2024-01-01'}, {**good, 'end_date': '2026-02-30'},
                     {**good, 'scope': 'demo2026'}, {**good, 'start_date': '0001-01-01'},
                     {**good, 'period': 'weekly', 'end_date': '2099-01-01'}]:
-            self.assertFalse(BetaGraphQuery(data=bad).is_valid(), bad)
+            self.assertFalse(ForecastGraphQuery(data=bad).is_valid(), bad)
 
     def test_existing_historical_origin_query_remains_supported(self):
-        query = BetaGraphQuery(data={'as_of': '2025-06-30'})
+        query = ForecastGraphQuery(data={'as_of': '2025-06-30'})
         self.assertTrue(query.is_valid(), query.errors)
         self.assertEqual(query.validated_data['as_of'], date(2025, 6, 30))
 
@@ -95,10 +95,10 @@ class GraphRangeTests(SimpleTestCase):
         request = APIRequestFactory().get('/api/forecasting/graph/',
             {'period': 'weekly', 'start_date': '2025-01-01', 'end_date': '2027-01-01'})
         force_authenticate(request, user=SimpleNamespace(is_authenticated=True, role='admin'))
-        with patch.object(BetaGraphView, 'get_throttles', return_value=[]), \
+        with patch.object(ForecastGraphView, 'get_throttles', return_value=[]), \
                 patch('forecasting.views.range_report', return_value={'requested_range': {}}) as target, \
-                patch('forecasting.views.beta_graph_report', side_effect=AssertionError('Wrong date semantics')):
-            response = BetaGraphView.as_view()(request)
+                patch('forecasting.views.forecast_graph_report', side_effect=AssertionError('Wrong date semantics')):
+            response = ForecastGraphView.as_view()(request)
         self.assertEqual(response.status_code, 200)
         target.assert_called_once_with(period='weekly', scope='real',
             start_date=date(2025, 1, 1), end_date=date(2027, 1, 1))

@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from django.utils import timezone
 
-from .beta_graph import report, advance, _issued_predictions
+from .graph_forecasts import report, advance, _issued_predictions
 from .benchmarks import score
 from .chart import period_start, period_end, _regular_backtest
 from .data import load_snapshot

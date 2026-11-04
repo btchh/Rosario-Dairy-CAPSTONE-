@@ -219,7 +219,7 @@ class ProjectionScore(models.Model):
 
 
 class GraphForecastRun(models.Model):
-    """Immutable beta graph and portable fits; simulated sales never train them."""
+    """Immutable forecast graph and portable fits; simulated sales never train them."""
     engine_version = models.CharField(max_length=60)
     scope = models.CharField(max_length=12)
     period = models.CharField(max_length=7)
@@ -231,7 +231,7 @@ class GraphForecastRun(models.Model):
     class Meta:
         ordering = ['-created_at', '-pk']
         constraints = [models.UniqueConstraint(fields=['engine_version', 'scope', 'period', 'as_of', 'source_revision'],
-                                               name='beta_graph_revision_unique')]
+                                               name='forecast_graph_revision_unique')]
 
 
 class GraphPrediction(models.Model):
@@ -244,5 +244,5 @@ class GraphPrediction(models.Model):
 
     class Meta:
         ordering = ['-issued_at', '-pk']
-        constraints = [models.UniqueConstraint(fields=['run', 'view', 'target'], name='beta_graph_issue_unique'),
-                       models.CheckConstraint(condition=models.Q(value__gte=0), name='beta_graph_issue_nonnegative')]
+        constraints = [models.UniqueConstraint(fields=['run', 'view', 'target'], name='forecast_graph_issue_unique'),
+                       models.CheckConstraint(condition=models.Q(value__gte=0), name='forecast_graph_issue_nonnegative')]

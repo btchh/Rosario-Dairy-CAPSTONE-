@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from config.test_support import APITestCase
 from sales.models import Transaction
-from . import beta_graph as graph
+from . import graph_forecasts as graph
 from .data import RecordedSale, SalesSnapshot, load_snapshot
 from .learning import ENGINE_VERSION, month_revision, shift_month
 from .models import GraphForecastRun, GraphPrediction, MonthlyCoverage
@@ -52,7 +52,7 @@ class CenteredWindowTests(SimpleTestCase):
                     **{k: list(v) if isinstance(v, tuple) else v for k, v in spec.items()}}
         run = SimpleNamespace(findings={'artifact': artifact, 'artifact_sha256': digest(artifact),
                                        'selected_candidate': artifact['name']})
-        with patch('forecasting.beta_graph.MonthlyModelRun.objects.filter', return_value=[run]):
+        with patch('forecasting.graph_forecasts.MonthlyModelRun.objects.filter', return_value=[run]):
             state = graph._primary(SimpleNamespace(revision='source', as_of=date(2026,1,1)), rows)
             self.assertEqual(state['name'], artifact['name'])
             # The primary engine intentionally selects the latest contiguous
@@ -95,11 +95,11 @@ class CenteredWindowTests(SimpleTestCase):
         def matching_run(**lookup):
             self.assertEqual(lookup['engine_version'], ENGINE_VERSION)
             return [run] if lookup['source_revision'] == 'source-2026-01-01' else []
-        with patch('forecasting.beta_graph.load_snapshots',
+        with patch('forecasting.graph_forecasts.load_snapshots',
                    side_effect=lambda cutoffs: {day: snapshot(day) for day in cutoffs}), \
-                patch('forecasting.beta_graph.MonthlyModelRun.objects.filter', side_effect=matching_run), \
-                patch('forecasting.beta_graph.valid_coverage', return_value={}) as coverage, \
-                patch('forecasting.beta_graph.fit', side_effect=AssertionError('Context must not fit')):
+                patch('forecasting.graph_forecasts.MonthlyModelRun.objects.filter', side_effect=matching_run), \
+                patch('forecasting.graph_forecasts.valid_coverage', return_value={}) as coverage, \
+                patch('forecasting.graph_forecasts.fit', side_effect=AssertionError('Context must not fit')):
             unknown = graph.context('monthly', 'real', date(2026, 1, 15))
             coverage.return_value = {missing: SimpleNamespace(confirmed_zero=True)}
             reviewed = graph.context('monthly', 'real', date(2026, 1, 15))
@@ -117,12 +117,12 @@ class CenteredWindowTests(SimpleTestCase):
             RecordedSale(1, date(2025, 1, 15), 'c', 'Customer', 'regular', Decimal('100')),
             RecordedSale(2, date(2025, 4, 15), 'c', 'Customer', 'regular', Decimal('200')),
         ), 0)
-        with patch('forecasting.beta_graph.valid_coverage', return_value={
+        with patch('forecasting.graph_forecasts.valid_coverage', return_value={
                 date(2025, 2, 1): SimpleNamespace(confirmed_zero=True)}):
             rows = graph._regular_monthly_series(snap)
         self.assertEqual([row['actual'] for row in rows], [100.0, 0.0, None, 200.0])
 
-    def test_sixth_observation_with_zero_validation_does_not_erase_beta_model(self):
+    def test_sixth_observation_with_zero_validation_does_not_erase_graph_model(self):
         rows = [{'date':f'2025-{i:02d}-01', 'actual':value}
                 for i, value in enumerate([100,100,100,0,0,500],1)]
         result = graph._train(rows,'monthly')
@@ -135,8 +135,8 @@ class CenteredWindowTests(SimpleTestCase):
     def test_failed_nonzero_validation_is_not_mistaken_for_zero_sales(self):
         rows = [{'date':f'2025-{i:02d}-01', 'actual':100} for i in range(1,7)]
         failed = {'status':'fit_failed','validation':{'ar1':{'wape':None,'error':'fit failed'}}}
-        with patch('forecasting.beta_graph.train',return_value=failed), \
-                patch('forecasting.beta_graph.fit',side_effect=AssertionError('No known zero validation')):
+        with patch('forecasting.graph_forecasts.train',return_value=failed), \
+                patch('forecasting.graph_forecasts.fit',side_effect=AssertionError('No known zero validation')):
             self.assertEqual(graph._train(rows,'monthly'),failed)
 
 
@@ -146,22 +146,22 @@ class ProductionDemoGuards(SimpleTestCase):
         with self.assertRaisesMessage(ValueError, 'unavailable in production'):
             graph.context('monthly','demo2026',date(2026,10,25))
         with self.assertRaisesMessage(CommandError, 'unavailable in production'):
-            call_command('refresh_beta_graphs',scope='demo2026',stdout=StringIO())
+            call_command('refresh_forecast_graphs',scope='demo2026',stdout=StringIO())
 
     def test_regular_refresh_processes_only_real_sales(self):
-        namespace='forecasting.management.commands.refresh_beta_graphs.refresh'
+        namespace='forecasting.management.commands.refresh_forecast_graphs.refresh'
         with patch(namespace,return_value=(SimpleNamespace(pk=1),False)) as refresh:
-            call_command('refresh_beta_graphs',stdout=StringIO())
+            call_command('refresh_forecast_graphs',stdout=StringIO())
         self.assertEqual(refresh.call_count,3)
         self.assertEqual({c.args[0] for c in refresh.call_args_list},set(graph.PERIODS))
         self.assertTrue(all(c.args[1]=='real' for c in refresh.call_args_list))
 
 
-class BetaGraphTests(APITestCase):
+class ForecastGraphTests(APITestCase):
     def setUp(self):
         cache.clear()
-        self.admin = get_user_model().objects.create_user(username='beta-admin', email='beta-admin@example.test', role='admin')
-        self.staff = get_user_model().objects.create_user(username='beta-staff', email='beta-staff@example.test', role='staff')
+        self.admin = get_user_model().objects.create_user(username='graph-admin', email='graph-admin@example.test', role='admin')
+        self.staff = get_user_model().objects.create_user(username='graph-staff', email='graph-staff@example.test', role='staff')
         self.client.force_authenticate(self.admin)
         for month in range(1, 13):
             self.sale(date(2025, month, 15), 'regular', 100+month)
@@ -177,8 +177,43 @@ class BetaGraphTests(APITestCase):
         return txn
 
     def refresh(self, period='monthly', scope='demo2026', as_of=date(2026,7,15)):
-        with patch('forecasting.beta_graph.train', side_effect=fake_train), patch('forecasting.beta_graph._point', side_effect=fake_point):
+        with patch('forecasting.graph_forecasts.train', side_effect=fake_train), patch('forecasting.graph_forecasts._point', side_effect=fake_point):
             return graph.refresh(period, scope, as_of)
+
+    def test_renamed_engine_reads_exact_legacy_forecasts_without_fitting_or_rewriting(self):
+        for period in graph.PERIODS:
+            with patch.object(graph, 'VERSION', graph.LEGACY_VERSION):
+                run, _ = self.refresh(period)
+                expected = graph.report(period, 'demo2026', date(2026, 7, 15))
+            findings = deepcopy(run.findings)
+            with patch('forecasting.graph_forecasts.train', side_effect=AssertionError('Read must not fit')), \
+                    patch('forecasting.graph_forecasts.future_rows', side_effect=AssertionError('Read must not project')):
+                actual = graph.report(period, 'demo2026', date(2026, 7, 15))
+            self.assertEqual(actual, expected)
+            self.assertEqual(actual['status'], 'ready')
+            self.assertEqual(actual['model_id'], run.pk)
+            run.refresh_from_db()
+            self.assertEqual(run.engine_version, graph.LEGACY_VERSION)
+            self.assertEqual(run.findings, findings)
+        self.assertEqual(GraphForecastRun.objects.count(), len(graph.PERIODS))
+
+    def test_legacy_compatibility_does_not_reuse_a_changed_source(self):
+        with patch.object(graph, 'VERSION', graph.LEGACY_VERSION):
+            self.refresh()
+        Transaction.objects.filter(source_reference='2026:000006').update(total_amount=999)
+        with patch('forecasting.graph_forecasts.train', side_effect=AssertionError('Read must not fit')):
+            actual = graph.report('monthly', 'demo2026', date(2026, 7, 15))
+        self.assertEqual(actual['status'], 'refresh_required')
+        self.assertIsNone(actual['model_id'])
+
+    def test_corrupt_current_run_is_not_hidden_by_a_valid_legacy_forecast(self):
+        with patch.object(graph, 'VERSION', graph.LEGACY_VERSION):
+            self.refresh()
+        current, _ = self.refresh()
+        GraphForecastRun.objects.filter(pk=current.pk).update(findings={})
+        actual = graph.report('monthly', 'demo2026', date(2026, 7, 15))
+        self.assertEqual(actual['status'], 'refresh_required')
+        self.assertEqual(actual['model_id'], current.pk)
 
     def test_all_nine_views_have_three_series_and_the_exact_centered_windows(self):
         for period in graph.PERIODS:
@@ -215,8 +250,8 @@ class BetaGraphTests(APITestCase):
             self.assertTrue(all(row['actual'] is None or row['actual'] < 1000 for row in item['rows']))
         first, _ = self.refresh()
         Transaction.objects.filter(source_reference='2026:000006').update(total_amount=9999)
-        with patch('forecasting.beta_graph.train', side_effect=AssertionError('dummy data must not retrain')), \
-                patch('forecasting.beta_graph._point', side_effect=fake_point):
+        with patch('forecasting.graph_forecasts.train', side_effect=AssertionError('dummy data must not retrain')), \
+                patch('forecasting.graph_forecasts._point', side_effect=fake_point):
             second, created = graph.refresh('monthly', 'demo2026', date(2026,7,15))
         self.assertTrue(created)
         before = first.findings['views']['regular']['points']
@@ -275,21 +310,21 @@ class BetaGraphTests(APITestCase):
         # can contribute to a weekly score.
         self.assertEqual(run.findings['views']['regular']['evaluation']['fixed_origin_demo']['periods'],1)
 
-    def test_sparse_beta_fit_does_not_require_six_observed_periods(self):
+    def test_sparse_graph_fit_does_not_require_six_observed_periods(self):
         rows=[{'date':'2025-11-01','actual':100},{'date':'2025-12-01','actual':120}]
-        with patch('forecasting.beta_graph.fit',return_value={'trained_through':'2025-12-01'}) as fit:
+        with patch('forecasting.graph_forecasts.fit',return_value={'trained_through':'2025-12-01'}) as fit:
             component=graph._train(rows,'monthly')
         self.assertIn('state',component)
         fit.assert_called_once_with(rows,'local_level',12)
 
     def test_get_never_fits_and_source_changes_withhold_old_graphs(self):
-        with patch('forecasting.beta_graph.train', side_effect=AssertionError('GET cannot train')):
+        with patch('forecasting.graph_forecasts.train', side_effect=AssertionError('GET cannot train')):
             response = self.client.get('/api/forecasting/graph/', {'scope':'demo2026','as_of':'2026-07-15'})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['status'], 'refresh_required')
         self.refresh()
         Transaction.objects.filter(source_reference='2026:000006').update(total_amount=999)
-        with patch('forecasting.beta_graph.train', side_effect=AssertionError('GET cannot train')):
+        with patch('forecasting.graph_forecasts.train', side_effect=AssertionError('GET cannot train')):
             response = self.client.get('/api/forecasting/graph/', {'scope':'demo2026','as_of':'2026-07-15'})
         self.assertEqual(response.data['status'], 'refresh_required')
         self.assertTrue(any(p['actual'] is not None for p in response.data['views']['regular']['points']))
@@ -331,8 +366,8 @@ class BetaGraphTests(APITestCase):
         # not manufacture a Combined prediction that was never issued.
         GraphPrediction.objects.filter(run=first,target=date(2026,8,1)).delete()
         ctx=graph.context('monthly','real',date(2026,9,15))
-        with patch('forecasting.beta_graph.train',side_effect=fake_train), \
-                patch('forecasting.beta_graph._point',side_effect=fake_point):
+        with patch('forecasting.graph_forecasts.train',side_effect=fake_train), \
+                patch('forecasting.graph_forecasts._point',side_effect=fake_point):
             result=graph.build(ctx)
         regular=next(p for p in result['views']['regular']['points'] if p['date']=='2026-08-01')
         combined=next(p for p in result['views']['combined']['points'] if p['date']=='2026-08-01')
@@ -344,7 +379,7 @@ class BetaGraphTests(APITestCase):
         corrupted = deepcopy(run.findings)
         corrupted['views']['regular']['points'][0]['actual']=99999
         GraphForecastRun.objects.filter(pk=run.pk).update(findings=corrupted)
-        with patch('forecasting.beta_graph.train',side_effect=AssertionError('no fit')):
+        with patch('forecasting.graph_forecasts.train',side_effect=AssertionError('no fit')):
             result=graph.report('monthly','demo2026',date(2026,7,15))
         self.assertEqual(result['status'],'refresh_required')
         self.assertNotEqual(result['views']['regular']['points'][0]['actual'],99999)
@@ -367,9 +402,9 @@ class BetaGraphTests(APITestCase):
     def test_source_race_does_not_save_a_mixed_snapshot(self):
         original=graph.context('monthly','demo2026',date(2026,7,15))
         changed={**original,'revision':'changed'}
-        with patch('forecasting.beta_graph.context',side_effect=[original,changed]), \
-             patch('forecasting.beta_graph.train',side_effect=fake_train), \
-             patch('forecasting.beta_graph._point',side_effect=fake_point):
+        with patch('forecasting.graph_forecasts.context',side_effect=[original,changed]), \
+             patch('forecasting.graph_forecasts.train',side_effect=fake_train), \
+             patch('forecasting.graph_forecasts._point',side_effect=fake_point):
             with self.assertRaisesMessage(ValueError,'Sales changed'):
                 graph.refresh('monthly','demo2026',date(2026,7,15))
         self.assertFalse(GraphForecastRun.objects.exists())

@@ -1,4 +1,4 @@
-"""Centered, three-series beta forecasts. Fitting occurs only in offline refresh.
+"""Centered, three-series forecasts. Fitting occurs only in offline refresh.
 
 Legacy demo scope freezes a pre-2026 training source. Ordinary local records
 remain included in real-scope history.
@@ -26,7 +26,9 @@ from .chart import period_start, period_end
 from .graph_readiness import describe_graph
 from .graph_sarima import regular_weekly_dependency, regular_weekly_component
 
-VERSION = 'centered-beta-sarima-v6'
+VERSION = 'centered-sarima-v6'
+# Retained only to read immutable forecasts issued before the naming cleanup.
+LEGACY_VERSION = 'centered-beta-sarima-v6'
 PERIODS = ('weekly', 'monthly', 'yearly')
 SCOPES = ('real', 'demo2026')
 VIEWS = ('combined', 'regular', 'feeding')
@@ -102,7 +104,8 @@ def _regular_monthly_series(snapshot):
     return rows
 
 
-def context(period, scope, as_of):
+def context(period, scope, as_of, *, engine_version=None):
+    engine_version = engine_version or VERSION
     if period not in PERIODS or scope not in SCOPES:
         raise ValueError('Use weekly/monthly/yearly and real/demo2026.')
     if scope == 'demo2026' and settings.IS_PRODUCTION:
@@ -153,7 +156,7 @@ def context(period, scope, as_of):
             primary = _primary(snap, rows) if segment == 'regular' and unit == 'monthly' else None
             last_gap = max((i for i, row in enumerate(rows) if row['actual'] is None), default=-1)
             primary_required = segment == 'regular' and unit == 'monthly' and len(rows)-last_gap-1 >= MIN_MONTHS
-            signature = digest({'version': VERSION, 'unit': unit, 'segment': segment, 'rows': rows,
+            signature = digest({'version': engine_version, 'unit': unit, 'segment': segment, 'rows': rows,
                                 'primary': primary, 'weekly': weekly})
             inputs[(target, segment)] = {'rows': rows, 'primary': primary, 'signature': signature,
                                          'weekly': weekly, 'primary_required': primary_required,
@@ -168,7 +171,7 @@ def context(period, scope, as_of):
             day = timezone.localtime(row['created_at']).date()
             if day.year == 2026 and day <= as_of:
                 sales.append((row['pk'], day, row['source_sales_segment'], row['total_amount']))
-    identity = {'version': VERSION, 'period': period, 'scope': scope, 'as_of': as_of.isoformat(),
+    identity = {'version': engine_version, 'period': period, 'scope': scope, 'as_of': as_of.isoformat(),
                 'training_sources': {day.isoformat(): snap.revision for day, snap in snapshots.items()},
                 'inputs': {f'{target}:{segment}': item['signature'] for (target, segment), item in inputs.items()}}
     if scope == 'demo2026':
@@ -201,7 +204,7 @@ def _train(rows, unit):
     if (result.get('status') == 'fit_failed' and validation
             and all(row['actual'] == 0 for row in validation)):
         # Percentage error cannot rank candidates against a zero denominator.
-        # Retain a fitted beta baseline, without claiming validated accuracy.
+        # Retain a fitted baseline, without claiming validated accuracy.
         try:
             state = fit(rows, 'local_level', 52 if unit == 'weekly' else 12)
             project(state, 1)
@@ -611,6 +614,14 @@ def report(period='monthly', scope='real', as_of=None):
     ctx = context(period, scope, as_of or timezone.localdate())
     run = GraphForecastRun.objects.filter(engine_version=VERSION, scope=scope, period=period,
                                         as_of=ctx['as_of'], source_revision=ctx['revision']).first()
+    if run is None:
+        legacy_runs = GraphForecastRun.objects.filter(engine_version=LEGACY_VERSION,
+            scope=scope, period=period, as_of=ctx['as_of'])
+        if legacy_runs.exists():
+            legacy_ctx = context(period, scope, ctx['as_of'], engine_version=LEGACY_VERSION)
+            run = legacy_runs.filter(source_revision=legacy_ctx['revision']).first()
+            if run is not None:
+                ctx = legacy_ctx
     saved = checked(run.findings) if run else None
     # Actuals and evaluations are live ledger values, while immutable issued
     # predictions and fitted states retain their original provenance. Never fit

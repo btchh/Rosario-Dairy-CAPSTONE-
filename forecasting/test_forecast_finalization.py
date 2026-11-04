@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
-from . import beta_graph as graph
+from . import graph_forecasts as graph
 
 
 class SeasonalOutlookContractTests(SimpleTestCase):
@@ -85,7 +85,7 @@ class SeasonalOutlookContractTests(SimpleTestCase):
 
     def outlook(self, ctx, data, artifacts):
         current = graph.period_start(ctx['as_of'], ctx['period'])
-        with patch('forecasting.beta_graph.future_rows', side_effect=self.projection(current)):
+        with patch('forecasting.graph_forecasts.future_rows', side_effect=self.projection(current)):
             return graph.build_seasonal_outlook(ctx, data, artifacts)
 
     def test_weekly_and_monthly_outlooks_include_one_full_cycle_from_current(self):
@@ -133,8 +133,8 @@ class SeasonalOutlookContractTests(SimpleTestCase):
     def test_extended_path_projects_each_component_once_from_its_saved_state(self):
         ctx, data, artifacts = self.example()
         current = graph.period_start(self.as_of, 'weekly')
-        with patch('forecasting.beta_graph.future_rows', side_effect=self.projection(current)) as project, \
-                patch('forecasting.beta_graph._train', side_effect=AssertionError('Do not fit an outlook')):
+        with patch('forecasting.graph_forecasts.future_rows', side_effect=self.projection(current)) as project, \
+                patch('forecasting.graph_forecasts._train', side_effect=AssertionError('Do not fit an outlook')):
             result = graph.build_seasonal_outlook(ctx, data, artifacts)
         self.assertEqual(project.call_count, 2)
         self.assertEqual({call.args[0]['state']['name'] for call in project.call_args_list},
@@ -168,10 +168,10 @@ class SeasonalOutlookContractTests(SimpleTestCase):
         for view in graph.VIEWS:
             current = next(p for p in data['views'][view]['points'] if p['is_current'])
             current['actual'] = 777.0
-        with patch('forecasting.beta_graph.future_rows', side_effect=AssertionError('GET must replay saved path')), \
-                patch('forecasting.beta_graph.project', side_effect=AssertionError('GET must not project')), \
-                patch('forecasting.beta_graph._train', side_effect=AssertionError('GET must not train')), \
-                patch('forecasting.beta_graph.fit', side_effect=AssertionError('GET must not optimize')):
+        with patch('forecasting.graph_forecasts.future_rows', side_effect=AssertionError('GET must replay saved path')), \
+                patch('forecasting.graph_forecasts.project', side_effect=AssertionError('GET must not project')), \
+                patch('forecasting.graph_forecasts._train', side_effect=AssertionError('GET must not train')), \
+                patch('forecasting.graph_forecasts.fit', side_effect=AssertionError('GET must not optimize')):
             result = graph.build_seasonal_outlook(ctx, data, artifacts,
                                                  saved_outlook=saved, allow_projection=False)
         self.assertEqual(saved, frozen)
@@ -187,14 +187,14 @@ class SeasonalOutlookContractTests(SimpleTestCase):
         for view in data['views'].values():
             for point in view['points']:
                 point['future_prediction'] = None
-        with patch('forecasting.beta_graph.future_rows', side_effect=AssertionError('GET cannot fill missing state')):
+        with patch('forecasting.graph_forecasts.future_rows', side_effect=AssertionError('GET cannot fill missing state')):
             result = graph.build_seasonal_outlook(ctx, data, artifacts, allow_projection=False)
         self.assertTrue(all(p['future_prediction'] is None for view in result['views'].values()
                             for p in view['points']))
 
     def test_yearly_retains_distinct_annual_semantics_without_a_synthetic_cycle(self):
         ctx = {'period': 'yearly'}
-        with patch('forecasting.beta_graph.future_rows', side_effect=AssertionError('Yearly needs no expansion')):
+        with patch('forecasting.graph_forecasts.future_rows', side_effect=AssertionError('Yearly needs no expansion')):
             self.assertIsNone(graph.build_seasonal_outlook(ctx, {}, {}))
 
     def test_bad_component_projection_withholds_its_whole_extended_path(self):
@@ -224,7 +224,7 @@ class SeasonalOutlookContractTests(SimpleTestCase):
                         }[defect]
                     return rows
 
-                with patch('forecasting.beta_graph.future_rows', side_effect=damaged_projection):
+                with patch('forecasting.graph_forecasts.future_rows', side_effect=damaged_projection):
                     result = graph.build_seasonal_outlook(ctx, data, artifacts)
                 for view in ('regular', 'combined'):
                     points = result['views'][view]['points']
@@ -236,7 +236,7 @@ class SeasonalOutlookContractTests(SimpleTestCase):
 
     def test_projection_error_cannot_fall_back_to_fabricated_seasonal_values(self):
         ctx, data, artifacts = self.example()
-        with patch('forecasting.beta_graph.future_rows', side_effect=ValueError('Unsupported projection')):
+        with patch('forecasting.graph_forecasts.future_rows', side_effect=ValueError('Unsupported projection')):
             result = graph.build_seasonal_outlook(ctx, data, artifacts)
         for view in graph.VIEWS:
             points = result['views'][view]['points']
@@ -249,7 +249,7 @@ class SeasonalOutlookContractTests(SimpleTestCase):
         saved = self.outlook(ctx, data, artifacts)
         saved['views']['regular']['points'][-1]['date'] = '2099-01-05'
         frozen = deepcopy(saved)
-        with patch('forecasting.beta_graph.future_rows', side_effect=AssertionError('Invalid saved path stays unavailable')):
+        with patch('forecasting.graph_forecasts.future_rows', side_effect=AssertionError('Invalid saved path stays unavailable')):
             result = graph.build_seasonal_outlook(ctx, data, artifacts,
                                                  saved_outlook=saved, allow_projection=False)
         self.assertEqual(saved, frozen)
@@ -303,9 +303,9 @@ class SeasonalOutlookContractTests(SimpleTestCase):
                             'infinite_future': float('inf'), 'boolean_future': True,
                             'string_future': '123.0',
                         }[defect]
-                with patch('forecasting.beta_graph.future_rows', side_effect=AssertionError('GET must not project')), \
-                        patch('forecasting.beta_graph._train', side_effect=AssertionError('GET must not train')), \
-                        patch('forecasting.beta_graph.fit', side_effect=AssertionError('GET must not fit')):
+                with patch('forecasting.graph_forecasts.future_rows', side_effect=AssertionError('GET must not project')), \
+                        patch('forecasting.graph_forecasts._train', side_effect=AssertionError('GET must not train')), \
+                        patch('forecasting.graph_forecasts.fit', side_effect=AssertionError('GET must not fit')):
                     result = graph.build_seasonal_outlook(ctx, data, artifacts,
                                                          saved_outlook=damaged, allow_projection=False)
                 self.assertTrue(all(p['future_prediction'] is None
@@ -323,11 +323,11 @@ class SeasonalOutlookContractTests(SimpleTestCase):
             else:
                 feeding_states[item['signature']] = artifacts[item['signature']]
         adapted = {'status': 'provisional', 'state': {'name': 'weekly_sarima_100_100_52'}}
-        with patch('forecasting.beta_graph.regular_weekly_component', return_value=adapted) as adapt, \
-                patch('forecasting.beta_graph._train', side_effect=AssertionError('Do not replace eligible SARIMA')), \
-                patch('forecasting.beta_graph._point', side_effect=lambda component, *_:
+        with patch('forecasting.graph_forecasts.regular_weekly_component', return_value=adapted) as adapt, \
+                patch('forecasting.graph_forecasts._train', side_effect=AssertionError('Do not replace eligible SARIMA')), \
+                patch('forecasting.graph_forecasts._point', side_effect=lambda component, *_:
                       123.0 if component.get('state') else None), \
-                patch('forecasting.beta_graph._issued_predictions', return_value={}):
+                patch('forecasting.graph_forecasts._issued_predictions', return_value={}):
             result = graph.build(ctx, feeding_states)
         self.assertEqual(adapt.call_count, 4)  # Three historical cutoffs plus one latest outlook origin.
         self.assertEqual({call.args[0]['status'] for call in adapt.call_args_list}, {'saved_sarima'})
@@ -345,12 +345,12 @@ class SeasonalOutlookContractTests(SimpleTestCase):
                 item['weekly'] = {'status': 'invalid_saved_artifact'}
             else:
                 feeding_states[item['signature']] = artifacts[item['signature']]
-        with patch('forecasting.beta_graph.regular_weekly_component',
+        with patch('forecasting.graph_forecasts.regular_weekly_component',
                    return_value={'status': 'invalid_primary_artifact'}), \
-                patch('forecasting.beta_graph._train', side_effect=AssertionError('Invalid primary cannot fall back')), \
-                patch('forecasting.beta_graph._point', side_effect=lambda component, *_:
+                patch('forecasting.graph_forecasts._train', side_effect=AssertionError('Invalid primary cannot fall back')), \
+                patch('forecasting.graph_forecasts._point', side_effect=lambda component, *_:
                       123.0 if component.get('state') else None), \
-                patch('forecasting.beta_graph._issued_predictions', return_value={}):
+                patch('forecasting.graph_forecasts._issued_predictions', return_value={}):
             result = graph.build(ctx, feeding_states)
         for view in ('regular', 'combined'):
             self.assertTrue(all(p['past_prediction'] is None and p['future_prediction'] is None
@@ -366,12 +366,12 @@ class SeasonalOutlookContractTests(SimpleTestCase):
                 item['primary_required'] = True
             else:
                 feeding_states[item['signature']] = artifacts[item['signature']]
-        with patch('forecasting.beta_graph._train', side_effect=AssertionError('Eligible monthly primary is required')), \
-                patch('forecasting.beta_graph.regular_weekly_component',
+        with patch('forecasting.graph_forecasts._train', side_effect=AssertionError('Eligible monthly primary is required')), \
+                patch('forecasting.graph_forecasts.regular_weekly_component',
                       side_effect=AssertionError('Monthly data cannot use the weekly adapter')), \
-                patch('forecasting.beta_graph._point', side_effect=lambda component, *_:
+                patch('forecasting.graph_forecasts._point', side_effect=lambda component, *_:
                       123.0 if component.get('state') else None), \
-                patch('forecasting.beta_graph._issued_predictions', return_value={}):
+                patch('forecasting.graph_forecasts._issued_predictions', return_value={}):
             result = graph.build(ctx, feeding_states)
         for view in ('regular', 'combined'):
             self.assertTrue(all(p['past_prediction'] is None and p['future_prediction'] is None
@@ -389,7 +389,7 @@ class SeasonalOutlookContractTests(SimpleTestCase):
             with self.subTest(field=field):
                 damaged = deepcopy(saved)
                 damaged['views']['regular']['points'][-1][field] = value
-                with patch('forecasting.beta_graph.future_rows', side_effect=AssertionError('No GET repair')):
+                with patch('forecasting.graph_forecasts.future_rows', side_effect=AssertionError('No GET repair')):
                     result = graph.build_seasonal_outlook(ctx, data, artifacts,
                                                          saved_outlook=damaged, allow_projection=False)
                 for view in ('regular', 'combined'):
@@ -401,7 +401,7 @@ class SeasonalOutlookContractTests(SimpleTestCase):
         ctx, data, artifacts = self.example()
         saved = self.outlook(ctx, data, artifacts)
         saved['views']['combined']['points'][-1]['future_prediction'] += 1
-        with patch('forecasting.beta_graph.future_rows', side_effect=AssertionError('No GET repair')):
+        with patch('forecasting.graph_forecasts.future_rows', side_effect=AssertionError('No GET repair')):
             result = graph.build_seasonal_outlook(ctx, data, artifacts,
                                                  saved_outlook=saved, allow_projection=False)
         self.assertTrue(all(p['future_prediction'] is None for p in result['views']['combined']['points']))

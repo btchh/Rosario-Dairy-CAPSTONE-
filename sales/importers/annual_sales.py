@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 
 from openpyxl import load_workbook
+from inventory.product_names import canonical_product_name
 from sales.customer_names import consolidated_name
 
 
@@ -125,6 +126,7 @@ def customer_key(raw):
 
 def canonical_product(raw):
     label = clean_label(raw)
+    label = canonical_product_name(label)
     key = label.casefold()
     if key in PRODUCT_ALIASES:
         return PRODUCT_ALIASES[key]

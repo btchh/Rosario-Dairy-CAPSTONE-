@@ -8,7 +8,7 @@ from .graph_readiness import describe_graph
 
 class GraphReadinessTests(SimpleTestCase):
     def test_nonfinite_or_non_mapping_saved_graph_is_rejected_without_crashing(self):
-        from .beta_graph import checked
+        from .graph_forecasts import checked
         for findings in (None, [], 'bad graph', {'checksum': 'original', 'value': float('inf')},
                          {'checksum': 'original', 'value': float('nan')}):
             with self.subTest(findings_type=type(findings).__name__):

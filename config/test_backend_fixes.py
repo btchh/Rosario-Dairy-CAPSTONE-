@@ -215,16 +215,16 @@ class BackendFixTests(BusinessFixture, APITestCase):
         self.assertEqual(self.client.patch('/settings/system/', {'timezone': settings.TIME_ZONE}, format='json').status_code, 200)
 
     def test_live_sales_update_actuals_without_hiding_or_recomputing_saved_predictions(self):
-        from forecasting import beta_graph as graph
+        from forecasting import graph_forecasts as graph
         runs = {}
         for period in graph.PERIODS:
-            with patch('forecasting.beta_graph._train', return_value={'state': {'test': True}}), \
-                 patch('forecasting.beta_graph._point', return_value=100.0):
+            with patch('forecasting.graph_forecasts._train', return_value={'state': {'test': True}}), \
+                 patch('forecasting.graph_forecasts._point', return_value=100.0):
                 runs[period], _ = graph.refresh(period=period)
         sale = self.client.post('/sales/checkout/', self.cart(), format='json')
         self.assertEqual(sale.status_code, 201, sale.data)
-        with patch('forecasting.beta_graph._train', side_effect=AssertionError('GET must not train')), \
-             patch('forecasting.beta_graph._point', side_effect=AssertionError('Read original saved values')):
+        with patch('forecasting.graph_forecasts._train', side_effect=AssertionError('GET must not train')), \
+             patch('forecasting.graph_forecasts._point', side_effect=AssertionError('Read original saved values')):
             for period, run in runs.items():
                 with self.subTest(period=period):
                     response = graph.report(period=period)
@@ -242,15 +242,15 @@ class BackendFixTests(BusinessFixture, APITestCase):
                     self.assertTrue(current['is_partial_period'])
 
     def test_completed_history_correction_still_requires_refresh(self):
-        from forecasting import beta_graph as graph
+        from forecasting import graph_forecasts as graph
         old_day = self.today.replace(day=1)-timedelta(days=1)
         sale = Transaction.objects.create(handled_by=self.admin, source_sales_segment='regular', total_amount=100)
         Transaction.objects.filter(pk=sale.pk).update(created_at=timezone.make_aware(datetime.combine(old_day, datetime.min.time())))
-        with patch('forecasting.beta_graph._train', return_value={'state': {'test': True}}), \
-             patch('forecasting.beta_graph._point', return_value=100.0):
+        with patch('forecasting.graph_forecasts._train', return_value={'state': {'test': True}}), \
+             patch('forecasting.graph_forecasts._point', return_value=100.0):
             graph.refresh()
         Transaction.objects.filter(pk=sale.pk).update(total_amount=999)
-        with patch('forecasting.beta_graph._train', side_effect=AssertionError('GET must not train')):
+        with patch('forecasting.graph_forecasts._train', side_effect=AssertionError('GET must not train')):
             self.assertEqual(graph.report()['status'], 'refresh_required')
 
 

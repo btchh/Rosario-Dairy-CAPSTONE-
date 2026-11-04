@@ -9,7 +9,7 @@ from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from sales.models import Transaction
-from . import beta_graph as graph
+from . import graph_forecasts as graph
 from .data import RecordedSale, SalesSnapshot
 from .models import GraphForecastRun, GraphPrediction
 
@@ -30,7 +30,7 @@ class AnnualOutlookTests(SimpleTestCase):
         path = [{'date': '2026-10-01', 'predicted': 200.0},
                 {'date': '2026-11-01', 'predicted': 300.0},
                 {'date': '2026-12-01', 'predicted': 400.0}]
-        with patch('forecasting.beta_graph.future_rows', return_value=path) as project:
+        with patch('forecasting.graph_forecasts.future_rows', return_value=path) as project:
             result = graph.annual_outlook(self.component, self.target, self.cutoff, self.rows, 250.0)
         self.assertEqual(result['prediction'], 1850.0)
         self.assertEqual((result['observed_revenue'], result['forecast_revenue']), (900.0, 950.0))
@@ -42,7 +42,7 @@ class AnnualOutlookTests(SimpleTestCase):
         self.assertEqual((self.rows, self.component), original)
 
     def test_small_current_actual_does_not_prorate_or_reduce_the_model_path(self):
-        with patch('forecasting.beta_graph.future_rows', side_effect=monthly_path):
+        with patch('forecasting.graph_forecasts.future_rows', side_effect=monthly_path):
             result = graph.annual_outlook(self.component, self.target, self.cutoff, self.rows, 80.0)
         self.assertEqual(result['prediction'], 1500.0)
         self.assertEqual(result['current_month_estimate'], 200.0)
@@ -50,26 +50,26 @@ class AnnualOutlookTests(SimpleTestCase):
 
     def test_unknown_closed_month_withholds_annual_sum_instead_of_zero_filling(self):
         self.rows[3]['actual'] = None
-        with patch('forecasting.beta_graph.future_rows', side_effect=AssertionError('Unknown total')):
+        with patch('forecasting.graph_forecasts.future_rows', side_effect=AssertionError('Unknown total')):
             result = graph.annual_outlook(self.component, self.target, self.cutoff, self.rows)
         self.assertIsNone(result['prediction'])
         self.assertEqual(result['missing_completed_months'], ['2026-04-01'])
 
     def test_absent_leading_months_are_unknown_even_with_a_fitted_model(self):
-        with patch('forecasting.beta_graph.future_rows', side_effect=AssertionError('Incomplete year')):
+        with patch('forecasting.graph_forecasts.future_rows', side_effect=AssertionError('Incomplete year')):
             result = graph.annual_outlook(self.component, self.target, self.cutoff, self.rows[6:])
         self.assertIsNone(result['prediction'])
         self.assertEqual(len(result['missing_completed_months']), 6)
 
     def test_confirmed_zero_month_counts_as_a_known_actual(self):
         self.rows[3]['actual'] = 0.0
-        with patch('forecasting.beta_graph.future_rows', side_effect=monthly_path):
+        with patch('forecasting.graph_forecasts.future_rows', side_effect=monthly_path):
             result = graph.annual_outlook(self.component, self.target, self.cutoff, self.rows, 0.0)
         self.assertEqual(result['prediction'], 1400.0)
         self.assertEqual(result['missing_completed_months'], [])
 
     def test_january_and_december_do_not_overlap_observed_and_forecast_months(self):
-        with patch('forecasting.beta_graph.future_rows', side_effect=monthly_path):
+        with patch('forecasting.graph_forecasts.future_rows', side_effect=monthly_path):
             january = graph.annual_outlook(self.component, self.target, self.target, [], 250.0)
             rows = [{'date': f'2026-{month:02d}-01', 'actual': 100.0} for month in range(1, 12)]
             december = graph.annual_outlook(self.component, self.target, date(2026, 12, 1), rows, 250.0)
@@ -81,7 +81,7 @@ class AnnualOutlookTests(SimpleTestCase):
         for points in ([], [{'date': target, 'predicted': float('inf')} for target in targets],
                        [{'date': target, 'predicted': -1} for target in targets],
                        [{'date': '2027-01-01', 'predicted': 100}]*3):
-            with self.subTest(points=points), patch('forecasting.beta_graph.future_rows', return_value=points):
+            with self.subTest(points=points), patch('forecasting.graph_forecasts.future_rows', return_value=points):
                 self.assertIsNone(graph.annual_outlook(self.component, self.target, self.cutoff, self.rows)['prediction'])
         self.assertIsNone(graph.annual_outlook({}, self.target, self.cutoff, self.rows)['prediction'])
 
@@ -110,10 +110,10 @@ class LatestOriginContextTests(SimpleTestCase):
         return SalesSnapshot(cutoff, f'source-{cutoff}', sales, 0)
 
     def test_current_and_future_years_share_the_latest_completed_month_cutoff(self):
-        with patch('forecasting.beta_graph.load_snapshots',
+        with patch('forecasting.graph_forecasts.load_snapshots',
                    side_effect=lambda cutoffs: {day: self.snapshot(day) for day in cutoffs}), \
-                patch('forecasting.beta_graph._primary', return_value=None), \
-                patch('forecasting.beta_graph.valid_coverage', return_value={}):
+                patch('forecasting.graph_forecasts._primary', return_value=None), \
+                patch('forecasting.graph_forecasts.valid_coverage', return_value={}):
             ctx = graph.context('yearly', 'real', date(2026, 10, 28))
         for segment in ('regular', 'feeding'):
             items = [ctx['inputs'][(date(year, 1, 1), segment)] for year in (2026, 2027, 2028)]
@@ -123,11 +123,11 @@ class LatestOriginContextTests(SimpleTestCase):
         self.assertEqual(ctx['inputs'][(date(2025, 1, 1), 'regular')]['cutoff'], date(2025, 1, 1))
 
     def test_demo_current_and_future_years_keep_the_fixed_pre_demo_origin(self):
-        with patch('forecasting.beta_graph.load_snapshots',
+        with patch('forecasting.graph_forecasts.load_snapshots',
                    side_effect=lambda cutoffs: {day: self.snapshot(day) for day in cutoffs}), \
-                patch('forecasting.beta_graph._primary', return_value=None), \
-                patch('forecasting.beta_graph.valid_coverage', return_value={}), \
-                patch('forecasting.beta_graph.Transaction.objects.filter') as transactions:
+                patch('forecasting.graph_forecasts._primary', return_value=None), \
+                patch('forecasting.graph_forecasts.valid_coverage', return_value={}), \
+                patch('forecasting.graph_forecasts.Transaction.objects.filter') as transactions:
             transactions.return_value.order_by.return_value.values.return_value = []
             ctx = graph.context('yearly', 'demo2026', date(2026, 10, 28))
         self.assertEqual({ctx['inputs'][(date(year, 1, 1), 'regular')]['cutoff']
@@ -166,9 +166,9 @@ class GraphOriginReplayTests(TestCase):
 
     def refresh(self, period, day, point):
         with patch('django.utils.timezone.now', return_value=self.clock(day)), \
-                patch('forecasting.beta_graph._train', side_effect=self.train), \
-                patch('forecasting.beta_graph._point', return_value=point), \
-                patch('forecasting.beta_graph.future_rows', side_effect=monthly_path):
+                patch('forecasting.graph_forecasts._train', side_effect=self.train), \
+                patch('forecasting.graph_forecasts._point', return_value=point), \
+                patch('forecasting.graph_forecasts.future_rows', side_effect=monthly_path):
             return graph.refresh(period, 'real', day)[0]
 
     @staticmethod
@@ -232,8 +232,8 @@ class GraphOriginReplayTests(TestCase):
         day = date(2026, 10, 28)
         run = self.refresh('weekly', day, 1000.0)
         with patch('django.utils.timezone.now', return_value=self.clock(day)), \
-                patch('forecasting.beta_graph._train', side_effect=AssertionError('GET must not fit')), \
-                patch('forecasting.beta_graph._point', side_effect=AssertionError('GET uses saved weekly values')):
+                patch('forecasting.graph_forecasts._train', side_effect=AssertionError('GET must not fit')), \
+                patch('forecasting.graph_forecasts._point', side_effect=AssertionError('GET uses saved weekly values')):
             payload = graph.report('weekly', 'real', day)
         self.assertEqual([p['future_prediction'] for p in payload['views']['combined']['points']],
                          [p['future_prediction'] for p in run.findings['views']['combined']['points']])
@@ -247,9 +247,9 @@ class GraphOriginReplayTests(TestCase):
         self.assertEqual(self.point(run.findings, 'regular', '2026-01-01')['future_prediction'], 1350.0)
         self.sale(date(2026, 10, 27), 'regular', 400)
         with patch('django.utils.timezone.now', return_value=self.clock(day)), \
-                patch('forecasting.beta_graph._train', side_effect=AssertionError('GET must not fit')), \
-                patch('forecasting.beta_graph.fit', side_effect=AssertionError('GET must not optimize')), \
-                patch('forecasting.beta_graph.future_rows', side_effect=monthly_path):
+                patch('forecasting.graph_forecasts._train', side_effect=AssertionError('GET must not fit')), \
+                patch('forecasting.graph_forecasts.fit', side_effect=AssertionError('GET must not optimize')), \
+                patch('forecasting.graph_forecasts.future_rows', side_effect=monthly_path):
             payload = graph.report('yearly', 'real', day)
         current = self.point(payload, 'regular', '2026-01-01')
         self.assertEqual(current['future_prediction'], 1750.0)

@@ -163,7 +163,7 @@ class PatternStudyTests(TestCase):
         self.assertEqual(response.status_code,200)
         self.assertEqual(response.data['forecast'],[])
         self.assertEqual(response.data['status'],'pending_update')
-        self.assertEqual(response.data['accuracy_target_percent'],15)
+        self.assertEqual(response.data['accuracy_target_percent'],8)
         self.assertEqual(response.data['metrics'],{})
         self.assertEqual(response.data['stage'],'pattern_investigation')
         self.assertEqual(self.client.get('/api/forecasting/forecast/?period=invalid').status_code,400)

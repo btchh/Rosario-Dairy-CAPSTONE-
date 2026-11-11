@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 LOCK_ID = 185213773
 ACTIVE = ('queued', 'running')
 STAGES = ('refresh_forecast_patterns', 'refresh_forecast_models',
-          'refresh_weekly_forecasts', 'refresh_provisional_forecasts', 'refresh_forecast_graphs', 'refresh_projection_evidence')
+          'refresh_weekly_forecasts', 'refresh_provisional_forecasts', 'refresh_forecast_graphs',
+          'refresh_hierarchy_forecasts', 'refresh_projection_evidence')
 
 
 @contextmanager
@@ -103,6 +104,9 @@ def run_maintenance(job_id=None):
             job = ForecastRefreshJob.objects.get(pk=job_id)
         if job.status != 'queued':
             return {'status': job.status, 'job_id': job.pk}
+        if job.scope == 'analysis':
+            from .analysis_jobs import execute_analysis
+            return execute_analysis(job)
         job.status = 'running'
         job.started_at = timezone.now()
         job.save(update_fields=['status', 'started_at'])
@@ -140,7 +144,7 @@ def payload(job):
     messages = {'queued': 'Forecast refresh is queued.', 'running': 'Forecast models are being refreshed.',
                 'succeeded': 'Forecast refresh completed. Reload the forecast graph.',
                 'failed': 'Forecast refresh failed. You can retry; completed model versions are retained.'}
-    return {'job_id': job.pk, 'status': job.status, 'stage': job.stage, 'trigger': job.trigger,
+    return {'job_id': job.pk, 'status': job.status, 'stage': job.stage, 'trigger': job.trigger, 'scope': job.scope,
             'created_at': job.created_at, 'started_at': job.started_at, 'finished_at': job.finished_at,
             'results': job.results, 'error_code': job.error_code or None, 'message': messages[job.status],
             'status_url': f'/api/forecasting/refresh/{job.pk}/'}

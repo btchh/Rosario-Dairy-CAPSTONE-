@@ -20,13 +20,13 @@ from statsmodels.tools.sm_exceptions import ConvergenceWarning
 from .benchmarks import BENCHMARKS, predict as baseline_predict, score
 from .seasonal import SARIMA_CONFIGS, fit_sarima, predict_sarima
 
-ENGINE_VERSION = 'regular-monthly-sarima-v2'
+ENGINE_VERSION = 'regular-monthly-sarima-v3'
 COMPARATORS = (*BENCHMARKS, 'exponential_level', 'damped_trend', 'ridge_ar_10', 'ridge_ar_100')
 CANDIDATES = (*SARIMA_CONFIGS, *COMPARATORS)
 MIN_MONTHS = 36
 VALIDATION_MONTHS = 6
 TEST_MONTHS = 12
-TARGET_PERCENT = 15.0
+TARGET_PERCENT = 8.0
 
 
 def month_start(day):

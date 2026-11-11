@@ -24,7 +24,7 @@ from .models import MonthlyModelRun, ProvisionalForecastRun
 from .seasonal import is_sarima_artifact
 from .graph_sarima import regular_weekly_component, regular_weekly_dependency
 
-VERSION = 'actual-provisional-sarima-v4'
+VERSION = 'actual-provisional-sarima-v5'
 PERIODS = ('weekly', 'monthly', 'yearly')
 VIEWS = ('regular', 'feeding', 'combined')
 
@@ -151,9 +151,9 @@ def _weekly_identity(dependency):
 
 
 def specification(name, season):
-    if name == 'local_level':
-        return {'order': (0, 1, 0), 'seasonal_order': (0, 0, 0, 0), 'trend': 'n'}
-    return {'order': (1, 0, 0), 'seasonal_order': (1, 0, 0, season) if name == 'seasonal_ar' else (0, 0, 0, 0), 'trend': 'c'}
+    if name != 'sarima':
+        raise ValueError('Only SARIMA is enabled for operational forecasts.')
+    return {'order': (1, 0, 0), 'seasonal_order': (1, 0, 0, season), 'trend': 'c'}
 
 
 def model_for(values, spec):
@@ -220,28 +220,30 @@ def evaluate(state, rows, period):
 def train(rows, period):
     observed = [i for i, r in enumerate(rows) if r['actual'] is not None]
     if len(observed) < 6:
-        return {'status': 'insufficient_data', 'minimum_observed_periods': 6}
+        return {'status': 'insufficient_data', 'minimum_observed_periods': 6,
+                'reason': 'SARIMA needs enough recorded periods for separate validation and test windows.'}
     holdout = min(6, max(1, len(observed)//5))
     validation_index, test_index = observed[-2*holdout], observed[-holdout]
     season = 52 if period == 'weekly' else 12
-    candidates = ['local_level', 'ar1']
-    if validation_index >= 2*season and sum(r['actual'] is not None for r in rows[:validation_index]) >= 2*season:
-        candidates.append('seasonal_ar')
+    if (validation_index < 2*season
+            or sum(r['actual'] is not None for r in rows[:validation_index]) < 2*season):
+        return {'status': 'insufficient_data', 'minimum_training_periods': 2*season,
+                'observed_periods': len(observed), 'missing_periods': len(rows)-len(observed),
+                'seasonal_terms_enabled': True,
+                'reason': f'SARIMA requires at least {2*season} observed training periods across two seasonal cycles before validation.'}
+    name = 'sarima'
     results = {}
-    for name in candidates:
-        try:
-            state = fit(rows[:validation_index], name, season)
-            results[name] = evaluate(state, rows[validation_index:test_index], period)
-        except (ValueError, np.linalg.LinAlgError) as exc:
-            results[name] = {'error': str(exc), 'wape': None}
-    ranked = sorted((n for n in candidates if results[n].get('wape') is not None), key=lambda n: results[n]['wape'])
+    try:
+        state = fit(rows[:validation_index], name, season)
+        results[name] = evaluate(state, rows[validation_index:test_index], period)
+    except (ValueError, np.linalg.LinAlgError) as exc:
+        results[name] = {'error': str(exc), 'wape': None}
     failures = []
-    # Freeze the validation winner before inspecting any test-period outcomes.
-    # A test/refit failure invalidates that winner; it must not select a runner-up.
-    if not ranked:
+    # SARIMA is the only operational model. Validation measures it; no
+    # nonseasonal runner-up is selected when its fit or score is unavailable.
+    if 'error' in results[name]:
         return {'status': 'fit_failed', 'validation': results, 'fit_failures': failures,
-                'selected_candidate': None}
-    name = ranked[0]
+                'selected_candidate': name, 'seasonal_terms_enabled': True}
     try:
         test_state = fit(rows[:test_index], name, season)
         test = evaluate(test_state, rows[test_index:], period)
@@ -249,7 +251,7 @@ def train(rows, period):
         project(state, 1)
         return {'status': 'provisional', 'state': state, 'validation': results, 'test': test,
                 'selection': 'earlier_validation_only; test_not_used_for_selection',
-                'fit_failures': failures, 'seasonal_terms_enabled': name == 'seasonal_ar',
+                'fit_failures': failures, 'seasonal_terms_enabled': True,
                 'observed_periods': len(observed), 'missing_periods': len(rows)-len(observed)}
     except (ValueError, np.linalg.LinAlgError) as exc:
         failures.append({'candidate': name, 'error': str(exc)})
@@ -301,7 +303,8 @@ def build(snapshots, targets, previous=None):
             elif is_primary and primary['status'] != 'fallback_allowed':
                 component = primary
             else:
-                component = old if old.get('input_signature') == signature and old.get('state') else train(rows, period)
+                reusable = old.get('state') or old.get('status') == 'insufficient_data'
+                component = old if old.get('input_signature') == signature and reusable else train(rows, period)
                 component = {**component, 'model_basis': 'provisional_fallback' if is_primary or is_weekly else 'provisional_selection'}
                 if is_primary:
                     component['fallback_reason'] = primary['fallback_reason']

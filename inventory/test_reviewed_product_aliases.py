@@ -29,6 +29,15 @@ class ReviewedProductNameTests(SimpleTestCase):
             'MELON200': ['MELON200', 'Melon 200ml', 'Melon 200'],
             'Melon 300ml': ['MELON300', 'Melon 300ml', 'Melon 300'],
             'Mozza': ['Mozza', 'Mozzarella'],
+            'Cara 200ml': ['CARA200', 'Cara 200ml'],
+            'Pandan200': ['Pandan200', 'Pandan 200ml'],
+            'Pandan300': ['Pandan300', 'Pandan 300ml'],
+            'RAW300': ['RAW300', 'Raw300ml'],
+            'Raw Milk 300ml': ['Raw Milk300', 'Raw Milk 300ml'],
+            'TM200': ['TM200', 'TM200ml'],
+            'Ube 300ml': ['UBE300', 'Ube 300ml'],
+            'UNS300': ['UNS300', 'UNS 300ml'],
+            'CMTM200': ['CMTM200', 'CMTM200ML', 'CMTM 200ml'],
         }
         policy = json.loads(POLICY_PATH.read_text())
         for canonical, aliases in groups.items():
@@ -43,8 +52,10 @@ class ReviewedProductNameTests(SimpleTestCase):
                  'Melon 200ml', 'Melon 300ml', 'MelonL', 'Melon Pouch',
                  'Mozza', 'Mozza 1kg', 'Mozza 200g', 'Mozza 2kg',
                  'WC1.60kg', 'WC160kg']
+        names += ['CMTM200', 'CMTM300', 'CM200', 'CM200ml',
+                  'TM200', 'TM300', 'RAW300', 'Raw Milk300']
         self.assertEqual(len({product_name_key(name) for name in names}), len(names))
-        for name in names[:5]:
+        for name in [*names[:5], 'CMTM200', 'CMTM300', 'CM200', 'CM200ml']:
             self.assertEqual(canonical_product_name(name), name)
 
 
@@ -58,10 +69,20 @@ class ReviewedProductConsolidationTests(APITestCase):
             ('MELON200', 'Melon 200ml', 'MELON200'),
             ('MELON300', 'Melon 300ml', 'Melon 300ml'),
             ('Mozza', 'Mozzarella', 'Mozza'),
+            ('CARA200', 'Cara 200ml', 'Cara 200ml'),
+            ('Pandan200', 'Pandan 200ml', 'Pandan200'),
+            ('Pandan300', 'Pandan 300ml', 'Pandan300'),
+            ('RAW300', 'Raw300ml', 'RAW300'),
+            ('Raw Milk300', 'Raw Milk 300ml', 'Raw Milk 300ml'),
+            ('TM200', 'TM200ml', 'TM200'),
+            ('UBE300', 'Ube 300ml', 'Ube 300ml'),
+            ('UNS300', 'UNS 300ml', 'UNS300'),
+            ('CMTM200', 'CMTM200ML', 'CMTM200'),
         ]]
         self.selected = [p.pk for a, b, _ in self.pairs for p in (a, b)]
         self.excluded = [self.product(name) for name in [
             'Choco L', 'Choco LTR', 'CML', 'MelonL', 'Melon Pouch',
+            'CMTM300', 'CML-TM', 'CM200', 'CM200ml',
             'Mozza 1kg', 'Mozza 200g', 'Mozza 2kg',
             'BB300', 'BB 300',
         ]]
@@ -87,7 +108,7 @@ class ReviewedProductConsolidationTests(APITestCase):
         excluded_before = list(Product.objects.filter(pk__in=[p.pk for p in self.excluded]).order_by('pk').values())
         quantities_before = TransactionItem.objects.aggregate(q=Sum('quantity'), amount=Sum('total_amount'))
         result = consolidate_products(self.selected)
-        self.assertEqual(len(result), 3)
+        self.assertEqual(len(result), len(self.pairs))
         for a, b, label in self.pairs:
             a.refresh_from_db()
             self.assertEqual(a.name, label)
@@ -115,7 +136,7 @@ class ReviewedProductConsolidationTests(APITestCase):
             audit = json.loads(next(folder.glob('*/manifest.json')).read_text())
             self.assertTrue(audit['completed'])
             self.assertEqual(audit['before'], audit['after'])
-            self.assertEqual(len(audit['merged']), 3)
+            self.assertEqual(len(audit['merged']), len(self.pairs))
             self.assertTrue(Path(audit['backup']).exists())
         self.assertTrue(all(Product.objects.filter(pk=p.pk).exists() for p in self.excluded))
 
@@ -142,7 +163,9 @@ class ReviewedProductConsolidationTests(APITestCase):
 
     def test_api_rejects_recreating_an_approved_alias(self):
         consolidate_products(self.selected)
-        for alias in ['MELON200', 'MELON300', 'Mozzarella']:
+        for alias in ['MELON200', 'MELON300', 'Mozzarella', 'Cara200',
+                      'Pandan200ml', 'Pandan300ml', 'Raw300ml', 'Raw Milk300',
+                      'TM200ml', 'UBE300', 'UNS300ml', 'CMTM200ML']:
             serializer = ProductSerializer(data={
                 'name': alias, 'category_id': self.category.pk, 'unit': 'unit', 'shelf_life': 0,
             })

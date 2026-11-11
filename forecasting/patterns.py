@@ -7,7 +7,7 @@ from .benchmarks import evaluate
 from .data import SOURCE_POLICY
 
 ANALYZER_VERSION = 'regular-sales-patterns-v4'
-TARGET_WAPE_PERCENT = 15.0
+TARGET_WAPE_PERCENT = 8.0
 
 
 def money(value):
@@ -141,7 +141,7 @@ def investigate(snapshot):
             'Unclassified source entries remain in the ledger and monthly audit, but are excluded from regular/feeding benchmarks.',
             'Research benchmarks use recorded monthly totals; historical coverage is not yet certified.',
             'Historical extraction includes later ledger corrections; archived real-time studies are needed for prospective evidence.',
-            'The target is strictly below 15% monthly WAPE for regular revenue; no result is promised or published.',
+            'The target is strictly below 8% monthly WAPE for regular revenue; no result is promised or published.',
             'Customers are not dropped for being inactive today; history reflects purchases in the selected snapshot.',
             'Cadence/lapse descriptions are relative to the last observed sale date, not proof of current customer inactivity.',
         ],

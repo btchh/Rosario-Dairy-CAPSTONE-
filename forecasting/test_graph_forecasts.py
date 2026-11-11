@@ -99,7 +99,7 @@ class CenteredWindowTests(SimpleTestCase):
                    side_effect=lambda cutoffs: {day: snapshot(day) for day in cutoffs}), \
                 patch('forecasting.graph_forecasts.MonthlyModelRun.objects.filter', side_effect=matching_run), \
                 patch('forecasting.graph_forecasts.valid_coverage', return_value={}) as coverage, \
-                patch('forecasting.graph_forecasts.fit', side_effect=AssertionError('Context must not fit')):
+                patch('forecasting.graph_forecasts.train', side_effect=AssertionError('Context must not fit')):
             unknown = graph.context('monthly', 'real', date(2026, 1, 15))
             coverage.return_value = {missing: SimpleNamespace(confirmed_zero=True)}
             reviewed = graph.context('monthly', 'real', date(2026, 1, 15))
@@ -122,21 +122,18 @@ class CenteredWindowTests(SimpleTestCase):
             rows = graph._regular_monthly_series(snap)
         self.assertEqual([row['actual'] for row in rows], [100.0, 0.0, None, 200.0])
 
-    def test_sixth_observation_with_zero_validation_does_not_erase_graph_model(self):
+    def test_short_history_does_not_receive_a_nonseasonal_graph_fallback(self):
         rows = [{'date':f'2025-{i:02d}-01', 'actual':value}
                 for i, value in enumerate([100,100,100,0,0,500],1)]
         result = graph._train(rows,'monthly')
-        self.assertEqual(result['status'],'provisional')
-        self.assertEqual(result['state']['name'],'local_level')
-        self.assertEqual(result['selection'],'local_level_zero_validation_denominator')
-        self.assertTrue(all(v['wape'] is None for v in result['validation'].values()))
-        self.assertIsNotNone(graph._point(result,date(2025,7,1),'monthly'))
+        self.assertEqual(result['status'],'insufficient_data')
+        self.assertTrue(result['seasonal_terms_enabled'])
+        self.assertNotIn('state',result)
 
-    def test_failed_nonzero_validation_is_not_mistaken_for_zero_sales(self):
+    def test_failed_sarima_validation_stays_unavailable_without_fallback(self):
         rows = [{'date':f'2025-{i:02d}-01', 'actual':100} for i in range(1,7)]
-        failed = {'status':'fit_failed','validation':{'ar1':{'wape':None,'error':'fit failed'}}}
-        with patch('forecasting.graph_forecasts.train',return_value=failed), \
-                patch('forecasting.graph_forecasts.fit',side_effect=AssertionError('No known zero validation')):
+        failed = {'status':'fit_failed','validation':{'sarima':{'wape':None,'error':'fit failed'}}}
+        with patch('forecasting.graph_forecasts.train',return_value=failed):
             self.assertEqual(graph._train(rows,'monthly'),failed)
 
 
@@ -310,12 +307,11 @@ class ForecastGraphTests(APITestCase):
         # can contribute to a weekly score.
         self.assertEqual(run.findings['views']['regular']['evaluation']['fixed_origin_demo']['periods'],1)
 
-    def test_sparse_graph_fit_does_not_require_six_observed_periods(self):
+    def test_sparse_graph_history_stays_unavailable_without_nonseasonal_fallback(self):
         rows=[{'date':'2025-11-01','actual':100},{'date':'2025-12-01','actual':120}]
-        with patch('forecasting.graph_forecasts.fit',return_value={'trained_through':'2025-12-01'}) as fit:
-            component=graph._train(rows,'monthly')
-        self.assertIn('state',component)
-        fit.assert_called_once_with(rows,'local_level',12)
+        component=graph._train(rows,'monthly')
+        self.assertEqual(component['status'],'insufficient_data')
+        self.assertNotIn('state',component)
 
     def test_get_never_fits_and_source_changes_withhold_old_graphs(self):
         with patch('forecasting.graph_forecasts.train', side_effect=AssertionError('GET cannot train')):

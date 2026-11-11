@@ -111,7 +111,8 @@ def _component(item, artifacts, unit, cutoff, target, period, current):
     end_step = _steps(origin, annual_end, unit) if period == 'yearly' else None
     result = {
         'name': name, 'family': family,
-        'display_label': ('Local level — nonseasonal ARIMA(0,1,0)' if name == 'local_level' else
+        'display_label': ('SARIMA' if seasonal else
+                          'Local level — nonseasonal ARIMA(0,1,0)' if name == 'local_level' else
                           'Nonseasonal ARIMA(1,0,0)' if name == 'ar1' else name),
         'order': specification.get('order'),
         'seasonal_order': seasonal_order,
@@ -204,7 +205,7 @@ def describe_graph(data, ctx, artifacts):
                           'primary_monthly_status_url': '/api/forecasting/models/',
                           'limitations': [
                               'Graph status describes saved chart availability, not validated production approval.',
-                              'Seasonal regular-sales models and nonseasonal feeding fallbacks retain their actual model labels.',
+                              'New engine runs use seasonal SARIMA only; retained older artifacts keep their original model labels.',
                               'Projection steps start at the last fitted bucket; the legacy point horizon starts at the extraction cutoff.',
                               'Stale source observations cannot be repaired by refreshing or drawing seasonal curves.',
                               'Rolling one-period backtests do not establish accuracy at longer projection steps.',

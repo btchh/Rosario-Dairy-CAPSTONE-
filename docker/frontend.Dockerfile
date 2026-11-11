@@ -11,7 +11,7 @@ COPY --from=frontend index.html vite.config.ts postcss.config.mjs tsconfig.json 
 COPY --from=frontend src ./src
 COPY --from=frontend assets ./assets
 ENV VITE_API_BASE_URL=/backend
-RUN npm run build
+RUN npm run typecheck && npm run build
 
 FROM ${NGINX_IMAGE} AS runtime
 COPY --from=build /app/dist/ /usr/share/nginx/html/

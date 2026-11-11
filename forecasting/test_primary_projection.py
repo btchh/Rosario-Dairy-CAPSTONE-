@@ -11,13 +11,24 @@ from .data import RecordedSale, SalesSnapshot
 from .learning import ENGINE_VERSION, digest, fit_model, month_end, monthly_rows, predict_model, shift_month
 from .lifecycle import coverage_revision
 from .models import MonthlyModelRun, WeeklyModelRun
-from .provisional import build, context, fit, primary_monthly, project, refresh, report
+from .provisional import build, context, primary_monthly, project, refresh, report
 
 
 def short_component(rows, period):
-    return {'status': 'provisional', 'state': fit(rows, 'local_level', 52 if period == 'weekly' else 12),
+    return {'status': 'provisional', 'state': {
+                'name': 'sarima',
+                'specification': {'order': (1, 0, 0), 'seasonal_order': (1, 0, 0, 52 if period == 'weekly' else 12), 'trend': 'c'},
+                'scale': 1., 'values': [r['actual'] for r in rows], 'parameters': [],
+                'training_start': rows[0]['date'] if rows else '2023-01-01',
+                'trained_through': rows[-1]['date'] if rows else '2023-01-01'},
             'observed_periods': sum(r['actual'] is not None for r in rows), 'missing_periods': 0,
-            'seasonal_terms_enabled': False}
+            'seasonal_terms_enabled': True}
+
+
+def short_projection(state, steps):
+    if state['name'] == 'sarima':
+        return [{'predicted': 100., 'lower_bound': 90., 'upper_bound': 110.} for _ in range(steps)]
+    return project(state, steps)
 
 
 class PrimaryProjectionTests(TestCase):
@@ -58,7 +69,8 @@ class PrimaryProjectionTests(TestCase):
         self.assertEqual(component['primary_monthly_backtest']['basis'], 'rolling_one_month_ahead')
 
     def test_monthly_yearly_and_combined_share_the_primary_path_and_keep_metrics_separate(self):
-        with patch('forecasting.provisional.train', side_effect=short_component) as training:
+        with patch('forecasting.provisional.train', side_effect=short_component) as training, \
+                patch('forecasting.provisional.project', side_effect=short_projection):
             result = build({'monthly': self.snapshot, 'weekly': self.snapshot}, self.targets())
         self.assertEqual(training.call_count, 3)  # Primary monthly is adapted, not independently trained.
         monthly = result['periods']['monthly']
@@ -80,7 +92,8 @@ class PrimaryProjectionTests(TestCase):
 
     def test_eligible_source_change_withholds_monthly_and_yearly_without_silent_fallback(self):
         changed = replace(self.snapshot, revision='corrected-source')
-        with patch('forecasting.provisional.train', side_effect=short_component) as training:
+        with patch('forecasting.provisional.train', side_effect=short_component) as training, \
+                patch('forecasting.provisional.project', side_effect=short_projection):
             result = build({'monthly': changed, 'weekly': changed}, self.targets())
         self.assertEqual(training.call_count, 3)
         for period in ('monthly', 'yearly'):
@@ -93,7 +106,8 @@ class PrimaryProjectionTests(TestCase):
 
     def test_short_or_gapped_data_keeps_explicit_fallback(self):
         short = replace(self.snapshot, revision='short-source', sales=tuple(s for s in self.snapshot.sales if s.day.year == 2025))
-        with patch('forecasting.provisional.train', side_effect=short_component) as training:
+        with patch('forecasting.provisional.train', side_effect=short_component) as training, \
+                patch('forecasting.provisional.project', side_effect=short_projection):
             result = build({'monthly': short, 'weekly': short}, self.targets())
         self.assertEqual(training.call_count, 4)
         regular = result['periods']['monthly']['regular']
@@ -115,7 +129,8 @@ class PrimaryProjectionTests(TestCase):
 
     def test_primary_change_invalidates_bundle_get_does_not_fit_and_old_bundle_survives(self):
         with patch('forecasting.provisional.load_snapshot', return_value=self.snapshot), \
-                patch('forecasting.provisional.train', side_effect=short_component):
+                patch('forecasting.provisional.train', side_effect=short_component), \
+                patch('forecasting.provisional.project', side_effect=short_projection):
             run, _ = refresh(date(2026, 1, 1))
         run.refresh_from_db()  # Compare persisted JSON lists, not pre-save Python tuples.
         frozen = deepcopy(run.findings)

@@ -1,5 +1,5 @@
 from copy import deepcopy
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -14,19 +14,25 @@ from .provisional import (build, context, digest, fit, future_rows, project, ref
 
 
 def snapshot():
-    rows = tuple(RecordedSale(i*2+j, date(2024+i//12, i%12+1, 15), 'c', 'Customer', segment,
-                             Decimal(100+i*2+j*10))
-                 for i in range(24) for j, segment in enumerate(('regular', 'feeding')))
+    first = date(2022, 1, 3)
+    rows = tuple(RecordedSale(i*2+j, first+timedelta(weeks=i), 'c', 'Customer', segment,
+                             Decimal(100+i%12*3+j*10))
+                 for i in range(208) for j, segment in enumerate(('regular', 'feeding')))
     return SalesSnapshot(date(2026, 1, 1), 'real', rows, 20)
 
 
 def component(rows, period):
-    return {'status': 'provisional', 'state': fit(rows, 'local_level', 52 if period == 'weekly' else 12),
-            'observed_periods': len(rows), 'missing_periods': 0, 'seasonal_terms_enabled': False}
+    state = {'name':'sarima','trained_through':rows[-1]['date'],
+             'training_start':rows[0]['date'],'scale':1.,'values':[],
+             'parameters':[],'specification':{}}
+    return {'status': 'provisional', 'state': state,
+            'observed_periods': sum(row['actual'] is not None for row in rows),
+            'missing_periods': sum(row['actual'] is None for row in rows),
+            'seasonal_terms_enabled': True}
 
 
 class ProvisionalProjectionTests(SimpleTestCase):
-    def test_seasonal_candidates_become_eligible_only_after_sufficient_earlier_observations(self):
+    def test_sarima_becomes_eligible_only_after_two_earlier_seasonal_cycles(self):
         from .provisional import advance
         for period, short, enough, first in [('monthly',35,36,date(2023,1,1)),
                                              ('weekly',115,116,date(2023,1,2))]:
@@ -34,14 +40,15 @@ class ProvisionalProjectionTests(SimpleTestCase):
             def fitted(prefix,name,season):
                 return {'name':name,'trained_through':prefix[-1]['date']}
             def evaluated(state,held,frequency):
-                return {'wape':0 if state['name']=='seasonal_ar' else 1,'rows':[]}
+                return {'wape':1,'rows':[]}
             with patch('forecasting.provisional.fit',side_effect=fitted), \
                     patch('forecasting.provisional.evaluate',side_effect=evaluated), \
                     patch('forecasting.provisional.project',return_value=[{'predicted':1}]):
                 before=train(rows[:short],period)
                 after=train(rows,period)
-            self.assertNotIn('seasonal_ar',before['validation'])
-            self.assertIn('seasonal_ar',after['validation'])
+            self.assertEqual(before['status'], 'insufficient_data')
+            self.assertEqual(after['status'], 'provisional')
+            self.assertEqual(set(after['validation']), {'sarima'})
             self.assertTrue(after['seasonal_terms_enabled'])
 
     def test_unknown_periods_are_null_and_unclassified_is_excluded(self):
@@ -52,13 +59,13 @@ class ProvisionalProjectionTests(SimpleTestCase):
         rows = series(snap, 'feeding', 'monthly')
         self.assertIsNone(rows[1]['actual'])
         self.assertIsNone(rows[13]['actual'])
-        state = fit(rows, 'local_level', 12)
+        state = fit(rows, 'sarima', 12)
         self.assertIsNone(state['values'][1])
         self.assertEqual(state['values'][0]*state['scale'], rows[0]['actual'])
 
     def test_portable_state_forecasts_multiple_steps_without_optimization(self):
         rows = series(snapshot(), 'regular', 'monthly')
-        state = fit(rows, 'local_level', 12)
+        state = fit(rows, 'sarima', 12)
         import json
         state = json.loads(json.dumps(state, allow_nan=False))
         with patch('statsmodels.tsa.statespace.sarimax.SARIMAX.fit', side_effect=AssertionError('GET must not fit')):
@@ -73,9 +80,15 @@ class ProvisionalProjectionTests(SimpleTestCase):
         'status': 'fallback_allowed', 'dependency': None, 'fallback_reason': 'short_history'})
     def test_all_nine_combinations_have_future_points_and_reconcile(self, primary):
         snap = snapshot()
-        with patch('forecasting.provisional.load_snapshot', return_value=snap):
+        with patch('forecasting.provisional.load_snapshot', return_value=snap), \
+                patch('forecasting.provisional.regular_weekly_dependency',
+                      return_value={'status':'insufficient_history','rows':[]}):
             snapshots, targets, _ = context(date(2026, 10, 22))
-        with patch('forecasting.provisional.train', side_effect=component):
+        with patch('forecasting.provisional.train', side_effect=component), \
+                patch('forecasting.provisional.regular_weekly_dependency',
+                      return_value={'status':'insufficient_history','rows':[]}), \
+                patch('forecasting.provisional.project', side_effect=lambda state, steps: [
+                    {'predicted':10.,'lower_bound':9.,'upper_bound':11.} for _ in range(steps)]):
             result = build(snapshots, targets)
         primary.assert_called()
         for period, views in result['periods'].items():
@@ -88,24 +101,21 @@ class ProvisionalProjectionTests(SimpleTestCase):
                 self.assertAlmostEqual(c['predicted'], r['predicted']+f['predicted'], places=2)
             if period == 'yearly':
                 self.assertIsNone(views['regular']['metrics'])
-        with patch('forecasting.provisional.train', side_effect=AssertionError('unchanged inputs must reuse')):
+        with patch('forecasting.provisional.regular_weekly_dependency',
+                   return_value={'status':'insufficient_history','rows':[]}), \
+                patch('forecasting.provisional.project', side_effect=lambda state, steps: [
+                    {'predicted':10.,'lower_bound':9.,'upper_bound':11.} for _ in range(steps)]), \
+                patch('forecasting.provisional.train', side_effect=AssertionError('unchanged inputs must reuse')):
             self.assertEqual(build(snapshots, targets, result), result)
 
-    def test_short_history_disables_seasonal_terms_and_selection_precedes_test(self):
+    def test_short_history_stays_unavailable_without_nonseasonal_fallback(self):
         rows = series(snapshot(), 'feeding', 'monthly')[-10:]
-        calls = []
-        def fitted(prefix, name, season):
-            calls.append((len(prefix), name))
-            return {'name': name, 'trained_through': prefix[-1]['date']}
-        def evaluated(state, held_out, period):
-            return {'wape': 1 if state['name'] == 'ar1' else 2, 'rows': []}
-        with patch('forecasting.provisional.fit', side_effect=fitted), \
-                patch('forecasting.provisional.evaluate', side_effect=evaluated), \
-                patch('forecasting.provisional.project', return_value=[{'predicted': 1}]):
+        with patch('forecasting.provisional.fit', side_effect=AssertionError('Insufficient history must not fit')) as fitting:
             result = train(rows, 'monthly')
-        self.assertEqual(calls, [(6, 'local_level'), (6, 'ar1'), (8, 'ar1'), (10, 'ar1')])
-        self.assertFalse(result['seasonal_terms_enabled'])
-        self.assertEqual(result['state']['name'], 'ar1')
+        self.assertEqual(result['status'], 'insufficient_data')
+        self.assertTrue(result['seasonal_terms_enabled'])
+        self.assertNotIn('state', result)
+        fitting.assert_not_called()
 
     def test_too_little_history_and_failed_fits_never_invent_zero(self):
         rows = series(snapshot(), 'feeding', 'monthly')
@@ -115,37 +125,37 @@ class ProvisionalProjectionTests(SimpleTestCase):
         self.assertEqual(future_rows({}, ['2027-01-01'], 'yearly'), [])
 
     def test_test_failure_cannot_replace_the_validation_winner(self):
-        rows = series(snapshot(), 'feeding', 'monthly')[-10:]
+        rows = series(snapshot(), 'feeding', 'monthly')
         def fitted(prefix, name, season):
             return {'name': name, 'trained_through': prefix[-1]['date']}
         def evaluated(state, held_out, period):
-            # Six months train validation, eight train the test origin.
-            if state['trained_through'] == rows[7]['date']:
+            # Validation fits 36 months; the held-out test origin follows 42.
+            if state['trained_through'] == rows[41]['date']:
                 raise ValueError('test projection failed')
-            return {'wape': 1 if state['name'] == 'ar1' else 2, 'rows': []}
+            return {'wape': 2, 'rows': []}
         with patch('forecasting.provisional.fit', side_effect=fitted) as fitting, \
                 patch('forecasting.provisional.evaluate', side_effect=evaluated):
             result = train(rows, 'monthly')
         self.assertEqual(result['status'], 'fit_failed')
-        self.assertEqual(result['selected_candidate'], 'ar1')
+        self.assertEqual(result['selected_candidate'], 'sarima')
         self.assertNotIn('state', result)
         self.assertEqual([(len(c.args[0]), c.args[1]) for c in fitting.call_args_list],
-                         [(6, 'local_level'), (6, 'ar1'), (8, 'ar1')])
+                         [(36, 'sarima'), (42, 'sarima')])
 
     def test_final_refit_failure_cannot_replace_the_validation_winner(self):
-        rows = series(snapshot(), 'feeding', 'monthly')[-10:]
+        rows = series(snapshot(), 'feeding', 'monthly')
         def fitted(prefix, name, season):
             if len(prefix) == len(rows):
                 raise ValueError('final refit failed')
             return {'name': name, 'trained_through': prefix[-1]['date']}
         with patch('forecasting.provisional.fit', side_effect=fitted) as fitting, \
                 patch('forecasting.provisional.evaluate', side_effect=lambda state, held, period:
-                      {'wape': 1 if state['name'] == 'ar1' else 2, 'rows': []}):
+                      {'wape': 2, 'rows': []}):
             result = train(rows, 'monthly')
         self.assertEqual(result['status'], 'fit_failed')
-        self.assertEqual(result['selected_candidate'], 'ar1')
+        self.assertEqual(result['selected_candidate'], 'sarima')
         self.assertEqual([c.args[1] for c in fitting.call_args_list],
-                         ['local_level', 'ar1', 'ar1', 'ar1'])
+                         ['sarima', 'sarima', 'sarima'])
 
     def test_digest_survives_signed_zero_json_database_roundtrip(self):
         self.assertEqual(digest({'value': -0.0}), digest({'value': 0.0}))
@@ -164,6 +174,8 @@ class ProvisionalPersistenceTests(TestCase):
         first,_=refresh(date(2025,7,1))
         first.refresh_from_db()  # Compare persisted JSON rather than Python tuples.
         old=deepcopy(first.findings)
+        for component in old['components'].values():
+            self.assertEqual(component['status'], 'insufficient_data')
         for segment,total in [('regular',900),('feeding',1500)]:
             sale=Transaction.objects.create(handled_by=user,total_amount=total,source_sales_segment=segment,
                 source_reference=f'2025:TEST-GROWTH:{segment}:7')
@@ -178,13 +190,14 @@ class ProvisionalPersistenceTests(TestCase):
         for segment in ('regular','feeding'):
             self.assertEqual(weekly.findings['components'][segment+'_weekly']['observed_periods'],7)
             self.assertEqual(weekly.findings['components'][segment+'_monthly']['observed_periods'],6)
+            self.assertEqual(weekly.findings['components'][segment+'_monthly']['status'],'insufficient_data')
         with patch('forecasting.provisional.train',wraps=train) as fitting:
             monthly,_=refresh(date(2025,8,1))
         self.assertEqual(fitting.call_count,2)
         for segment in ('regular','feeding'):
             component=monthly.findings['components'][segment+'_monthly']
             self.assertEqual(component['observed_periods'],7)
-            self.assertEqual(component['state']['trained_through'],'2025-07-01')
+            self.assertEqual(component['status'],'insufficient_data')
             self.assertNotEqual(component['input_signature'],old['components'][segment+'_monthly']['input_signature'])
         first.refresh_from_db()
         self.assertEqual(first.findings,old)
@@ -197,6 +210,10 @@ class ProvisionalPersistenceTests(TestCase):
 
     def test_refresh_reuses_exact_input_get_does_not_fit_and_corruption_is_withheld(self):
         with patch('forecasting.provisional.context', return_value=self.ctx), \
+                patch('forecasting.provisional.regular_weekly_dependency',
+                      return_value={'status':'insufficient_history','rows':[]}), \
+                patch('forecasting.provisional.project', side_effect=lambda state, steps: [
+                    {'predicted':10.,'lower_bound':9.,'upper_bound':11.} for _ in range(steps)]), \
                 patch('forecasting.provisional.train', side_effect=component):
             run, created = refresh()
         self.assertTrue(created)
@@ -215,6 +232,10 @@ class ProvisionalPersistenceTests(TestCase):
     def test_source_change_during_training_does_not_save(self):
         changed = (*self.ctx[:2], 'changed')
         with patch('forecasting.provisional.context', side_effect=[self.ctx, changed]), \
+                patch('forecasting.provisional.regular_weekly_dependency',
+                      return_value={'status':'insufficient_history','rows':[]}), \
+                patch('forecasting.provisional.project', side_effect=lambda state, steps: [
+                    {'predicted':10.,'lower_bound':9.,'upper_bound':11.} for _ in range(steps)]), \
                 patch('forecasting.provisional.train', side_effect=component):
             with self.assertRaisesMessage(ValueError, 'changed during fitting'):
                 refresh()
@@ -226,13 +247,23 @@ class ProvisionalPersistenceTests(TestCase):
 
     def test_chart_api_returns_all_nine_projections_without_fitting(self):
         with patch('forecasting.provisional.context', return_value=self.ctx), \
-                patch('forecasting.provisional.train', side_effect=component):
+                patch('forecasting.provisional.primary_monthly', return_value={
+                    'status':'fallback_allowed','dependency':None,'fallback_reason':'test'}), \
+                patch('forecasting.provisional.regular_weekly_dependency',
+                      return_value={'status':'insufficient_history','rows':[]}), \
+                patch('forecasting.provisional.train', side_effect=component), \
+                patch('forecasting.provisional.project', side_effect=lambda state, steps: [
+                    {'predicted':10.,'lower_bound':9.,'upper_bound':11.} for _ in range(steps)]):
             refresh()
         client = APIClient()
         user = get_user_model().objects.create_user(username='projection-admin', role='admin')
         client.force_authenticate(user)
         cache.clear()
         with patch('forecasting.provisional.context', return_value=self.ctx), \
+                patch('forecasting.provisional.primary_monthly', return_value={
+                    'status':'fallback_allowed','dependency':None,'fallback_reason':'test'}), \
+                patch('forecasting.provisional.regular_weekly_dependency',
+                      return_value={'status':'insufficient_history','rows':[]}), \
                 patch('forecasting.chart.model_context', return_value=(self.snap, None, None, {}, None, 'stale_data')), \
                 patch('forecasting.chart.weekly_snapshot', return_value=self.snap), \
                 patch('forecasting.chart.weekly_report', return_value={'test_rows': []}), \

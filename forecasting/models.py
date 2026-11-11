@@ -246,3 +246,65 @@ class GraphPrediction(models.Model):
         ordering = ['-issued_at', '-pk']
         constraints = [models.UniqueConstraint(fields=['run', 'view', 'target'], name='forecast_graph_issue_unique'),
                        models.CheckConstraint(condition=models.Q(value__gte=0), name='forecast_graph_issue_nonnegative')]
+
+
+class HierarchyForecastRun(models.Model):
+    """Saved item forecasts and coherent category/unit rollups; no business writes."""
+    engine_version = models.CharField(max_length=60)
+    source_revision = models.CharField(max_length=64)
+    period = models.CharField(max_length=8)
+    cutoff = models.DateField()
+    findings = models.JSONField()
+    checksum = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-pk']
+        constraints = [models.UniqueConstraint(
+            fields=['engine_version', 'source_revision', 'period'], name='hierarchy_forecast_source_unique')]
+
+
+class ForecastAnalysisRun(models.Model):
+    """Versioned configuration/results attached to the existing job lifecycle."""
+    job = models.OneToOneField(ForecastRefreshJob, on_delete=models.PROTECT, related_name='analysis_run')
+    engine_version = models.CharField(max_length=60)
+    configuration = models.JSONField()
+    source_revision = models.CharField(max_length=64, blank=True)
+    findings = models.JSONField(default=dict)
+    checksum = models.CharField(max_length=64, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-pk']
+
+
+class QualitativeForecast(models.Model):
+    """An expert demand record; never changes stock or statistical forecasts."""
+    product = models.ForeignKey('inventory.Product', on_delete=models.PROTECT)
+    period = models.CharField(max_length=8)
+    segment = models.CharField(max_length=8)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at', '-pk']
+
+
+class QualitativeForecastRevision(models.Model):
+    """Append-only inputs and calculated adjustments with optimistic concurrency."""
+    forecast = models.ForeignKey(QualitativeForecast, on_delete=models.PROTECT, related_name='revisions')
+    version = models.PositiveIntegerField()
+    base_run = models.ForeignKey(ForecastAnalysisRun, null=True, blank=True, on_delete=models.PROTECT)
+    kind = models.CharField(max_length=12)
+    targets = models.JSONField()
+    reason = models.TextField()
+    assumptions = models.TextField(blank=True)
+    expected_change = models.TextField(blank=True)
+    event = models.CharField(max_length=255, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-version']
+        constraints = [models.UniqueConstraint(fields=['forecast', 'version'], name='qualitative_forecast_version_unique')]

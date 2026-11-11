@@ -30,6 +30,7 @@ the standalone `compose.production.yaml` and `deployment.env.example`. It also
 supports the frontend in the same stack. The finalized version and deployment
 package are recorded in [RELEASE.md](RELEASE.md); verification and remaining
 acceptance work are in [DEPLOYMENT_FEATURE_AUDIT.md](DEPLOYMENT_FEATURE_AUDIT.md).
+
 For the selected OVHcloud VPS 1 and free DuckDNS hostname, start with
 [VPS_PREPARATION.md](VPS_PREPARATION.md).
 
@@ -134,13 +135,16 @@ customer label/name containing `feedin`, ignoring case. Unclassified entries sta
 in ledger/reports but do not train either segment. This naming rule is retained;
 an explicit transaction classification API is a future task if labels change.
 
-The primary regular monthly model is seasonal SARIMA. Eligible regular weekly
-graphs and provisional projections now reuse the same saved annual SARIMA fit,
-with its configuration chosen on earlier validation. This is the user's retained
-model-family choice; the weekly baseline comparison remains disclosed. Sparse feeding history can
-produce flat estimates. Below 15% regular monthly WAPE remains a target, not a
-promise or a display blocker. Original forecasts are distinguished from
-reconstructed historical tests; accuracy must be measured against later actuals.
+All new operational demand and revenue forecasts use seasonal SARIMA. The item
+hierarchy and configurable workspace use a seasonal period of 7 daily, 52 weekly,
+or 12 monthly periods; older graph projections also use SARIMA. A series without
+enough seasonal history or observed coverage remains unavailable, with no
+nonseasonal fallback. The separate regular monthly engine selects among fixed
+SARIMA configurations using earlier validation. Baselines are evaluation-only;
+they cannot replace the SARIMA forecast. Below 8% regular monthly WAPE remains a
+target, not a promise or a display blocker. Original forecasts are distinguished
+from reconstructed historical tests; accuracy must be measured against later
+actuals.
 
 Run `venv/bin/python manage.py audit_forecast_accuracy` for a read-only audit of
 current-source saved results. It recomputes monthly WAPE, MAE, RMSE, signed bias,
@@ -149,11 +153,11 @@ training and coverage gaps. It never fits or issues forecasts. Currency rounding
 is not forecast precision; error dispersion is not a calibrated probability
 interval. One-month rolling scores do not establish longer-horizon accuracy.
 
-Provisional selection freezes the earlier-validation winner. If its test fit or
-final refit fails, the estimate is unavailable rather than switching to another
-candidate after inspecting the test. The corrected provisional v4 and centered
-graph v6 engines require `venv/bin/python manage.py run_forecast_refresh` after
-updating; older saved model records and issued predictions remain intact.
+Provisional SARIMA is evaluated on earlier validation data and a later test. A
+fit failure leaves the estimate unavailable; it never switches to a nonseasonal
+candidate. The SARIMA-only provisional v5 and centered graph v7 engines require
+`venv/bin/python manage.py run_forecast_refresh` after updating; older saved
+model records and issued predictions remain intact under their prior versions.
 Current/future graph points share one latest closed-period origin; older issues
 are separate comparisons. The current annual outlook combines completed-month
 actuals with the remaining monthly estimates and discloses any current-month
@@ -187,12 +191,13 @@ Shared customers, products, stock and real forecast history are retained. Existi
 SQL backups and original source files remain private and are not removed.
 Demo comparisons are unavailable in production.
 The graph implementation is `forecasting.graph_forecasts`; its maintenance
-command is `refresh_forecast_graphs` and new runs use `centered-sarima-v6`.
+command is `refresh_forecast_graphs` and new runs use `centered-sarima-v7-only`.
 Update external automation to use the renamed command. Migration
 `forecasting.0013_rename_graph_constraints` updates constraint names only.
 Existing saved runs and issued predictions retain their original provenance;
-the reader accepts the previous engine identifier only with matching source
-signatures and a valid checksum. Forecast calculations are unchanged.
+the reader accepts previous engine identifiers only with matching source
+signatures and a valid checksum. The newer engine makes no nonseasonal fallback
+forecasts.
 
 Development-only comparisons require explicit `scope=demo2026` and an offline
 refresh using `refresh_forecast_graphs --scope demo2026`. Legacy reserved demo

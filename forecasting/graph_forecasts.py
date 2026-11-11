@@ -20,13 +20,13 @@ from .data import load_snapshots
 from .learning import ENGINE_VERSION, MIN_MONTHS, shift_month
 from .lifecycle import _commit_lock, valid_coverage
 from .models import GraphForecastRun, GraphPrediction, MonthlyModelRun
-from .provisional import digest, series, train, fit, future_rows, project
+from .provisional import digest, series, train, future_rows, project
 from .seasonal import is_sarima_artifact
 from .chart import period_start, period_end
 from .graph_readiness import describe_graph
 from .graph_sarima import regular_weekly_dependency, regular_weekly_component
 
-VERSION = 'centered-sarima-v6'
+VERSION = 'centered-sarima-v7-only'
 # Retained only to read immutable forecasts issued before the naming cleanup.
 LEGACY_VERSION = 'centered-beta-sarima-v6'
 PERIODS = ('weekly', 'monthly', 'yearly')
@@ -147,8 +147,8 @@ def context(period, scope, as_of, *, engine_version=None):
                 if cutoff not in weekly_dependencies:
                     weekly_dependencies[cutoff] = regular_weekly_dependency(snap)
                 weekly = weekly_dependencies[cutoff]
-                # Keep the provisional source for short histories; eligible
-                # annual SARIMA uses only complete source-boundary weeks.
+                # Keep the calendar series, including unknown positions, so
+                # provisional SARIMA can apply its own seasonal eligibility.
                 rows = (series(snap, segment, unit) if weekly['status'] == 'insufficient_history'
                         else weekly['rows'])
             else:
@@ -191,29 +191,7 @@ def _point(component, target, period):
 
 
 def _train(rows, unit):
-    observed = sum(row['actual'] is not None for row in rows)
-    if 2 <= observed < 6:
-        try:
-            return {'state': fit(rows, 'local_level', 52 if unit == 'weekly' else 12),
-                    'status': 'provisional', 'observed_periods': observed}
-        except (ValueError, ArithmeticError, np.linalg.LinAlgError):
-            return {'status': 'insufficient_data'}
-    result = train(rows, unit)
-    validation = [row for candidate in result.get('validation', {}).values()
-                  for row in candidate.get('rows', [])]
-    if (result.get('status') == 'fit_failed' and validation
-            and all(row['actual'] == 0 for row in validation)):
-        # Percentage error cannot rank candidates against a zero denominator.
-        # Retain a fitted baseline, without claiming validated accuracy.
-        try:
-            state = fit(rows, 'local_level', 52 if unit == 'weekly' else 12)
-            project(state, 1)
-            return {**result, 'status': 'provisional', 'state': state,
-                    'selection': 'local_level_zero_validation_denominator',
-                    'observed_periods': observed}
-        except (ValueError, ArithmeticError, np.linalg.LinAlgError):
-            pass
-    return result
+    return train(rows, unit)
 
 
 def annual_outlook(component, target, cutoff, rows, current_actual=None):

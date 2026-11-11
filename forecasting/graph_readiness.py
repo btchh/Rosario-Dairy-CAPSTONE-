@@ -103,6 +103,15 @@ def _component(item, artifacts, unit, cutoff, target, period, current):
     primary = bool(item.get('primary'))
     primary_backtest = component.get('primary_weekly_backtest' if unit == 'weekly' else 'primary_monthly_backtest')
     freshness = _freshness(item, state, unit, cutoff)
+    source_rows = item.get('rows')
+    if isinstance(source_rows, list):
+        observed_periods = sum(isinstance(row, dict) and
+                               row.get('actual', row.get('revenue')) is not None
+                               for row in source_rows)
+        missing_periods = len(source_rows) - observed_periods
+    else:
+        observed_periods = sum(value is not None for value in values)
+        missing_periods = sum(value is None for value in values)
     origin = _day(state.get('trained_through'))
     step = _steps(origin, target, unit)
     annual_start = cutoff if target == current and cutoff.year == target.year else target
@@ -121,8 +130,13 @@ def _component(item, artifacts, unit, cutoff, target, period, current):
         'training_start': state.get('training_start'),
         'trained_through': state.get('trained_through'),
         'training_period': unit,
-        'observed_periods': sum(value is not None for value in values),
-        'missing_periods': sum(value is None for value in values),
+        # Model state contains interpolated inputs. Counts here must describe
+        # recorded source rows, not values created for the SARIMA fit.
+        'observed_periods': observed_periods,
+        'missing_periods': missing_periods,
+        'interpolated_periods': component.get('interpolated_periods',
+                                               state.get('interpolated_periods', 0)),
+        'accuracy_status': component.get('accuracy_status'),
         # Retain the existing point horizon separately: it is calendar-relative
         # to the extraction cutoff, whereas these steps start at fitted history.
         'projection_steps': step if period != 'yearly' and step is not None and step > 0 else None,
@@ -208,6 +222,7 @@ def describe_graph(data, ctx, artifacts):
                               'New engine runs use seasonal SARIMA only; retained older artifacts keep their original model labels.',
                               'Projection steps start at the last fitted bucket; the legacy point horizon starts at the extraction cutoff.',
                               'Stale source observations cannot be repaired by refreshing or drawing seasonal curves.',
+                              'Interpolated internal values are model inputs; observed counts remain based on recorded periods.',
                               'Rolling one-period backtests do not establish accuracy at longer projection steps.',
                               'Component validation/test metrics do not establish yearly or Combined forecast accuracy.',
                               'Historical tests are reconstructed; original issued forecasts retain their own basis.',

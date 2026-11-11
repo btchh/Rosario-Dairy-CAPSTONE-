@@ -45,6 +45,25 @@ class GraphReadinessTests(SimpleTestCase):
         self.assertEqual(result['views']['feeding']['points'][0]['future_prediction'], 120)
         self.assertEqual((data, ctx, artifacts), original)
 
+    def test_interpolated_fit_values_do_not_inflate_recorded_history_counts(self):
+        from .learning import shift_month
+        data, ctx, artifacts = self.example()
+        day = date(2026, 10, 1)
+        first = date(2025, 1, 1)
+        rows = [{'date': shift_month(first, index).isoformat(),
+                 'actual': None if index in (2, 7, 10, 12) else float((index+1) * 10)}
+                for index in range(14)]
+        ctx['inputs'][(day, 'feeding')]['rows'] = rows
+        artifacts['feeding']['state']['values'] = [float(index) for index in range(14)]
+        artifacts['feeding'].update(interpolated_periods=4, accuracy_status='unvalidated_short_history',
+                                    validation=None, test=None)
+        details = describe_graph(data, ctx, artifacts)['views']['feeding']['model_details']
+        self.assertEqual((details['observed_periods'], details['missing_periods'],
+                          details['interpolated_periods']), (10, 4, 4))
+        self.assertEqual(details['accuracy_status'], 'unvalidated_short_history')
+        self.assertIsNone(details['validation'])
+        self.assertIsNone(details['test'])
+
     def test_saved_graph_with_no_predictions_is_unavailable(self):
         data, ctx, artifacts = self.example()
         for view in data['views'].values():

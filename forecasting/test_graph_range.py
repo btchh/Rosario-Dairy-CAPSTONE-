@@ -59,7 +59,7 @@ class GraphRangeTests(SimpleTestCase):
         self.assertIsNone(result['seasonal_outlook'])
 
     def test_future_range_keeps_unavailable_tail_without_projecting(self):
-        with patch('forecasting.graph_forecasts.fit', side_effect=AssertionError('GET must not fit')):
+        with patch('forecasting.graph_forecasts.train', side_effect=AssertionError('GET must not fit')):
             result = self.run_range('2027-04-01', '2027-08-31')
         points = result['views']['regular']['points']
         self.assertEqual(len(points), 5)

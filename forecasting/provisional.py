@@ -26,7 +26,7 @@ from .seasonal import is_sarima_artifact
 from .graph_sarima import regular_weekly_component, regular_weekly_dependency
 from .methods import interpolate_internal_gaps
 
-VERSION = 'actual-provisional-sarima-v6-linear-interpolation'
+VERSION = 'actual-provisional-sarima-v7-short-history-unvalidated'
 PERIODS = ('weekly', 'monthly', 'yearly')
 VIEWS = ('regular', 'feeding', 'combined')
 
@@ -234,10 +234,30 @@ def train(rows, period):
     season = 52 if period == 'weekly' else 12
     if (validation_index < 2*season
             or sum(r['actual'] is not None for r in rows[:validation_index]) < 2*season):
-        return {'status': 'insufficient_data', 'minimum_training_periods': 2*season,
-                'observed_periods': len(observed), 'missing_periods': len(rows)-len(observed),
-                'seasonal_terms_enabled': True,
-                'reason': f'SARIMA requires at least {2*season} observed training periods across two seasonal cycles before validation.'}
+        # A seasonal projection can still serve as a clearly marked rough
+        # estimate once the calendar history spans the seasonal lag. There is
+        # not enough evidence for honest validation/test scores, so fit only
+        # the fixed SARIMA specification and expose no accuracy metrics.
+        if len(rows) <= season:
+            return {'status': 'insufficient_data', 'minimum_calendar_periods': season + 1,
+                    'observed_periods': len(observed), 'missing_periods': len(rows)-len(observed),
+                    'seasonal_terms_enabled': True,
+                    'accuracy_status': 'unavailable_insufficient_calendar_history',
+                    'reason': f'SARIMA needs more than one seasonal lag ({season} calendar periods) to produce a rough projection.'}
+        try:
+            state = fit(rows, 'sarima', season)
+            project(state, 1)
+            return {'status': 'provisional', 'state': state, 'validation': None, 'test': None,
+                    'selection': 'fixed_sarima_fit_only; fewer than two observed seasonal cycles; accuracy unavailable',
+                    'accuracy_status': 'unvalidated_short_history', 'fit_failures': [],
+                    'seasonal_terms_enabled': True, 'observed_periods': len(observed),
+                    'missing_periods': len(rows)-len(observed),
+                    'interpolated_periods': state.get('interpolated_periods', 0)}
+        except (ValueError, np.linalg.LinAlgError) as exc:
+            return {'status': 'fit_failed', 'fit_failures': [{'candidate': 'sarima', 'error': str(exc)}],
+                    'selected_candidate': 'sarima', 'seasonal_terms_enabled': True,
+                    'accuracy_status': 'unavailable_fit_failed', 'observed_periods': len(observed),
+                    'missing_periods': len(rows)-len(observed)}
     name = 'sarima'
     results = {}
     try:
@@ -259,6 +279,7 @@ def train(rows, period):
         return {'status': 'provisional', 'state': state, 'validation': results, 'test': test,
                 'selection': 'earlier_validation_only; test_not_used_for_selection',
                 'fit_failures': failures, 'seasonal_terms_enabled': True,
+                'accuracy_status': 'holdout_evaluated',
                 'observed_periods': len(observed), 'missing_periods': len(rows)-len(observed),
                 'interpolated_periods': state.get('interpolated_periods', 0)}
     except (ValueError, np.linalg.LinAlgError) as exc:
@@ -335,12 +356,16 @@ def build(snapshots, targets, previous=None):
                 'primary_weekly_backtest': component.get('primary_weekly_backtest') if period == 'weekly' else None,
                 'fallback_reason': component.get('fallback_reason'),
                 'metrics': component.get('test') if period != 'yearly' else None,
+                'accuracy_status': component.get('accuracy_status'),
                 'observed_periods': component.get('observed_periods'), 'missing_periods': component.get('missing_periods'),
                 'interpolated_periods': component.get('interpolated_periods'),
                 'warnings': ['Limited actual invoices; accuracy is unvalidated for future periods.',
                     'Missing invoice periods are unknown observations, not zero sales.',
                     'Internal gaps bracketed by recorded periods are linearly interpolated for model fitting; reported actuals remain unchanged.',
                     'Bounds are uncalibrated model uncertainty; they do not cover all business risks.']}
+            if component.get('accuracy_status') == 'unvalidated_short_history':
+                views[segment]['warnings'].append(
+                    'SARIMA uses fewer than two observed seasonal cycles here; no validation or test score is available.')
             if component.get('fallback_reason'):
                 frequency = 'weekly' if period == 'weekly' else 'monthly'
                 views[segment]['warnings'].append(f'Short or gapped regular history uses the provisional fallback, not the primary {frequency} model.')
@@ -353,9 +378,13 @@ def build(snapshots, targets, previous=None):
                     'interval_basis': 'sum_of_uncalibrated_component_bounds'})
         views['combined'] = {'status': 'provisional' if combined else 'component_unavailable', 'points': combined,
                               'component_models': {s: {k: views[s].get(k) for k in
-                                  ('model', 'model_basis', 'primary_model_id', 'primary_engine_version')} for s in ('regular', 'feeding')},
+                                  ('model', 'model_basis', 'primary_model_id', 'primary_engine_version',
+                                   'accuracy_status')} for s in ('regular', 'feeding')},
                               'metrics': None, 'warnings': ['Regular plus feeding; unclassified invoices excluded.',
                                 'Summed component bounds are not a calibrated combined confidence interval.']}
+        if any(views[s].get('accuracy_status') == 'unvalidated_short_history' for s in ('regular', 'feeding')):
+            views['combined']['warnings'].append(
+                'At least one component uses fewer than two observed seasonal cycles and has no validation or test score.')
         periods[period] = views
     return {'version': VERSION, 'components': components, 'periods': periods, 'targets': targets,
             'source_revisions': {p: s.revision for p, s in snapshots.items()},

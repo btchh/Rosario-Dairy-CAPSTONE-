@@ -248,7 +248,7 @@ class GraphOriginReplayTests(TestCase):
         self.sale(date(2026, 10, 27), 'regular', 400)
         with patch('django.utils.timezone.now', return_value=self.clock(day)), \
                 patch('forecasting.graph_forecasts._train', side_effect=AssertionError('GET must not fit')), \
-                patch('forecasting.graph_forecasts.fit', side_effect=AssertionError('GET must not optimize')), \
+                patch('forecasting.graph_forecasts.train', side_effect=AssertionError('GET must not optimize')), \
                 patch('forecasting.graph_forecasts.future_rows', side_effect=monthly_path):
             payload = graph.report('yearly', 'real', day)
         current = self.point(payload, 'regular', '2026-01-01')

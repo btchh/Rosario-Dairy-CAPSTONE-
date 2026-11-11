@@ -26,7 +26,7 @@ from .chart import period_start, period_end
 from .graph_readiness import describe_graph
 from .graph_sarima import regular_weekly_dependency, regular_weekly_component
 
-VERSION = 'centered-sarima-v8-linear-interpolation'
+VERSION = 'centered-sarima-v9-short-history-unvalidated'
 # Retained only to read immutable forecasts issued before the naming cleanup.
 LEGACY_VERSION = 'centered-beta-sarima-v6'
 PERIODS = ('weekly', 'monthly', 'yearly')

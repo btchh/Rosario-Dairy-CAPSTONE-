@@ -171,7 +171,7 @@ class SeasonalOutlookContractTests(SimpleTestCase):
         with patch('forecasting.graph_forecasts.future_rows', side_effect=AssertionError('GET must replay saved path')), \
                 patch('forecasting.graph_forecasts.project', side_effect=AssertionError('GET must not project')), \
                 patch('forecasting.graph_forecasts._train', side_effect=AssertionError('GET must not train')), \
-                patch('forecasting.graph_forecasts.fit', side_effect=AssertionError('GET must not optimize')):
+                patch('forecasting.graph_forecasts.train', side_effect=AssertionError('GET must not optimize')):
             result = graph.build_seasonal_outlook(ctx, data, artifacts,
                                                  saved_outlook=saved, allow_projection=False)
         self.assertEqual(saved, frozen)
@@ -305,7 +305,7 @@ class SeasonalOutlookContractTests(SimpleTestCase):
                         }[defect]
                 with patch('forecasting.graph_forecasts.future_rows', side_effect=AssertionError('GET must not project')), \
                         patch('forecasting.graph_forecasts._train', side_effect=AssertionError('GET must not train')), \
-                        patch('forecasting.graph_forecasts.fit', side_effect=AssertionError('GET must not fit')):
+                        patch('forecasting.graph_forecasts.train', side_effect=AssertionError('GET must not fit')):
                     result = graph.build_seasonal_outlook(ctx, data, artifacts,
                                                          saved_outlook=damaged, allow_projection=False)
                 self.assertTrue(all(p['future_prediction'] is None

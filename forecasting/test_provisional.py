@@ -32,7 +32,7 @@ def component(rows, period):
 
 
 class ProvisionalProjectionTests(SimpleTestCase):
-    def test_sarima_becomes_eligible_only_after_two_earlier_seasonal_cycles(self):
+    def test_two_seasonal_cycles_are_required_before_reporting_scores(self):
         from .provisional import advance
         for period, short, enough, first in [('monthly',35,36,date(2023,1,1)),
                                              ('weekly',115,116,date(2023,1,2))]:
@@ -46,10 +46,35 @@ class ProvisionalProjectionTests(SimpleTestCase):
                     patch('forecasting.provisional.project',return_value=[{'predicted':1}]):
                 before=train(rows[:short],period)
                 after=train(rows,period)
-            self.assertEqual(before['status'], 'insufficient_data')
+            self.assertEqual(before['status'], 'provisional')
+            self.assertEqual(before['accuracy_status'], 'unvalidated_short_history')
+            self.assertIsNone(before['test'])
             self.assertEqual(after['status'], 'provisional')
+            self.assertEqual(after['accuracy_status'], 'holdout_evaluated')
             self.assertEqual(set(after['validation']), {'sarima'})
             self.assertTrue(after['seasonal_terms_enabled'])
+
+    def test_short_history_fits_fixed_sarima_without_claiming_accuracy(self):
+        from .provisional import advance
+        first = date(2025, 1, 1)
+        rows = [{'date': advance(first, 'monthly', index).isoformat(),
+                 'actual': None if index in (2, 7, 10, 12) else float((index+1)*10)}
+                for index in range(14)]
+        state = {'name': 'sarima', 'trained_through': rows[-1]['date'],
+                 'interpolated_periods': 4}
+        with patch('forecasting.provisional.fit', return_value=state) as fitting, \
+                patch('forecasting.provisional.evaluate', side_effect=AssertionError('no score without holdout')), \
+                patch('forecasting.provisional.project', return_value=[{'predicted': 1}]):
+            result = train(rows, 'monthly')
+        self.assertEqual(result['status'], 'provisional')
+        self.assertEqual(result['state'], state)
+        self.assertEqual(result['accuracy_status'], 'unvalidated_short_history')
+        self.assertIsNone(result['validation'])
+        self.assertIsNone(result['test'])
+        self.assertEqual(result['observed_periods'], 10)
+        self.assertEqual(result['missing_periods'], 4)
+        self.assertEqual(result['interpolated_periods'], 4)
+        fitting.assert_called_once_with(rows, 'sarima', 12)
 
     def test_unknown_periods_stay_null_in_source_but_are_interpolated_for_fit(self):
         snap = snapshot()

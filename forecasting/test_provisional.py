@@ -51,7 +51,7 @@ class ProvisionalProjectionTests(SimpleTestCase):
             self.assertEqual(set(after['validation']), {'sarima'})
             self.assertTrue(after['seasonal_terms_enabled'])
 
-    def test_unknown_periods_are_null_and_unclassified_is_excluded(self):
+    def test_unknown_periods_stay_null_in_source_but_are_interpolated_for_fit(self):
         snap = snapshot()
         snap = SalesSnapshot(snap.as_of, snap.revision,
             tuple(r for r in snap.sales if r.day.month != 2)+
@@ -60,7 +60,8 @@ class ProvisionalProjectionTests(SimpleTestCase):
         self.assertIsNone(rows[1]['actual'])
         self.assertIsNone(rows[13]['actual'])
         state = fit(rows, 'sarima', 12)
-        self.assertIsNone(state['values'][1])
+        self.assertIsNotNone(state['values'][1])
+        self.assertEqual(state['interpolated_periods'], 4)
         self.assertEqual(state['values'][0]*state['scale'], rows[0]['actual'])
 
     def test_portable_state_forecasts_multiple_steps_without_optimization(self):

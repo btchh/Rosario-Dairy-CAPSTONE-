@@ -12,7 +12,7 @@ from .models import HierarchyForecastRun
 from .provisional import digest
 from .learning import shift_month
 
-VERSION = 'item-hierarchy-v8-sarima-only'
+VERSION = 'item-hierarchy-v9-sarima-linear-interpolation'
 PERIODS = {'daily': (14, 7, 42), 'weekly': (8, 52, 20), 'monthly': (12, 12, 20)}
 
 
@@ -57,15 +57,21 @@ def predict(values, method, horizon, season):
 
 def fit_series(values, dates, targets, period, *, active=True):
     from .demand_analysis import classify
-    from .methods import eligibility
+    from .methods import eligibility, interpolate_internal_gaps
     horizon, season, _ = PERIODS[period]
+    model_history = interpolate_internal_gaps(values)
     known = [v for v in values if v is not None]
     nonzero = sum(v > 0 for v in known)
+    interpolated = sum(actual is None and estimate is not None
+                       for actual, estimate in zip(values, model_history))
     empty = {'period': period, 'classification': classify(values, dates, period), 'status': 'insufficient_history', 'method': None, 'metrics': None,
         'supported_series': 0, 'total_series': 1,
         'training_start': dates[0].isoformat() if dates else None,
-        'known_periods': len(known), 'nonzero_periods': nonzero, 'test': [],
-        'history': [{'date': d.isoformat(), 'actual': v} for d, v in zip(dates[-24:], values[-24:])],
+        'known_periods': len(known), 'nonzero_periods': nonzero,
+        'interpolated_periods': interpolated, 'test': [],
+        'history': [{'date': d.isoformat(), 'actual': v, 'model_value': estimate,
+                     'interpolated': v is None and estimate is not None}
+                    for d, v, estimate in zip(dates[-24:], values[-24:], model_history[-24:])],
         'forecast': [{'date': d.isoformat(), 'value': None, 'lower': None, 'upper': None, 'steps_ahead': index+1}
                      for index, d in enumerate(targets)],
         'reason': 'At least six selling periods and enough covered history are required.'}

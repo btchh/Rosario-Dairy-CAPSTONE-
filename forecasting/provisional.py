@@ -1,7 +1,8 @@
 """Offline SARIMA projections for all chart views; never production approval.
 
-Unknown invoice periods stay NaN in the state-space model. Future years are
-single-origin monthly paths, not sums of rolling retrospective predictions.
+Internal unknown invoice periods are interpolated for fitting; raw
+observations remain unchanged. Future years are single-origin monthly paths,
+not sums of rolling retrospective predictions.
 """
 from collections import defaultdict
 from datetime import date, timedelta
@@ -23,8 +24,9 @@ from .lifecycle import _commit_lock, valid_coverage, coverage_revision, coverage
 from .models import MonthlyModelRun, ProvisionalForecastRun
 from .seasonal import is_sarima_artifact
 from .graph_sarima import regular_weekly_component, regular_weekly_dependency
+from .methods import interpolate_internal_gaps
 
-VERSION = 'actual-provisional-sarima-v5'
+VERSION = 'actual-provisional-sarima-v6-linear-interpolation'
 PERIODS = ('weekly', 'monthly', 'yearly')
 VIEWS = ('regular', 'feeding', 'combined')
 
@@ -164,7 +166,11 @@ def model_for(values, spec):
 def fit(rows, name, season):
     observed = [r['actual'] for r in rows if r['actual'] is not None]
     scale = max(float(np.mean(np.abs(observed))), 1.0)
-    values = [r['actual']/scale if r['actual'] is not None else None for r in rows]
+    raw_values = [r['actual'] for r in rows]
+    model_values = interpolate_internal_gaps(raw_values)
+    interpolated = sum(actual is None and estimate is not None
+                       for actual, estimate in zip(raw_values, model_values))
+    values = [value/scale if value is not None else None for value in model_values]
     spec = specification(name, season)
     with threadpool_limits(limits=1), warnings.catch_warnings():
         warnings.simplefilter('ignore')
@@ -175,6 +181,7 @@ def fit(rows, name, season):
     if not result.mle_retvals.get('converged') or not np.isfinite(result.params).all() or not math.isfinite(result.llf):
         raise ValueError('SARIMA fit did not converge to finite parameters.')
     return {'name': name, 'specification': spec, 'scale': scale, 'values': values,
+            'interpolated_periods': interpolated,
             'parameters': [float(x) for x in result.params], 'training_start': rows[0]['date'],
             'trained_through': rows[-1]['date']}
 
@@ -252,7 +259,8 @@ def train(rows, period):
         return {'status': 'provisional', 'state': state, 'validation': results, 'test': test,
                 'selection': 'earlier_validation_only; test_not_used_for_selection',
                 'fit_failures': failures, 'seasonal_terms_enabled': True,
-                'observed_periods': len(observed), 'missing_periods': len(rows)-len(observed)}
+                'observed_periods': len(observed), 'missing_periods': len(rows)-len(observed),
+                'interpolated_periods': state.get('interpolated_periods', 0)}
     except (ValueError, np.linalg.LinAlgError) as exc:
         failures.append({'candidate': name, 'error': str(exc)})
     return {'status': 'fit_failed', 'validation': results, 'fit_failures': failures,
@@ -328,8 +336,10 @@ def build(snapshots, targets, previous=None):
                 'fallback_reason': component.get('fallback_reason'),
                 'metrics': component.get('test') if period != 'yearly' else None,
                 'observed_periods': component.get('observed_periods'), 'missing_periods': component.get('missing_periods'),
+                'interpolated_periods': component.get('interpolated_periods'),
                 'warnings': ['Limited actual invoices; accuracy is unvalidated for future periods.',
                     'Missing invoice periods are unknown observations, not zero sales.',
+                    'Internal gaps bracketed by recorded periods are linearly interpolated for model fitting; reported actuals remain unchanged.',
                     'Bounds are uncalibrated model uncertainty; they do not cover all business risks.']}
             if component.get('fallback_reason'):
                 frequency = 'weekly' if period == 'weekly' else 'monthly'

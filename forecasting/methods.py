@@ -34,8 +34,9 @@ _SARIMA = {
     'parameters': {},
     'supported_patterns': _PATTERNS,
     'implementation_status': 'implemented',
-    'required_data': ('Finite, nonnegative recorded values on the original calendar; at least 60% coverage, '
-                     'two seasonal cycles, and unknown periods preserved as missing. '
+    'required_data': ('Finite, nonnegative recorded values on the original calendar; at least 60% observed coverage '
+                     'and two seasonal cycles. Internal unknown gaps bracketed by observations are linearly '
+                     'interpolated for model fitting; leading and trailing unknowns remain missing. '
                      'Seasonal reference: daily=7, weekly=52, monthly=12.'),
     'eligibility_conditions': ('Requirements apply to the earliest training fold; separate full-horizon '
                               'validation and test blocks must also be available.'),
@@ -66,6 +67,24 @@ def clean(values):
         if not math.isfinite(numeric) or numeric < 0:
             raise ValueError('History must contain finite nonnegative recorded values or explicit unknowns.')
         result.append(numeric)
+    return result
+
+
+def interpolate_internal_gaps(values):
+    """Linearly fill unknown calendar periods only when observations bracket them.
+
+    Explicit zeroes remain zero. Leading and trailing unknowns remain unknown,
+    and interpolation never crosses beyond the supplied history window.
+    """
+    result = clean(values)
+    observed = [index for index, value in enumerate(result) if value is not None]
+    for left, right in zip(observed, observed[1:]):
+        if right-left <= 1:
+            continue
+        start, end = result[left], result[right]
+        step = (end-start)/(right-left)
+        for index in range(left+1, right):
+            result[index] = start + step*(index-left)
     return result
 
 
@@ -116,9 +135,14 @@ def forecast(values, method, horizon, season, parameters=None):
     if len(known) < .6 * len(values):
         raise ValueError('SARIMA requires at least 60% observed calendar coverage.')
 
+    # Fill only gaps that have observations on both sides inside this training
+    # window. The original observed-count and coverage requirements above still
+    # apply, so interpolation cannot manufacture seasonal history.
+    model_values = interpolate_internal_gaps(values)
+
     # Scaling keeps the numerical optimizer stable across units and price scales.
     scale = max(float(np.mean(known)), 1.0)
-    observed = np.asarray([np.nan if value is None else value / scale for value in values], dtype=float)
+    observed = np.asarray([np.nan if value is None else value / scale for value in model_values], dtype=float)
     with threadpool_limits(limits=1), warnings.catch_warnings():
         warnings.simplefilter('ignore')
         model = SARIMAX(observed, order=(1, 0, 0), seasonal_order=(1, 0, 0, season), trend='c')

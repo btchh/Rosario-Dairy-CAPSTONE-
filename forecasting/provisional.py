@@ -186,8 +186,8 @@ def fit(rows, name, season):
             'trained_through': rows[-1]['date']}
 
 
-def project(state, steps):
-    if steps <= 0 or steps > 1200:
+def project(state, steps, *, max_steps=1200):
+    if steps <= 0 or steps > max_steps:
         raise ValueError('Unsupported projection length.')
     with threadpool_limits(limits=1), warnings.catch_warnings():
         warnings.simplefilter('ignore')

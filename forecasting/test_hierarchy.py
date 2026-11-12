@@ -127,6 +127,29 @@ class HierarchyMathTests(SimpleTestCase):
             self.assertEqual(expected, total([i['revenue']['forecast'][index] for i in combined['items']]))
             self.assertEqual(expected, total([c['revenue']['forecast'][index] for c in combined['categories']]))
 
+    def test_combined_revenue_uses_segment_totals_when_an_item_is_unsupported(self):
+        source = source_data()
+        source['products'][3] = {**source['products'][1], 'id': 3, 'name': 'Sparse high-value item'}
+        # Five recent observations are below the per-item six-period threshold.
+        # They still belong in the recorded Regular segment revenue total.
+        for day in [source['earliest_day'] + timedelta(weeks=index) for index in range(195, 200)]:
+            source['facts'].append({'day': day, 'segment': 'regular', 'product_id': 3,
+                                    'quantity': Decimal('1'), 'revenue': Decimal('1000')})
+        with patch('forecasting.hierarchy.predict', side_effect=repeat_last_sarima):
+            result = build(source, 'weekly')
+
+        views = result['views']
+        sparse = next(item for item in views['regular']['items'] if item['id'] == 3)
+        self.assertEqual(sparse['revenue']['status'], 'insufficient_history')
+        regular = views['regular']['overall']['revenue']
+        feeding = views['feeding']['overall']['revenue']
+        combined = views['combined']['overall']['revenue']
+        self.assertEqual(regular['aggregation_basis'], 'segment_invoice_revenue')
+        self.assertEqual(combined['aggregation_basis'], 'sum_of_segment_total_forecasts')
+        self.assertEqual(regular['forecast'][0]['value'], 1160)
+        self.assertEqual(feeding['forecast'][0]['value'], 160)
+        self.assertEqual(combined['forecast'][0]['value'], 1320)
+
     def test_sparse_movement_stays_unavailable_and_does_not_inflate_totals(self):
         source = source_data()
         source['products'][3] = {**source['products'][1], 'id': 3, 'name': 'MELON200'}
@@ -175,6 +198,36 @@ class HierarchyMathTests(SimpleTestCase):
             self.assertEqual(series['status'], 'insufficient_history')
             self.assertEqual(series['supported_series'], 0)
             self.assertTrue(all(p['value'] is None for p in series['forecast']))
+
+    def test_aggregate_sarima_fills_segment_and_category_demand_when_items_are_sparse(self):
+        days = [date(2024, 11, 25)+timedelta(weeks=i) for i in range(60)]
+        products = {pid: {'id': pid, 'name': f'FML {pid}', 'variant': '', 'unit': 'unit',
+                    'category_id': 1, 'category_name': 'Milk', 'is_active': True, 'shelf_life': 7}
+                    for pid in range(1, 13)}
+        facts = []
+        for index, day in enumerate(days):
+            product_id = index % 12 + 1
+            facts.append({'day': day, 'segment': 'feeding', 'product_id': product_id,
+                          'quantity': Decimal('10'), 'revenue': Decimal('80')})
+        source = {'facts': facts, 'products': products, 'coverage_days': set(days),
+                  'latest_day': days[-1]+timedelta(days=6), 'earliest_day': days[0],
+                  'revision': 'sparse-items-aggregate-history', 'audit': {}}
+        with patch('forecasting.provisional.fit', return_value={'name': 'sarima'}), \
+                patch('forecasting.provisional.project', return_value=[{'predicted': 10.0}]*8):
+            result = build(source, 'weekly', as_of=date(2026, 1, 19))
+        feeding = result['views']['feeding']
+        overall = feeding['overall']['demand']['unit']
+        category = feeding['categories'][0]['demand']['unit']
+        self.assertEqual(overall['status'], 'provisional')
+        self.assertEqual(overall['method'], 'sarima')
+        self.assertEqual(overall['aggregation_basis'], 'segment_invoice_quantity')
+        self.assertEqual(category['aggregation_basis'], 'category_invoice_quantity')
+        self.assertTrue(all(point['value'] == 10 for point in overall['forecast']))
+        self.assertTrue(all(item['demand']['status'] == 'insufficient_history'
+                            for item in feeding['items'] if item['id'] != 0))
+        combined = result['views']['combined']['overall']['demand']['unit']
+        self.assertEqual(combined['aggregation_basis'], 'sum_of_segment_total_quantity_forecasts')
+        self.assertTrue(all(point['value'] == 10 for point in combined['forecast']))
 
     def test_no_movement_and_inactive_items_cannot_receive_invented_estimates(self):
         days = [date(2025, 12, 1)]
